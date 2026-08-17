@@ -154,7 +154,7 @@ GiamSatAgent.exe --server 192.168.1.10 --port 6666
 | **SCA** | Đánh giá cấu hình bảo mật (Security Configuration Assessment) |
 | **Vulnerabilities** | Quét CVE từ installed software |
 | **Threat Alerts** | Cảnh báo dựa trên correlation rules |
-| **Tài sản** | Quản lý máy tính, màn hình, phát hiện thay đổi phần cứng |
+| **Tài sản** | Quản lý tài sản IT: máy tính, màn hình, **máy in**, **điện thoại IP**, **thiết bị mạng**, **tồn kho (chuột/bàn phím/linh kiện/điện thoại)**. **Tự phát hiện** qua SNMP/port fingerprint (máy in, điện thoại Yealink, router/switch/AP) + **nhập tay theo kho**; phát hiện thay đổi phần cứng; **xuất Excel đa sheet**.
 | **Messages** | Chat trực tiếp với agent; máy trạm chủ động nhắn tin (IT support) |
 | **Agent Update** | Auto-update agent qua server |
 

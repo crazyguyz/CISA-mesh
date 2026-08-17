@@ -157,8 +157,19 @@ Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-S
 
 ### Tài sản (Assets)
 
-- **VI:** Quản lý tài sản phần cứng (máy tính, màn hình) — thông tin cấu hình, lịch sử thay đổi, xuất Excel.
-- **EN:** Manage hardware assets (computers, monitors) — configuration info, change history, Excel export.
+- **VI:** Quản lý tài sản IT với nhiều sub-tab: **Máy tính**, **Màn hình**, **Máy in**, **Điện thoại**, **Thiết bị mạng**, **Ngoại vi**, **Kho** và **Cảnh báo thay đổi**.
+  - **Tự phát hiện:** nút **"🔍 Quét tự động"** → nhập dải IP (VD `192.168.1.0/24`) để dò máy in (SNMP/JetDirect), điện thoại IP (VD Yealink), router/switch/AP rồi tự nạp vào kho với nhãn **"Tự động"** (kèm serial, địa chỉ IP).
+  - **Nhập tay:** tab **Kho** → **"＋ Thêm tài sản"** để quản lý tồn kho (chuột, bàn phím, điện thoại, linh kiện dự phòng...) với: loại, hãng, model, serial, mã số tài sản, trạng thái (Còn hàng/Đã cấp/Đang sửa/Thanh lý), người đang dùng, vị trí/phòng, ngày mua, bảo hành, giá, ghi chú. Sửa/xoá trực tiếp.
+  - **Adopt:** tài sản tự phát hiện có nút **"Đưa vào kho"** để gán người/vị trí/mã TS (chuyển từ Tự động → Nhập tay).
+  - **Xuất Excel đa sheet:** `May tinh`, `Man hinh`, `May in`, `Dien thoai`, `Thiet bi mang`, `Ngoai vi`, `Kho`.
+  - Theo dõi **thay đổi phần cứng** và lịch sử xử lý (đã xác nhận/chưa xử lý).
+- **EN:**
+  - **Computers / Monitors / Printers / Phones / Network devices / Peripherals / Inventory / Changes** tabs.
+  - **"🔍 Auto scan"** → enter an IP range to auto-discover printers (SNMP/JetDirect), IP phones (e.g. Yealink), routers/switches/APs; found items are added to inventory as **"Auto"** (with serial, IP).
+  - **Inventory** tab → **"＋ Add asset"** to manage stock manually (mice, keyboards, phones, spare components...) with: category, brand, model, serial, asset tag, status (in stock/assigned/in repair/disposed), assignee, location, purchase date, warranty, cost, notes; edit/delete.
+  - **Adopt** button turns an auto-discovered asset into a manually-managed one.
+  - **Multi-sheet Excel export:** Computers, Monitors, Printers, Phones, Network, Peripherals, Inventory.
+  - Tracks **hardware changes** with resolved/unresolved status.
 
 ---
 
