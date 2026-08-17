@@ -240,6 +240,20 @@
       'assets.fieldCategory': 'Loại',
       'assets.fieldQty': 'Số lượng',
       'assets.discoverHelp': 'Dải IP (vd 192.168.1.0/24)',
+      // v4.9 user (digital) assets
+      'assets.tabUsers': 'Người dùng',
+      'assets.listUsers': 'Danh sách người dùng',
+      'assets.searchUsers': 'Tìm người dùng...',
+      'assets.syncUsers': 'Đồng bộ',
+      'assets.syncedUsers': 'Đã đồng bộ {0} người dùng',
+      'assets.fullName': 'Họ và tên',
+      'assets.employeeId': 'Mã NV',
+      'assets.email': 'Email',
+      'assets.internalAccount': 'Tài khoản nội bộ',
+      'assets.office': 'Văn phòng/chi nhánh',
+      'assets.stActive': 'Đang hoạt động',
+      'assets.catUser': 'Người dùng',
+      'assets.usersNote': 'Tài khoản nội bộ = phần trước @ của email',
 
       // Group Policies
       'gp.selectGroup': 'Chọn nhóm',
@@ -680,6 +694,20 @@
       'assets.fieldCategory': 'Category',
       'assets.fieldQty': 'Quantity',
       'assets.discoverHelp': 'IP range (e.g. 192.168.1.0/24)',
+      // v4.9 user (digital) assets
+      'assets.tabUsers': 'Users',
+      'assets.listUsers': 'Users list',
+      'assets.searchUsers': 'Search users...',
+      'assets.syncUsers': 'Sync',
+      'assets.syncedUsers': 'Synced {0} users',
+      'assets.fullName': 'Full name',
+      'assets.employeeId': 'Employee ID',
+      'assets.email': 'Email',
+      'assets.internalAccount': 'Internal account',
+      'assets.office': 'Office/Branch',
+      'assets.stActive': 'Active',
+      'assets.catUser': 'User',
+      'assets.usersNote': 'Internal account = part before @ of email',
 
       // Group Policies
       'gp.selectGroup': 'Select group',

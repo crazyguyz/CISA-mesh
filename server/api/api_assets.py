@@ -93,6 +93,18 @@ def init_assets_api(app, db):
         ok = m(asset_id, data)
         return jsonify({"success": ok})
 
+    @app.route("/api/assets/users/sync", methods=["POST"])
+    def api_assets_users_sync():
+        """Đồng bộ danh sách người dùng (họ tên, mã NV, email) từ assets_computers -> assets_inventory category=user."""
+        m = _inv_method("sync_user_assets")
+        if not m:
+            return jsonify({"error": "DB method unavailable"}), 500
+        try:
+            created = m()
+            return jsonify({"success": True, "created": created})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/api/assets/discovery/scan", methods=["POST"])
     def api_assets_discovery_scan():
         """Quét dải IP bằng SNMP + port fingerprint -> tự nạp tài sản."""
@@ -288,6 +300,25 @@ def init_assets_api(app, db):
         _fill_inventory_sheet(wb.create_sheet("Thiet bi mang"), _inv_items("network_device"))
         _fill_inventory_sheet(wb.create_sheet("Ngoai vi"), _inv_items("peripheral"))
         _fill_inventory_sheet(wb.create_sheet("Kho"), _inv_items(manual_only=True))
+
+        # v4.9: Nguoi dung sheet (digital user assets)
+        user_items = [a for a in inv_rows if a.get("category") == "user"]
+        ws_users = wb.create_sheet("Nguoi dung")
+        uheaders = ["Ho ten", "Ma NV", "Email", "Tai khoan noi bo", "Van phong/chi nhanh", "Nguon", "Cap nhat"]
+        for col, h in enumerate(uheaders, 1):
+            cell = ws_users.cell(row=1, column=col, value=h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
+        for r, a in enumerate(user_items, 2):
+            email = a.get('email', '')
+            internal = email.split('@')[0] if email else ''
+            source_label = 'Tu dong' if a.get('source') == 'auto' else 'Nhap tay'
+            udata = [a.get('name', ''), a.get('employee_id', ''), email, internal,
+                     a.get('location', ''), source_label, str(a.get('updated_at', ''))[:19]]
+            for col, val in enumerate(udata, 1):
+                ws_users.cell(row=r, column=col, value=val).border = thin_border
 
         # Auto-width
         for ws in wb.worksheets:

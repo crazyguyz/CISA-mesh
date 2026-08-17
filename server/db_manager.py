@@ -54,6 +54,7 @@ class DatabaseManager:
                 category TEXT DEFAULT 'other', name TEXT DEFAULT '',
                 brand TEXT DEFAULT '', model TEXT DEFAULT '',
                 serial_number TEXT DEFAULT '', asset_tag TEXT DEFAULT '',
+                email TEXT DEFAULT '', employee_id TEXT DEFAULT '',
                 status TEXT DEFAULT 'in_stock',
                 assigned_to TEXT DEFAULT '', computer_asset_id TEXT DEFAULT '',
                 ip_address TEXT DEFAULT '', mac_address TEXT DEFAULT '',
@@ -64,11 +65,14 @@ class DatabaseManager:
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
-            # v4.8 MIGRATION: quantity column for older DBs
-            try:
-                c.execute("ALTER TABLE assets_inventory ADD COLUMN quantity INTEGER DEFAULT 1")
-            except sqlite3.OperationalError:
-                pass
+            # v4.8 MIGRATION: extra columns for older DBs
+            for _col, _typ in [("quantity", "INTEGER DEFAULT 1"),
+                               ("email", "TEXT DEFAULT ''"),
+                               ("employee_id", "TEXT DEFAULT ''")]:
+                try:
+                    c.execute(f"ALTER TABLE assets_inventory ADD COLUMN {_col} {_typ}")
+                except sqlite3.OperationalError:
+                    pass
 
             # Network traffic events
             c.execute("""CREATE TABLE IF NOT EXISTS network_traffic (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,src_ip TEXT,dst_ip TEXT,src_port INTEGER,dst_port INTEGER,protocol TEXT,size INTEGER,flags TEXT,state TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,raw_data TEXT)""")
@@ -2327,6 +2331,12 @@ class DatabaseManager:
                 except Exception as _pe:
                     print(f"[-] SQLite usb-printer asset: {_pe}")
 
+                # v4.9: auto-sync 'user' assets from computer user info
+                try:
+                    self.sync_user_assets()
+                except Exception as _se:
+                    print(f"[-] SQLite sync_user_assets: {_se}")
+
 
                 self.conn.commit()
             except Exception as e:
@@ -2486,6 +2496,7 @@ class DatabaseManager:
                 (data.get("category") or "other"), (data.get("name") or ""),
                 (data.get("brand") or ""), (data.get("model") or ""),
                 (data.get("serial_number") or ""), (data.get("asset_tag") or ""),
+                (data.get("email") or ""), (data.get("employee_id") or ""),
                 (data.get("status") or "in_stock"),
                 (data.get("assigned_to") or ""), (data.get("computer_asset_id") or ""),
                 (data.get("ip_address") or ""), (data.get("mac_address") or ""),
@@ -2497,14 +2508,15 @@ class DatabaseManager:
             )
             c.execute("""INSERT INTO assets_inventory (
                 asset_id, display_id, category, name, brand, model,
-                serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                serial_number, asset_tag, email, employee_id, status, assigned_to, computer_asset_id,
                 ip_address, mac_address, location, purchase_date, warranty_until,
                 cost, quantity, notes, source, extra_json, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
                 ON CONFLICT(asset_id) DO UPDATE SET
                 display_id=excluded.display_id, category=excluded.category, name=excluded.name,
                 brand=excluded.brand, model=excluded.model, serial_number=excluded.serial_number,
-                asset_tag=excluded.asset_tag, status=excluded.status, assigned_to=excluded.assigned_to,
+                asset_tag=excluded.asset_tag, email=excluded.email, employee_id=excluded.employee_id,
+                status=excluded.status, assigned_to=excluded.assigned_to,
                 computer_asset_id=excluded.computer_asset_id, ip_address=excluded.ip_address,
                 mac_address=excluded.mac_address, location=excluded.location,
                 purchase_date=excluded.purchase_date, warranty_until=excluded.warranty_until,
@@ -2537,6 +2549,39 @@ class DatabaseManager:
             c.execute(q, tuple(p))
             self.conn.commit()
             return c.rowcount > 0
+
+    def sync_user_assets(self):
+        """v4.9: auto-create 'user' asset rows from computers (full name, employee id, email).
+        Internal account = part before '@' of email (derived, shown in UI/export)."""
+        import hashlib
+        created = 0
+        with self.write_lock:
+            c = self.conn.cursor()
+            try:
+                c.execute("SELECT DISTINCT user_name, employee_id, email FROM assets_computers WHERE (email != '' OR user_name != '')")
+            except sqlite3.OperationalError:
+                return 0
+            rows = c.fetchall()
+            for name, emp, mail in rows:
+                name = (name or "").strip()
+                emp = (emp or "").strip()
+                mail = (mail or "").strip().lower()
+                if not mail and not name:
+                    continue
+                key = "user|" + (mail or name)
+                aid = hashlib.md5(key.encode("utf-8")).hexdigest()
+                disp = hashlib.md5(("disp|" + key).encode("utf-8")).hexdigest()[:8].upper()
+                c.execute("""INSERT INTO assets_inventory (
+                    asset_id, display_id, category, name, email, employee_id,
+                    location, status, source, notes, quantity, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)
+                    ON CONFLICT(asset_id) DO UPDATE SET
+                    name=excluded.name, email=excluded.email, employee_id=excluded.employee_id,
+                    updated_at=CURRENT_TIMESTAMP""",
+                    (aid, disp, "user", name, mail, emp, "", "active", "auto", "auto-synced from assets"))
+                created += 1
+            self.conn.commit()
+        return created
 
     def close(self):
         self.conn.close()

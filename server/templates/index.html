@@ -627,7 +627,7 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
 
         <!-- v4.4: Asset Management - Quản lý Tài sản -->
         <div id="viewAssets" style="display:none;">
-            <div class="mb-2"><span class="panel-tab active" data-tab-as="computers"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="assets.tabComputer">Máy tính</span></span><span class="panel-tab" data-tab-as="monitors"><i class="bi bi-display"></i> <span data-i18n="assets.tabMonitor">Màn hình</span></span><span class="panel-tab" data-tab-as="printers"><i class="bi bi-printer"></i> <span data-i18n="assets.tabPrinter">Máy in</span></span><span class="panel-tab" data-tab-as="phones"><i class="bi bi-telephone"></i> <span data-i18n="assets.tabPhone">Điện thoại</span></span><span class="panel-tab" data-tab-as="network"><i class="bi bi-hdd-network"></i> <span data-i18n="assets.tabNetwork">T. bị mạng</span></span><span class="panel-tab" data-tab-as="peripheral"><i class="bi bi-usb"></i> <span data-i18n="assets.tabPeripheral">Ngoại vi</span></span><span class="panel-tab" data-tab-as="kho"><i class="bi bi-box-seam"></i> <span data-i18n="assets.tabKho">Kho</span></span><span class="panel-tab" data-tab-as="changes"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="assets.tabChange">Cảnh báo</span> <span id="assetChangeBadge" class="badge bg-danger ms-1" style="font-size:9px;">0</span></span><button class="btn btn-sm ms-auto export-btn" onclick="Assets.openDiscover()" style="float:right;"><i class="bi bi-radar"></i> <span data-i18n="assets.scanBtn">Quét tự động</span></button></div>
+            <div class="mb-2"><span class="panel-tab active" data-tab-as="computers"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="assets.tabComputer">Máy tính</span></span><span class="panel-tab" data-tab-as="monitors"><i class="bi bi-display"></i> <span data-i18n="assets.tabMonitor">Màn hình</span></span><span class="panel-tab" data-tab-as="printers"><i class="bi bi-printer"></i> <span data-i18n="assets.tabPrinter">Máy in</span></span><span class="panel-tab" data-tab-as="phones"><i class="bi bi-telephone"></i> <span data-i18n="assets.tabPhone">Điện thoại</span></span><span class="panel-tab" data-tab-as="network"><i class="bi bi-hdd-network"></i> <span data-i18n="assets.tabNetwork">T. bị mạng</span></span><span class="panel-tab" data-tab-as="peripheral"><i class="bi bi-usb"></i> <span data-i18n="assets.tabPeripheral">Ngoại vi</span></span><span class="panel-tab" data-tab-as="users"><i class="bi bi-person"></i> <span data-i18n="assets.tabUsers">Người dùng</span></span><span class="panel-tab" data-tab-as="kho"><i class="bi bi-box-seam"></i> <span data-i18n="assets.tabKho">Kho</span></span><span class="panel-tab" data-tab-as="changes"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="assets.tabChange">Cảnh báo</span> <span id="assetChangeBadge" class="badge bg-danger ms-1" style="font-size:9px;">0</span></span><button class="btn btn-sm ms-auto export-btn" onclick="Assets.openDiscover()" style="float:right;"><i class="bi bi-radar"></i> <span data-i18n="assets.scanBtn">Quét tự động</span></button></div>
             <div class="tab-as-content" id="tabAsComputers">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="assets.listComputers">Danh sách máy tính</span></span><div><input class="search-box" id="assetComputerSearch" data-i18n-placeholder="assets.searchComputer" placeholder="Tìm máy tính..." style="width:200px;" oninput="refreshAssetComputers()"><button class="btn btn-sm export-btn ms-1" onclick="Assets.exportExcel()"><i class="bi bi-file-earmark-spreadsheet"></i> <span data-i18n="assets.excelKho">Xuất Excel</span></button><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetComputers()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
                 <div class="card-body p-0" id="assetComputersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
@@ -651,6 +651,10 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <div class="tab-as-content" id="tabAsPeripheral" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-usb"></i> <span data-i18n="assets.tabPeripheral">Ngoại vi</span></span><div><input class="search-box" id="assetPeripheralSearch" data-i18n-placeholder="assets.searchPeripheral" placeholder="Tìm ngoại vi..." style="width:200px;" oninput="refreshAssetPeripheral()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetPeripheral()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
                 <div class="card-body p-0" id="assetPeripheralTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+            </div>
+            <div class="tab-as-content" id="tabAsUsers" style="display:none;">
+                <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-person"></i> <span data-i18n="assets.listUsers">Danh sách người dùng</span></span><div><input class="search-box" id="assetUsersSearch" data-i18n-placeholder="assets.searchUsers" placeholder="Tìm người dùng..." style="width:200px;" oninput="refreshAssetUsers()"><button class="btn btn-sm export-btn ms-1" onclick="Assets.syncUsers()"><i class="bi bi-arrow-repeat"></i> <span data-i18n="assets.syncUsers">Đồng bộ</span></button><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetUsers()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
+                <div class="card-body p-0" id="assetUsersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsKho" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-box-seam"></i> <span data-i18n="assets.tabKho">Kho</span></span><div><input class="search-box" id="assetKhoSearch" data-i18n-placeholder="assets.searchInv" placeholder="Tìm tài sản..." style="width:180px;" oninput="refreshAssetKho()"><select class="form-select form-select-sm" id="assetKhoCat" style="width:140px;display:inline-block;" onchange="refreshAssetKho()"></select><select class="form-select form-select-sm" id="assetKhoStatus" style="width:130px;display:inline-block;" onchange="refreshAssetKho()"></select><button class="btn btn-sm export-btn ms-1" onclick="Assets.openForm()">＋ <span data-i18n="assets.addAsset">Thêm tài sản</span></button><button class="btn btn-sm export-btn ms-1" onclick="Assets.exportExcel()"><i class="bi bi-file-earmark-spreadsheet"></i> <span data-i18n="assets.excelKho">Xuất Excel</span></button></div></div>
@@ -708,6 +712,28 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                     </div>
                 </div>
             </div>
+            <!-- v4.9: User form modal -->
+            <div id="userModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;">
+                <div style="max-width:520px;margin:40px auto;background:#0f1923;border:1px solid #2a3a4a;border-radius:8px;padding:16px;color:#c8d8e8;">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong id="userModalTitle" style="font-size:14px;">Sửa người dùng</strong>
+                        <button onclick="Assets.closeUserForm()" style="background:none;border:none;color:#8aa;font-size:18px;cursor:pointer;">✕</button>
+                    </div>
+                    <input type="hidden" id="userAssetId">
+                    <div class="row g-2" style="font-size:12px;">
+                        <div class="col-6"><label data-i18n="assets.fullName">Họ và tên</label><input class="form-control form-control-sm" id="userName"></div>
+                        <div class="col-6"><label data-i18n="assets.employeeId">Mã NV</label><input class="form-control form-control-sm" id="userEmployeeId"></div>
+                        <div class="col-6"><label data-i18n="assets.email">Email</label><input class="form-control form-control-sm" id="userEmail"></div>
+                        <div class="col-6"><label data-i18n="assets.office">Văn phòng/chi nhánh</label><input class="form-control form-control-sm" id="userOffice"></div>
+                        <div class="col-12"><small class="text-muted" data-i18n="assets.usersNote">Tài khoản nội bộ = phần trước @ của email</small></div>
+                    </div>
+                    <div class="text-end mt-3">
+                        <button class="btn btn-sm export-btn me-1" onclick="Assets.closeUserForm()"><span data-i18n="assets.cancel">Hủy</span></button>
+                        <button class="btn btn-sm" style="background:#0d6efd;color:#fff;" onclick="Assets.saveUser()"><span data-i18n="assets.save">Lưu</span></button>
+                    </div>
+                </div>
+            </div>
+
 
         </div>
 

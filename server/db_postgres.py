@@ -486,7 +486,8 @@ class PostgresDatabase:
                 display_id VARCHAR(32) DEFAULT '', category VARCHAR(32) DEFAULT 'other',
                 name VARCHAR(256) DEFAULT '', brand VARCHAR(128) DEFAULT '',
                 model VARCHAR(128) DEFAULT '', serial_number VARCHAR(128) DEFAULT '',
-                asset_tag VARCHAR(64) DEFAULT '', status VARCHAR(24) DEFAULT 'in_stock',
+                asset_tag VARCHAR(64) DEFAULT '', email VARCHAR(128) DEFAULT '',
+                employee_id VARCHAR(64) DEFAULT '', status VARCHAR(24) DEFAULT 'in_stock',
                 assigned_to VARCHAR(128) DEFAULT '', computer_asset_id VARCHAR(32) DEFAULT '',
                 ip_address VARCHAR(64) DEFAULT '', mac_address VARCHAR(32) DEFAULT '',
                 location VARCHAR(128) DEFAULT '', purchase_date VARCHAR(24) DEFAULT '',
@@ -556,6 +557,8 @@ class PostgresDatabase:
             ("assets_computers", "display_id", "VARCHAR(32) DEFAULT ''"),
             ("assets_monitors", "display_id", "VARCHAR(32) DEFAULT ''"),
             ("assets_inventory", "quantity", "INTEGER DEFAULT 1"),
+            ("assets_inventory", "email", "VARCHAR(128) DEFAULT ''"),
+            ("assets_inventory", "employee_id", "VARCHAR(64) DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
         ]
         for table, col, col_type in alt_cols:
@@ -2754,6 +2757,12 @@ class PostgresDatabase:
             except Exception as _pe:
                 print(f"[-] PG usb-printer asset: {_pe}")
 
+            # v4.9: auto-sync 'user' assets from computer user info
+            try:
+                self.sync_user_assets()
+            except Exception as _se:
+                print(f"[-] PG sync_user_assets: {_se}")
+
             return {"computer_asset_id": computer_asset_id, "changes": changes}
             
         except Exception as e:
@@ -2917,14 +2926,15 @@ class PostgresDatabase:
         try:
             self._execute("""INSERT INTO assets_inventory (
                 asset_id, display_id, category, name, brand, model,
-                serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                serial_number, asset_tag, email, employee_id, status, assigned_to, computer_asset_id,
                 ip_address, mac_address, location, purchase_date, warranty_until,
                 cost, quantity, notes, source, extra_json, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                 ON CONFLICT(asset_id) DO UPDATE SET
                 display_id=EXCLUDED.display_id, category=EXCLUDED.category, name=EXCLUDED.name,
                 brand=EXCLUDED.brand, model=EXCLUDED.model, serial_number=EXCLUDED.serial_number,
-                asset_tag=EXCLUDED.asset_tag, status=EXCLUDED.status, assigned_to=EXCLUDED.assigned_to,
+                asset_tag=EXCLUDED.asset_tag, email=EXCLUDED.email, employee_id=EXCLUDED.employee_id,
+                status=EXCLUDED.status, assigned_to=EXCLUDED.assigned_to,
                 computer_asset_id=EXCLUDED.computer_asset_id, ip_address=EXCLUDED.ip_address,
                 mac_address=EXCLUDED.mac_address, location=EXCLUDED.location,
                 purchase_date=EXCLUDED.purchase_date, warranty_until=EXCLUDED.warranty_until,
@@ -2932,7 +2942,8 @@ class PostgresDatabase:
                 extra_json=EXCLUDED.extra_json, updated_at=NOW()""",
                 (asset_id, display_id, data.get("category") or "other", data.get("name") or "",
                  data.get("brand") or "", data.get("model") or "", data.get("serial_number") or "",
-                 data.get("asset_tag") or "", data.get("status") or "in_stock",
+                 data.get("asset_tag") or "", data.get("email") or "", data.get("employee_id") or "",
+                 data.get("status") or "in_stock",
                  data.get("assigned_to") or "", data.get("computer_asset_id") or "",
                  data.get("ip_address") or "", data.get("mac_address") or "", data.get("location") or "",
                  data.get("purchase_date") or "", data.get("warranty_until") or "",
@@ -2965,4 +2976,36 @@ class PostgresDatabase:
             return rc > 0
         except Exception:
             return False
+
+    def sync_user_assets(self):
+        """v4.9: auto-create 'user' asset rows from computers (full name, employee id, email)."""
+        if not self._connected:
+            return 0
+        import hashlib
+        created = 0
+        try:
+            rows = self._execute(
+                "SELECT DISTINCT user_name, employee_id, email FROM assets_computers "
+                "WHERE (email <> '' OR user_name <> '')", fetchall=True) or []
+            for name, emp, mail in rows:
+                name = (name or "").strip()
+                emp = (emp or "").strip()
+                mail = (mail or "").strip().lower()
+                if not mail and not name:
+                    continue
+                key = "user|" + (mail or name)
+                aid = hashlib.md5(key.encode("utf-8")).hexdigest()
+                disp = hashlib.md5(("disp|" + key).encode("utf-8")).hexdigest()[:8].upper()
+                self._execute("""INSERT INTO assets_inventory (
+                    asset_id, display_id, category, name, email, employee_id,
+                    location, status, source, notes, quantity, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,NOW())
+                    ON CONFLICT(asset_id) DO UPDATE SET
+                    name=EXCLUDED.name, email=EXCLUDED.email, employee_id=EXCLUDED.employee_id,
+                    updated_at=NOW()""",
+                    (aid, disp, "user", name, mail, emp, "", "active", "auto", "auto-synced from assets"))
+                created += 1
+        except Exception as e:
+            print(f"[-] PG sync_user_assets: {e}")
+        return created
 

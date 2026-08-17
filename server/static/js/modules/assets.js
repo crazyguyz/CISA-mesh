@@ -18,6 +18,7 @@ var Assets = {
                 else if (tabName === 'phones') Assets.loadPhones();
                 else if (tabName === 'network') Assets.loadNetwork();
                 else if (tabName === 'peripheral') Assets.loadPeripheral();
+                else if (tabName === 'users') Assets.loadUsers();
                 else if (tabName === 'kho') Assets.loadKho();
                 else if (tabName === 'changes') Assets.loadChanges();
             });
@@ -248,18 +249,20 @@ var Assets = {
         { v: 'network_device', k: 'assets.catNetwork' },
         { v: 'peripheral', k: 'assets.catPeripheral' },
         { v: 'component', k: 'assets.catComponent' },
+        { v: 'user', k: 'assets.catUser' },
         { v: 'other', k: 'assets.catOther' }
     ],
     STATUSES: [
         { v: 'in_stock', k: 'assets.stInStock' },
         { v: 'assigned', k: 'assets.stAssigned' },
         { v: 'in_repair', k: 'assets.stRepair' },
-        { v: 'disposed', k: 'assets.stDisposed' }
+        { v: 'disposed', k: 'assets.stDisposed' },
+        { v: 'active', k: 'assets.stActive' }
     ],
     _catLbl: function(v) { for (var i = 0; i < Assets.CATALOG.length; i++) { if (Assets.CATALOG[i].v === v) return t(Assets.CATALOG[i].k); } return v; },
     _stLbl: function(v) { for (var i = 0; i < Assets.STATUSES.length; i++) { if (Assets.STATUSES[i].v === v) return t(Assets.STATUSES[i].k); } return v; },
     _stCls: function(v) {
-        return (v === 'in_stock') ? 'bg-success' : (v === 'assigned') ? 'bg-info' :
+        return (v === 'in_stock' || v === 'active') ? 'bg-success' : (v === 'assigned') ? 'bg-info' :
                (v === 'in_repair') ? 'bg-warning text-dark' : 'bg-secondary';
     },
 
@@ -363,6 +366,101 @@ var Assets = {
         return div.innerHTML;
     },
 
+    loadUsers: function() {
+        var container = document.getElementById('assetUsersTable');
+        if (!container) return;
+        var q = Assets.searchOf('assetUsersSearch');
+        container.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('common.loading') + '</div>';
+        var url = '/api/assets/inventory?category=user&limit=2000';
+        if (q) url += '&search=' + encodeURIComponent(q);
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+            var items = data.assets || [];
+            if (!items.length) {
+                container.innerHTML = '<div class="text-center text-muted py-4">' + t('assets.noInventory') + '</div>';
+                return;
+            }
+            var html = '<table class="table-data table table-sm mb-0"><thead><tr>' +
+                '<th>' + t('assets.fullName') + '</th><th>' + t('assets.employeeId') + '</th>' +
+                '<th>' + t('assets.email') + '</th><th>' + t('assets.internalAccount') + '</th>' +
+                '<th>' + t('assets.office') + '</th><th>' + t('assets.status') + '</th><th>Nguồn</th><th></th></tr></thead><tbody>';
+            items.forEach(function(a) {
+                var email = a.email || '';
+                var internal = email.split('@')[0] || '-';
+                var srcBadge = a.source === 'auto'
+                    ? '<span class="badge bg-primary">' + t('assets.sourceAuto') + '</span>'
+                    : '<span class="badge bg-secondary">' + t('assets.sourceManual') + '</span>';
+                var stLbl = Assets._stLbl(a.status);
+                var stCls = Assets._stCls(a.status);
+                html += '<tr>' +
+                    '<td>' + Assets.esc(a.name || '-') + '</td>' +
+                    '<td>' + Assets.esc(a.employee_id || '-') + '</td>' +
+                    '<td>' + Assets.esc(email || '-') + '</td>' +
+                    '<td><code>' + Assets.esc(internal) + '</code></td>' +
+                    '<td>' + Assets.esc(a.location || '-') + '</td>' +
+                    '<td><span class="badge ' + stCls + '">' + Assets.esc(stLbl) + '</span></td>' +
+                    '<td>' + srcBadge + '</td>' +
+                    '<td><button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editUser(\'' + a.asset_id + '\')">✏️</button>' +
+                    '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteUser(\'' + a.asset_id + '\')">🗑</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }).catch(function(err) {
+            container.innerHTML = '<div class="text-center text-danger py-3">' + t('assets.loadErr', [err]) + '</div>';
+        });
+    },
+
+    syncUsers: function() {
+        fetch('/api/assets/users/sync', { method: 'POST' })
+            .then(function(r) { return r.json(); }).then(function(d) {
+                if (d.success && typeof showToast === 'function') showToast(t('assets.syncedUsers', [d.created || 0]));
+                Assets.loadUsers();
+            }).catch(function(err) { if (typeof showToast === 'function') showToast(t('assets.loadErr', [err])); });
+    },
+
+    openUserForm: function(a) {
+        var modal = document.getElementById('userModal');
+        if (!modal) return;
+        document.getElementById('userAssetId').value = a ? (a.asset_id || '') : '';
+        document.getElementById('userName').value = a ? (a.name || '') : '';
+        document.getElementById('userEmployeeId').value = a ? (a.employee_id || '') : '';
+        document.getElementById('userEmail').value = a ? (a.email || '') : '';
+        document.getElementById('userOffice').value = a ? (a.location || '') : '';
+        modal.style.display = 'block';
+    },
+    closeUserForm: function() { var m = document.getElementById('userModal'); if (m) m.style.display = 'none'; },
+    editUser: function(id) {
+        fetch('/api/assets/inventory?category=user&limit=2000').then(function(r){return r.json();}).then(function(d){
+            var found = null; (d.assets||[]).forEach(function(a){ if(a.asset_id===id) found=a; });
+            if (found) Assets.openUserForm(found);
+        });
+    },
+    deleteUser: function(id) {
+        if (!confirm(t('assets.confirmDelete'))) return;
+        fetch('/api/assets/inventory/' + encodeURIComponent(id), { method: 'DELETE' })
+            .then(function(r){return r.json();}).then(function(){ Assets.loadUsers(); });
+    },
+    saveUser: function() {
+        var el = function(id){ return document.getElementById(id); };
+        var email = el('userEmail').value.trim();
+        var payload = {
+            category: 'user', status: 'active',
+            name: el('userName').value.trim(),
+            employee_id: el('userEmployeeId').value.trim(),
+            email: email,
+            location: el('userOffice').value.trim(),
+            source: 'manual'
+        };
+        var id = el('userAssetId').value;
+        var url = '/api/assets/inventory' + (id ? '/' + encodeURIComponent(id) : '');
+        var method = id ? 'PUT' : 'POST';
+        fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+            .then(function(r){return r.json();}).then(function(){
+                if (typeof showToast === 'function') showToast(t('assets.savedToast'));
+                Assets.closeUserForm();
+                Assets.loadUsers();
+            }).catch(function(err){ if (typeof showToast === 'function') showToast(t('assets.loadErr',[err])); });
+    },
+
     openForm: function(asset) {
         Assets.initInvFilters();
         var modal = document.getElementById('invModal');
@@ -452,7 +550,7 @@ var Assets = {
     reloadVisible: function() {
         Assets.loadComputers(); Assets.loadMonitors(); Assets.loadChanges();
         Assets.loadPrinters(); Assets.loadPhones(); Assets.loadNetwork();
-        Assets.loadPeripheral(); Assets.loadKho();
+        Assets.loadPeripheral(); Assets.loadUsers(); Assets.loadKho();
     },
 
     openDiscover: function() { var m = document.getElementById('discoverModal'); if (m) m.style.display = 'block'; },
@@ -479,6 +577,7 @@ function refreshAssetPrinter() { Assets.loadPrinters(); }
 function refreshAssetPhone() { Assets.loadPhones(); }
 function refreshAssetNetwork() { Assets.loadNetwork(); }
 function refreshAssetPeripheral() { Assets.loadPeripheral(); }
+function refreshAssetUsers() { Assets.loadUsers(); }
 function refreshAssetKho() { Assets.loadKho(); }
 
 if (document.readyState === 'loading') {
