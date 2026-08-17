@@ -382,7 +382,7 @@ var Assets = {
             var html = '<table class="table-data table table-sm mb-0"><thead><tr>' +
                 '<th>' + t('assets.fullName') + '</th><th>' + t('assets.employeeId') + '</th>' +
                 '<th>' + t('assets.email') + '</th><th>' + t('assets.internalAccount') + '</th>' +
-                '<th>' + t('assets.office') + '</th><th>' + t('assets.status') + '</th><th>Nguồn</th><th></th></tr></thead><tbody>';
+                '<th>' + t('assets.office') + '</th><th>' + t('assets.status') + '</th><th>' + t('assets.colSrc') + '</th><th></th></tr></thead><tbody>';
             items.forEach(function(a) {
                 var email = a.email || '';
                 var internal = email.split('@')[0] || '-';

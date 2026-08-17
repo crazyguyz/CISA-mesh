@@ -253,6 +253,7 @@
       'assets.office': 'Văn phòng/chi nhánh',
       'assets.stActive': 'Đang hoạt động',
       'assets.catUser': 'Người dùng',
+      'assets.editUser': 'Sửa người dùng',
       'assets.usersNote': 'Tài khoản nội bộ = phần trước @ của email',
 
       // Group Policies
@@ -707,6 +708,7 @@
       'assets.office': 'Office/Branch',
       'assets.stActive': 'Active',
       'assets.catUser': 'User',
+      'assets.editUser': 'Edit user',
       'assets.usersNote': 'Internal account = part before @ of email',
 
       // Group Policies
