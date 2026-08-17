@@ -365,7 +365,8 @@ class PostgresDatabase:
             "machine_users": """CREATE TABLE IF NOT EXISTS machine_users (
                 machine_id TEXT UNIQUE, hostname TEXT DEFAULT '',
                 user_name TEXT DEFAULT '', employee_id TEXT DEFAULT '',
-                email TEXT DEFAULT '', updated_at TIMESTAMPTZ DEFAULT NOW()
+                email TEXT DEFAULT '', branch TEXT DEFAULT '',
+                updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
             "machine_uptime": """CREATE TABLE IF NOT EXISTS machine_uptime (
                 machine_id TEXT, date TEXT, session_start TIMESTAMPTZ,
@@ -559,6 +560,7 @@ class PostgresDatabase:
             ("assets_inventory", "quantity", "INTEGER DEFAULT 1"),
             ("assets_inventory", "email", "VARCHAR(128) DEFAULT ''"),
             ("assets_inventory", "employee_id", "VARCHAR(64) DEFAULT ''"),
+            ("machine_users", "branch", "TEXT DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
         ]
         for table, col, col_type in alt_cols:
@@ -664,18 +666,19 @@ class PostgresDatabase:
         except Exception:
             pass
 
-    def save_machine_user(self, machine_id, hostname, user_name, employee_id, email):
+    def save_machine_user(self, machine_id, hostname, user_name, employee_id, email, branch=""):
         if not self._connected:
             return
         try:
             self._execute(
-                """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, updated_at)
-                   VALUES (%s,%s,%s,%s,%s,NOW())
+                """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, branch, updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,NOW())
                    ON CONFLICT(machine_id) DO UPDATE SET
                    hostname=EXCLUDED.hostname, user_name=EXCLUDED.user_name,
                    employee_id=EXCLUDED.employee_id, email=EXCLUDED.email,
+                   branch=EXCLUDED.branch,
                    updated_at=NOW()""",
-                (machine_id, hostname, user_name, employee_id, email)
+                (machine_id, hostname, user_name, employee_id, email, branch)
             )
         except Exception:
             pass
@@ -2985,12 +2988,15 @@ class PostgresDatabase:
         created = 0
         try:
             rows = self._execute(
-                "SELECT DISTINCT user_name, employee_id, email FROM assets_computers "
-                "WHERE (email <> '' OR user_name <> '')", fetchall=True) or []
-            for name, emp, mail in rows:
+                "SELECT DISTINCT c.user_name, c.employee_id, c.email, mu.branch "
+                "FROM assets_computers c "
+                "LEFT JOIN machine_users mu ON mu.machine_id = c.machine_id "
+                "WHERE (c.email <> '' OR c.user_name <> '')", fetchall=True) or []
+            for name, emp, mail, branch in rows:
                 name = (name or "").strip()
                 emp = (emp or "").strip()
                 mail = (mail or "").strip().lower()
+                branch = (branch or "").strip()
                 if not mail and not name:
                     continue
                 key = "user|" + (mail or name)
@@ -3002,8 +3008,8 @@ class PostgresDatabase:
                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,NOW())
                     ON CONFLICT(asset_id) DO UPDATE SET
                     name=EXCLUDED.name, email=EXCLUDED.email, employee_id=EXCLUDED.employee_id,
-                    updated_at=NOW()""",
-                    (aid, disp, "user", name, mail, emp, "", "active", "auto", "auto-synced from assets"))
+                    location=EXCLUDED.location, updated_at=NOW()""",
+                    (aid, disp, "user", name, mail, emp, branch, "active", "auto", "auto-synced from assets"))
                 created += 1
         except Exception as e:
             print(f"[-] PG sync_user_assets: {e}")

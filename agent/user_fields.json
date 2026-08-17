@@ -1,0 +1,10 @@
+{
+  "_guide": "CAU HINH CAC DROPDOWN (COMBobox) cho dialog nhap thong tin nguoi dung khi chay/cai lai Agent.\nQuan tri vien co the sua truc tiep file nay (khong can build lai Agent):\n - Them/bot dropdown bang cach sua mang 'fields' ben duoi.\n - Moi dropdown gom 3 thuoc tinh:\n     + key     : ma dinh danh (dung de luu + gui len server).\n     + label   : nhan hien thi tren dialog.\n     + options : danh sach lua chon (array chuoi).\n - key 'branch' se duoc luu vao truong 'Van phong/chi nhanh' cua tai san 'Nguoi dung' tren server.\n - Luu file theo ma UTF-8. Khong dung dau nhay don (') trong label/options de tranh loi hien thi.\n\nVi du muon them dropdown 'Phong ban':\n  {\n    \"key\": \"department\",\n    \"label\": \"Phong ban\",\n    \"options\": [\"IT\", \"HR\", \"Ke toan\", \"Kinh doanh\"]\n  }\n",
+  "fields": [
+    {
+      "key": "branch",
+      "label": "Chi nhanh",
+      "options": ["Tru so chinh", "Chi nhanh 1", "Chi nhanh 2", "Chi nhanh 3"]
+    }
+  ]
+}

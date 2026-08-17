@@ -150,7 +150,11 @@ class DatabaseManager:
                     pass  # Column already exists
 
             # v2.2.0: Machine user info (agent reports user name, employee ID, email)
-            c.execute("""CREATE TABLE IF NOT EXISTS machine_users (machine_id TEXT UNIQUE,hostname TEXT,user_name TEXT,employee_id TEXT,email TEXT,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            c.execute("""CREATE TABLE IF NOT EXISTS machine_users (machine_id TEXT UNIQUE,hostname TEXT,user_name TEXT,employee_id TEXT,email TEXT,branch TEXT DEFAULT '',updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            try:
+                c.execute("ALTER TABLE machine_users ADD COLUMN branch TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
 
             # v2.3.0: Machine uptime tracking (daily online duration, alerts for 24h+)
             c.execute("""CREATE TABLE IF NOT EXISTS machine_uptime (machine_id TEXT,date TEXT,session_start TIMESTAMP,last_seen TIMESTAMP,uptime_minutes INTEGER DEFAULT 0,alert_sent_24h INTEGER DEFAULT 0,UNIQUE(machine_id, date, session_start))""")
@@ -1481,19 +1485,20 @@ class DatabaseManager:
     # v2.2.0: MACHINE USER INFO - Agent reports user_name, employee_id, email
     # =========================================================================
 
-    def save_machine_user(self, machine_id, hostname, user_name="", employee_id="", email=""):
+    def save_machine_user(self, machine_id, hostname, user_name="", employee_id="", email="", branch=""):
         """Save/update the user info for a machine reported by agent."""
         with self.lock:
             self.conn.execute(
-                """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, updated_at)
-                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, branch, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                    ON CONFLICT(machine_id) DO UPDATE SET
                        hostname=excluded.hostname,
                        user_name=excluded.user_name,
                        employee_id=excluded.employee_id,
                        email=excluded.email,
+                       branch=excluded.branch,
                        updated_at=CURRENT_TIMESTAMP""",
-                (machine_id, hostname, user_name, employee_id, email)
+                (machine_id, hostname, user_name, employee_id, email, branch)
             )
             self.conn.commit()
 
@@ -2558,14 +2563,18 @@ class DatabaseManager:
         with self.write_lock:
             c = self.conn.cursor()
             try:
-                c.execute("SELECT DISTINCT user_name, employee_id, email FROM assets_computers WHERE (email != '' OR user_name != '')")
+                c.execute("""SELECT DISTINCT c.user_name, c.employee_id, c.email, mu.branch
+                             FROM assets_computers c
+                             LEFT JOIN machine_users mu ON mu.machine_id = c.machine_id
+                             WHERE (c.email != '' OR c.user_name != '')""")
             except sqlite3.OperationalError:
                 return 0
             rows = c.fetchall()
-            for name, emp, mail in rows:
+            for name, emp, mail, branch in rows:
                 name = (name or "").strip()
                 emp = (emp or "").strip()
                 mail = (mail or "").strip().lower()
+                branch = (branch or "").strip()
                 if not mail and not name:
                     continue
                 key = "user|" + (mail or name)
@@ -2577,8 +2586,8 @@ class DatabaseManager:
                     VALUES (?,?,?,?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP)
                     ON CONFLICT(asset_id) DO UPDATE SET
                     name=excluded.name, email=excluded.email, employee_id=excluded.employee_id,
-                    updated_at=CURRENT_TIMESTAMP""",
-                    (aid, disp, "user", name, mail, emp, "", "active", "auto", "auto-synced from assets"))
+                    location=excluded.location, updated_at=CURRENT_TIMESTAMP""",
+                    (aid, disp, "user", name, mail, emp, branch, "active", "auto", "auto-synced from assets"))
                 created += 1
             self.conn.commit()
         return created

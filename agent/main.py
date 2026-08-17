@@ -114,6 +114,35 @@ def _get_config_path():
     return os.path.join(_get_agent_data_dir(), "agent_config.json")
 
 
+def _load_user_fields():
+    """v4.9: Load configurable dropdown fields for the user-info dialog.
+    Admin edits user_fields.json (agent data dir) to add/remove/rename dropdowns.
+    Default: one 'Chi nhanh' (branch) dropdown."""
+    default = [{"key": "branch", "label": "Chi nhanh",
+                "options": ["Tru so chinh", "Chi nhanh 1", "Chi nhanh 2"]}]
+    try:
+        path = os.path.join(_get_agent_data_dir(), "user_fields.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8-sig") as f:
+                data = json.loads(f.read())
+            fields = data.get("fields", []) if isinstance(data, dict) else []
+            out = []
+            for fld in fields:
+                if not isinstance(fld, dict):
+                    continue
+                key = (fld.get("key") or "").strip()
+                label = (fld.get("label") or key).strip()
+                options = fld.get("options") or []
+                if not key or not label:
+                    continue
+                out.append({"key": key, "label": label, "options": [str(o) for o in options]})
+            if out:
+                return out
+    except Exception:
+        pass
+    return default
+
+
 def _get_boot_tracker_path():
     return os.path.join(_get_agent_data_dir(), "boot_tracker.json")
 
@@ -141,13 +170,13 @@ def _check_first_boot_today():
 
 
 def _load_config():
-    cfg = {"server_host": "127.0.0.1", "server_port": 6666, "user_name": "", "employee_id": "", "email": "", "psk": "", "command_key": ""}
+    cfg = {"server_host": "127.0.0.1", "server_port": 6666, "user_name": "", "employee_id": "", "email": "", "psk": "", "command_key": "", "branch": "", "user_extra": {}}
     try:
         path = _get_config_path()
         if os.path.exists(path):
             with open(path, "r") as f:
                 saved = json.loads(f.read())
-            for k in ["server_host", "server_port", "user_name", "employee_id", "email", "psk", "command_key"]:
+            for k in ["server_host", "server_port", "user_name", "employee_id", "email", "psk", "command_key", "branch", "user_extra"]:
                 if k in saved:
                     cfg[k] = saved[k]
     except Exception:
@@ -178,7 +207,7 @@ def _generate_machine_id():
     return str(uuid.uuid4())[:8]
 
 
-def _save_config(host, port, user_name="", employee_id="", email="", psk="", command_key=""):
+def _save_config(host, port, user_name="", employee_id="", email="", psk="", command_key="", branch="", user_extra=None):
     try:
         path = _get_config_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -195,7 +224,8 @@ def _save_config(host, port, user_name="", employee_id="", email="", psk="", com
             data["hostname"] = os.environ.get("COMPUTERNAME", socket.gethostname())
         data.update({"server_host": host, "server_port": int(port),
                      "user_name": user_name, "employee_id": employee_id,
-                     "email": email, "psk": psk, "command_key": command_key, "configured": True})
+                     "email": email, "psk": psk, "command_key": command_key,
+                     "branch": branch, "user_extra": user_extra or {}, "configured": True})
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
@@ -213,7 +243,8 @@ def _save_config(host, port, user_name="", employee_id="", email="", psk="", com
         up = _get_user_info_path()
         ut = up + ".tmp"
         with open(ut, "w") as f:
-            json.dump({"user_name": user_name, "employee_id": employee_id, "email": email}, f, indent=2)
+            json.dump({"user_name": user_name, "employee_id": employee_id, "email": email,
+                       "branch": branch, "user_extra": user_extra or {}}, f, indent=2)
         try:
             os.replace(ut, up)
         except PermissionError:
@@ -240,7 +271,8 @@ def _show_config_dialog():
     cfg = _load_config()
     result = {"confirmed": False, "host": cfg["server_host"], "port": cfg["server_port"],
               "user_name": cfg["user_name"], "employee_id": cfg["employee_id"], "email": cfg["email"],
-              "psk": cfg.get("psk", ""), "command_key": cfg.get("command_key", "")}
+              "psk": cfg.get("psk", ""), "command_key": cfg.get("command_key", ""),
+              "branch": cfg.get("branch", ""), "user_extra": cfg.get("user_extra", {}) or {}}
 
     try:
         import os as _os, sys as _sys
@@ -258,7 +290,7 @@ def _show_config_dialog():
         from tkinter import ttk
     except ImportError:
         _log("tkinter not available, using defaults")
-        return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", "")
+        return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {})
 
     _log("Launching tkinter config dialog...")
 
@@ -343,6 +375,19 @@ def _show_config_dialog():
     sv_email = make_entry(y_pos, 340, cfg["email"])
     y_pos += 48
 
+    # v4.9: configurable dropdown fields (admin-editable user_fields.json)
+    combo_vars = {}
+    for fld in _load_user_fields():
+        make_label((fld.get("label") or "") + ":", y_pos)
+        y_pos += 20
+        opts = fld.get("options") or []
+        sv = tk.StringVar(value=opts[0] if opts else "")
+        cb = ttk.Combobox(root, textvariable=sv, values=opts, state="readonly",
+                          font=("Consolas", 11))
+        cb.place(x=30, y=y_pos, width=340, height=28)
+        combo_vars[fld["key"]] = sv
+        y_pos += 48
+
     # v4.5.5: PSK field (shared secret, must match server's GIAMSAT_AGENT_PSK)
     make_label("PSK (khoa bao mat - de trong neu khong dung):", y_pos)
     y_pos += 20
@@ -369,6 +414,9 @@ def _show_config_dialog():
         result["user_name"] = sv_name.get().strip()
         result["employee_id"] = sv_id.get().strip()
         result["email"] = sv_email.get().strip()
+        _ux = {k: v.get().strip() for k, v in combo_vars.items()}
+        result["user_extra"] = _ux
+        result["branch"] = _ux.get("branch", "")
         result["psk"] = sv_psk.get().strip()
         result["command_key"] = sv_ckey.get().strip()
         result["confirmed"] = True
@@ -405,13 +453,15 @@ def _show_config_dialog():
         user_name, employee_id, email = result["user_name"], result["employee_id"], result["email"]
         psk = result.get("psk", "")
         command_key = result.get("command_key", "")
-        _save_config(host, port, user_name, employee_id, email, psk, command_key)
+        branch = result.get("branch", "")
+        user_extra = result.get("user_extra", {}) or {}
+        _save_config(host, port, user_name, employee_id, email, psk, command_key, branch, user_extra)
         _save_runtime_config(host, port)
         _log(f"Config saved via tkinter: {host}:{port} user={user_name} psk={'set' if psk else 'empty'}")
-        return host, port, user_name, employee_id, email, psk, command_key
+        return host, port, user_name, employee_id, email, psk, command_key, branch, user_extra
 
     _log("Config dialog cancelled, using defaults")
-    return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", "")
+    return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {})
 
 
 def _save_runtime_config(host, port):
@@ -700,9 +750,9 @@ if __name__ == "__main__":
                 with open(bp,"r") as f: bd = json.loads(f.read())
             except: bd = {}
             _log(f"Skip dialog, boot {bd.get('count', 0)}x today, user={un}")
-            result = (cfg["server_host"], cfg["server_port"], cfg["user_name"], cfg["employee_id"], cfg["email"], cfg.get("psk", ""), cfg.get("command_key", ""))
+            result = (cfg["server_host"], cfg["server_port"], cfg["user_name"], cfg["employee_id"], cfg["email"], cfg.get("psk", ""), cfg.get("command_key", ""), cfg.get("branch", ""), cfg.get("user_extra", {}) or {})
 
-        host, port, user_name, employee_id, email, psk, command_key = result
+        host, port, user_name, employee_id, email, psk, command_key, branch, user_extra = result
         _log(f"Connecting {host}:{port} user={user_name} psk={'set' if psk else 'empty'}")
 
         _save_runtime_config(host, port)
@@ -721,7 +771,8 @@ if __name__ == "__main__":
         _ensure_sysmon_installed()
 
         from agent_core import AgentCore
-        agent = AgentCore(user_name=user_name, employee_id=employee_id, email=email)
+        agent = AgentCore(user_name=user_name, employee_id=employee_id, email=email, branch=branch)
+        agent.user_extra = user_extra or {}
         agent.start()
 
     except SystemExit:

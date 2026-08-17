@@ -121,6 +121,30 @@ REM Chạy với tham số server IP
 GiamSatAgent.exe --server 192.168.1.10 --port 6666
 ```
 
+### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
+
+Khi cài/chạy lại Agent, dialog nhập thông tin người dùng có các **dropdown tuỳ chỉnh** (VD "Chi nhánh"). Quản trị viên có thể **thêm/bớt/sửa tên dropdown và danh sách lựa chọn** mà **không cần build lại Agent**, bằng cách sửa file:
+
+```
+%ProgramData%\GIAM-SAT\Agent\user_fields.json
+```
+
+Mỗi dropdown có cấu trúc:
+
+```json
+{
+  "key": "branch",
+  "label": "Chi nhánh",
+  "options": ["Trụ sở chính", "Chi nhánh 1", "Chi nhánh 2"]
+}
+```
+
+- `key`    : mã định danh (dùng để lưu + gửi lên server). Key **`branch`** sẽ được lưu vào trường **"Văn phòng/chi nhánh"** của tài sản **Người dùng** trên server.
+- `label`  : nhãn hiển thị trên dialog.
+- `options`: danh sách lựa chọn (array chuỗi).
+
+Muốn thêm dropdown mới (VD "Phòng ban"), chỉ cần thêm một đối tượng vào mảng `fields`. Lưu ý: lưu file mã **UTF-8**, tránh dùng dấu nháy đơn `'` trong label/options.
+
 ---
 
 ## 🔧 Cấu hình chi tiết (.env)

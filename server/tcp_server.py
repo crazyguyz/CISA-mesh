@@ -633,7 +633,11 @@ class TCPServer(threading.Thread):
             user_name = msg.get("user_name", "")
             employee_id = msg.get("employee_id", "")
             email = msg.get("email", "")
-            self.db.save_machine_user(machine_id, hostname, user_name, employee_id, email)
+            branch = msg.get("branch", "") or ""
+            ux = msg.get("user_extra") or {}
+            if not branch and isinstance(ux, dict):
+                branch = ux.get("branch", "")
+            self.db.save_machine_user(machine_id, hostname, user_name, employee_id, email, branch)
             print(f"[*] User info: {user_name} ({employee_id}) on {hostname}")
 
     def _handle_machine_config(self, msg):

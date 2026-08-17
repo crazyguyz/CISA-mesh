@@ -228,11 +228,13 @@ def send_user_message():
 
 
 class AgentCore:
-    def __init__(self, user_name="", employee_id="", email=""):
+    def __init__(self, user_name="", employee_id="", email="", branch=""):
         self.config = ConfigManager()
         self.user_name = user_name
         self.employee_id = employee_id
         self.email = email
+        self.branch = branch
+        self.user_extra = {}
         self.running = True
         self.sock = None
         self.connected = False
@@ -547,6 +549,8 @@ class AgentCore:
                         "user_name": self.user_name,
                         "employee_id": self.employee_id,
                         "email": self.email,
+                        "branch": self.branch,
+                        "user_extra": self.user_extra,
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
                     self._send_json(user_msg)
@@ -878,6 +882,38 @@ class AgentCore:
             "msg_id": msg_id,
         }
 
+    def _load_user_fields(self):
+        """v4.9: Load configurable dropdown fields for the user-info dialog.
+        Admin can edit user_fields.json (agent data dir) to add/remove/rename dropdowns.
+        Each entry: {"key": "...", "label": "...", "options": ["..."]}.
+        Default: a single 'Chi nhanh' (branch) dropdown."""
+        import json as _json, os as _os
+        default = [{"key": "branch", "label": "Chi nhanh",
+                    "options": ["Tru so chinh", "Chi nhanh 1", "Chi nhanh 2"]}]
+        try:
+            data_dir = self._get_agent_data_dir()
+            path = _os.path.join(data_dir, "user_fields.json")
+            if _os.path.exists(path):
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    data = _json.loads(f.read())
+                fields = data.get("fields", []) if isinstance(data, dict) else []
+                out = []
+                for fld in fields:
+                    if not isinstance(fld, dict):
+                        continue
+                    key = (fld.get("key") or "").strip()
+                    label = (fld.get("label") or key).strip()
+                    options = fld.get("options") or []
+                    if not key or not label:
+                        continue
+                    out.append({"key": key, "label": label,
+                                "options": [str(o) for o in options]})
+                if out:
+                    return out
+        except Exception:
+            pass
+        return default
+
     def _handle_reset_user_command(self, cmd):
         """Handle reset user info command from server.
         v2.5.1 REWRITE: Show warning → config dialog → save → restart COMPUTER (not agent).
@@ -912,6 +948,11 @@ class AgentCore:
 
             ps_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_{os.getpid()}.ps1")
             result_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_result_{os.getpid()}.json")
+
+            # v4.9: configurable user-info dropdown fields (admin-editable user_fields.json)
+            import json as _json
+            _extra_fields = self._load_user_fields()
+            _fields_json = _json.dumps(_extra_fields, ensure_ascii=False).replace("'", "''")
 
             ps_script = '''
 Add-Type -AssemblyName System.Windows.Forms
@@ -962,6 +1003,26 @@ function Add-TextBox($text, $y, [int]$w=340) {
     $form.Controls.Add($t)
     return $t, ($y + 32)
 }
+function Add-ComboBox($labelText, $opts, $y) {
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $labelText
+    $l.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+    $l.ForeColor = [System.Drawing.Color]::FromArgb(200,216,232)
+    $l.AutoSize = $true
+    $l.Location = New-Object System.Drawing.Point(30, $y)
+    $form.Controls.Add($l)
+    $cb = New-Object System.Windows.Forms.ComboBox
+    $cb.Font = New-Object System.Drawing.Font("Segoe UI", 11)
+    $cb.BackColor = [System.Drawing.Color]::FromArgb(26,42,58)
+    $cb.ForeColor = [System.Drawing.Color]::FromArgb(238,244,248)
+    $cb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+    $cb.Location = New-Object System.Drawing.Point(30, ($y + 20))
+    $cb.Size = New-Object System.Drawing.Size(340, 26)
+    foreach ($o in $opts) { [void]$cb.Items.Add([string]$o) }
+    if ($cb.Items.Count -gt 0) { $cb.SelectedIndex = 0 }
+    $form.Controls.Add($cb)
+    return $cb, ($y + 52)
+}
 
 $y = 78
 $txtHost = $null; $txtPort = $null; $txtName = $null; $txtID = $null; $txtEmail = $null
@@ -977,6 +1038,14 @@ $y = Add-Label "Ma nhan su:" $y
 $txtID, $y = Add-TextBox "" $y
 $y = Add-Label "Email:" $y
 $txtEmail, $y = Add-TextBox "" $y
+$fields = @((''' + _fields_json + ''') | ConvertFrom-Json)
+$comboControls = @{}
+foreach ($f in $fields) {
+    $opts = @()
+    foreach ($o in $f.options) { $opts += [string]$o }
+    $cb, $y = Add-ComboBox ([string]$f.label) $opts $y
+    $comboControls[[string]$f.key] = $cb
+}
 $y += 12
 
 $btnOk = New-Object System.Windows.Forms.Button
@@ -1011,6 +1080,12 @@ if ($dlgResult -eq [System.Windows.Forms.DialogResult]::OK) {
     $data["user_name"] = $txtName.Text.Trim()
     $data["employee_id"] = $txtID.Text.Trim()
     $data["email"] = $txtEmail.Text.Trim()
+    $extra = @{}
+    foreach ($k in $comboControls.Keys) {
+        $extra[$k] = $comboControls[$k].SelectedItem
+    }
+    $data["user_extra"] = $extra
+    $data["branch"] = if ($comboControls.ContainsKey("branch")) { [string]$comboControls["branch"].SelectedItem } else { "" }
     $data["confirmed"] = $true
 } else {
     $data["confirmed"] = $false
@@ -1028,6 +1103,8 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             user_name = ""
             employee_id = ""
             email = ""
+            branch = ""
+            user_extra = {}
             host = self.server_host
             port = self.server_port
 
@@ -1045,6 +1122,8 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                         user_name = data.get("user_name", "")
                         employee_id = data.get("employee_id", "")
                         email = data.get("email", "")
+                        branch = data.get("branch", "")
+                        user_extra = data.get("user_extra", {}) or {}
                 except Exception:
                     pass
             try:
@@ -1074,6 +1153,10 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                 cfg["user_name"] = user_name
                 cfg["employee_id"] = employee_id
                 cfg["email"] = email
+                cfg["branch"] = branch
+                cfg["user_extra"] = user_extra or {}
+                self.branch = branch
+                self.user_extra = user_extra or {}
                 cfg["configured"] = True
                 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
                 with open(cfg_path, "w") as f:
@@ -1081,7 +1164,8 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
 
                 ui_path = os.path.join(data_dir, "user_info.json")
                 with open(ui_path, "w") as f:
-                    json.dump({"user_name": user_name, "employee_id": employee_id, "email": email}, f, indent=2)
+                    json.dump({"user_name": user_name, "employee_id": employee_id, "email": email,
+                               "branch": branch, "user_extra": user_extra or {}}, f, indent=2)
 
                 rt_cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
                 try:
