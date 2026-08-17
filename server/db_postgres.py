@@ -481,6 +481,20 @@ class PostgresDatabase:
                 resolved_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            "assets_inventory": """CREATE TABLE IF NOT EXISTS assets_inventory (
+                id SERIAL PRIMARY KEY, asset_id VARCHAR(32) UNIQUE NOT NULL,
+                display_id VARCHAR(32) DEFAULT '', category VARCHAR(32) DEFAULT 'other',
+                name VARCHAR(256) DEFAULT '', brand VARCHAR(128) DEFAULT '',
+                model VARCHAR(128) DEFAULT '', serial_number VARCHAR(128) DEFAULT '',
+                asset_tag VARCHAR(64) DEFAULT '', status VARCHAR(24) DEFAULT 'in_stock',
+                assigned_to VARCHAR(128) DEFAULT '', computer_asset_id VARCHAR(32) DEFAULT '',
+                ip_address VARCHAR(64) DEFAULT '', mac_address VARCHAR(32) DEFAULT '',
+                location VARCHAR(128) DEFAULT '', purchase_date VARCHAR(24) DEFAULT '',
+                warranty_until VARCHAR(24) DEFAULT '', cost REAL DEFAULT 0,
+                notes TEXT DEFAULT '', source VARCHAR(16) DEFAULT 'manual',
+                extra_json JSONB DEFAULT '{}',
+                first_seen TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
         }
 
         indexes = [
@@ -2801,3 +2815,123 @@ class PostgresDatabase:
             return True
         except Exception:
             return False
+
+    # =========================================================================
+    # v4.7: IT asset inventory (manual + auto-discovered)
+    # =========================================================================
+
+    def get_asset_inventory(self, category=None, status=None, source=None, search=None, limit=500):
+        if not self._connected:
+            return []
+        try:
+            q = "SELECT * FROM assets_inventory WHERE 1=1"
+            p = []
+            if category:
+                q += " AND category=%s"; p.append(category)
+            if status:
+                q += " AND status=%s"; p.append(status)
+            if source:
+                q += " AND source=%s"; p.append(source)
+            if search:
+                q += " AND (name ILIKE %s OR brand ILIKE %s OR model ILIKE %s OR serial_number ILIKE %s OR asset_tag ILIKE %s OR assigned_to ILIKE %s OR display_id ILIKE %s OR ip_address ILIKE %s)"
+                s = f"%{search}%"; p.extend([s]*8)
+            q += " ORDER BY updated_at DESC LIMIT %s"; p.append(limit)
+            rows = self._execute(q, tuple(p), fetchall=True) or []
+            for r in rows:
+                val = r.get("extra_json")
+                if isinstance(val, dict):
+                    r["extra"] = val
+                elif isinstance(val, str):
+                    try: r["extra"] = json.loads(val)
+                    except: r["extra"] = {}
+            return rows
+        except Exception as e:
+            print(f"[-] PG get_asset_inventory: {e}")
+            return []
+
+    def get_asset_inventory_stats(self):
+        if not self._connected:
+            return {"by_category": [], "by_status": [], "total": 0}
+        try:
+            by_category = self._execute("SELECT category, COUNT(*) as cnt FROM assets_inventory GROUP BY category", fetchall=True) or []
+            by_status = self._execute("SELECT status, COUNT(*) as cnt FROM assets_inventory GROUP BY status", fetchall=True) or []
+            row = self._execute("SELECT COUNT(*) as cnt FROM assets_inventory", fetch=True)
+            return {"by_category": by_category, "by_status": by_status,
+                    "total": row.get("cnt", 0) if row else 0}
+        except Exception as e:
+            print(f"[-] PG get_asset_inventory_stats: {e}")
+            return {"by_category": [], "by_status": [], "total": 0}
+
+    def _inventory_asset_id(self, data):
+        import hashlib, uuid
+        asset_id = (data.get("asset_id") or "").strip()
+        if asset_id:
+            return asset_id
+        display_id = (data.get("display_id") or "").strip()
+        category = (data.get("category") or "other").strip()
+        if display_id:
+            return hashlib.md5(f"inv|{category}|{display_id}".encode("utf-8")).hexdigest()
+        return hashlib.md5(f"inv|{category}|{uuid.uuid4()}".encode("utf-8")).hexdigest()
+
+    def _new_display_id(self, category):
+        import uuid
+        prefix = {"printer": "PR", "phone": "DT", "network_device": "NM",
+                  "peripheral": "NV", "component": "LK", "other": "TS"}.get(category, "TS")
+        return f"TS-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+
+    def upsert_inventory_asset(self, data):
+        import json as _json
+        extra = data.get("extra") or {}
+        asset_id = self._inventory_asset_id(data)
+        display_id = (data.get("display_id") or "").strip() or self._new_display_id(data.get("category") or "other")
+        try:
+            self._execute("""INSERT INTO assets_inventory (
+                asset_id, display_id, category, name, brand, model,
+                serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                ip_address, mac_address, location, purchase_date, warranty_until,
+                cost, notes, source, extra_json, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                ON CONFLICT(asset_id) DO UPDATE SET
+                display_id=EXCLUDED.display_id, category=EXCLUDED.category, name=EXCLUDED.name,
+                brand=EXCLUDED.brand, model=EXCLUDED.model, serial_number=EXCLUDED.serial_number,
+                asset_tag=EXCLUDED.asset_tag, status=EXCLUDED.status, assigned_to=EXCLUDED.assigned_to,
+                computer_asset_id=EXCLUDED.computer_asset_id, ip_address=EXCLUDED.ip_address,
+                mac_address=EXCLUDED.mac_address, location=EXCLUDED.location,
+                purchase_date=EXCLUDED.purchase_date, warranty_until=EXCLUDED.warranty_until,
+                cost=EXCLUDED.cost, notes=EXCLUDED.notes, source=EXCLUDED.source,
+                extra_json=EXCLUDED.extra_json, updated_at=NOW()""",
+                (asset_id, display_id, data.get("category") or "other", data.get("name") or "",
+                 data.get("brand") or "", data.get("model") or "", data.get("serial_number") or "",
+                 data.get("asset_tag") or "", data.get("status") or "in_stock",
+                 data.get("assigned_to") or "", data.get("computer_asset_id") or "",
+                 data.get("ip_address") or "", data.get("mac_address") or "", data.get("location") or "",
+                 data.get("purchase_date") or "", data.get("warranty_until") or "",
+                 float(data.get("cost") or 0), data.get("notes") or "", data.get("source") or "manual",
+                 _json.dumps(extra, ensure_ascii=False)))
+            return {"asset_id": asset_id, "display_id": display_id}
+        except Exception as e:
+            print(f"[-] PG upsert_inventory_asset: {e}")
+            return {}
+
+    def delete_inventory_asset(self, asset_id):
+        try:
+            rc = self._execute("DELETE FROM assets_inventory WHERE asset_id=%s", (asset_id,))
+            return rc > 0
+        except Exception:
+            return False
+
+    def adopt_inventory_asset(self, asset_id, data=None):
+        data = data or {}
+        sets = ["source='manual'", "updated_at=NOW()"]
+        p = []
+        for col in ["assigned_to", "location", "asset_tag", "status", "notes", "category"]:
+            if col in data:
+                sets.append(f"{col}=%s")
+                p.append(data[col])
+        p.append(asset_id)
+        try:
+            rc = self._execute("UPDATE assets_inventory SET " + ", ".join(sets) + " WHERE asset_id=%s", tuple(p))
+            return rc > 0
+        except Exception:
+            return False
+

@@ -42,6 +42,7 @@ class HWCollector:
             "gpu": self._get_gpu(),
             "monitors": self._get_monitors(),
             "installed_software": self._get_installed_software(),
+            "printers": self._get_printers(),
         }
         return self.info
 
@@ -357,6 +358,34 @@ $software | Sort-Object Name -Unique | Select-Object -First 200 | ConvertTo-Json
         except Exception:
             pass
         return software_list
+
+    def _get_printers(self):
+        """Get installed printers (USB + network) via WMI Win32_Printer.
+        PortName 'USBxxx' => printer plugged directly into this machine (USB);
+        others (IP_ / network) => network printer. Used for IT asset tracking."""
+        printers = []
+        try:
+            script = (
+                "Get-WmiObject Win32_Printer | Select-Object Name, DriverName, "
+                "PortName, Network, Local, Default | ConvertTo-Json"
+            )
+            output = self._run_powershell(script)
+            if output:
+                data = json.loads(output)
+                items = data if isinstance(data, list) else [data]
+                for p in items:
+                    port = (p.get("PortName") or "").strip()
+                    is_usb = port.lower().startswith("usb")
+                    printers.append({
+                        "name": (p.get("Name") or "").strip(),
+                        "driver": (p.get("DriverName") or "").strip(),
+                        "port": port,
+                        "connection": "usb" if is_usb else "network",
+                        "is_default": bool(p.get("Default")),
+                    })
+        except Exception:
+            pass
+        return printers
 
     def to_json(self):
         """Return collected data as JSON string."""

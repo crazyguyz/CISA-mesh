@@ -14,9 +14,15 @@ var Assets = {
                 if (target) target.style.display = 'block';
                 if (tabName === 'computers') Assets.loadComputers();
                 else if (tabName === 'monitors') Assets.loadMonitors();
+                else if (tabName === 'printers') Assets.loadPrinters();
+                else if (tabName === 'phones') Assets.loadPhones();
+                else if (tabName === 'network') Assets.loadNetwork();
+                else if (tabName === 'peripheral') Assets.loadPeripheral();
+                else if (tabName === 'kho') Assets.loadKho();
                 else if (tabName === 'changes') Assets.loadChanges();
             });
         });
+        Assets.initInvFilters();
         Assets.loadComputers();
         Assets.updateBadges();
         setInterval(Assets.updateBadges, 60000);
@@ -233,17 +239,244 @@ var Assets = {
         if (typeof showToast === 'function') showToast(t('assets.downloading'));
     },
 
+    // =========================================================================
+    // v4.7: IT asset inventory (Kho + auto-discovered)
+    // =========================================================================
+    CATALOG: [
+        { v: 'printer', k: 'assets.catPrinter' },
+        { v: 'phone', k: 'assets.catPhone' },
+        { v: 'network_device', k: 'assets.catNetwork' },
+        { v: 'peripheral', k: 'assets.catPeripheral' },
+        { v: 'component', k: 'assets.catComponent' },
+        { v: 'other', k: 'assets.catOther' }
+    ],
+    STATUSES: [
+        { v: 'in_stock', k: 'assets.stInStock' },
+        { v: 'assigned', k: 'assets.stAssigned' },
+        { v: 'in_repair', k: 'assets.stRepair' },
+        { v: 'disposed', k: 'assets.stDisposed' }
+    ],
+    _catLbl: function(v) { for (var i = 0; i < Assets.CATALOG.length; i++) { if (Assets.CATALOG[i].v === v) return t(Assets.CATALOG[i].k); } return v; },
+    _stLbl: function(v) { for (var i = 0; i < Assets.STATUSES.length; i++) { if (Assets.STATUSES[i].v === v) return t(Assets.STATUSES[i].k); } return v; },
+    _stCls: function(v) {
+        return (v === 'in_stock') ? 'bg-success' : (v === 'assigned') ? 'bg-info' :
+               (v === 'in_repair') ? 'bg-warning text-dark' : 'bg-secondary';
+    },
+
+    initInvFilters: function() {
+        var catSel = document.getElementById('assetKhoCat');
+        if (catSel && !catSel.options.length) {
+            var h = '<option value="">' + t('assets.allCategories') + '</option>';
+            Assets.CATALOG.forEach(function(c) { h += '<option value="' + c.v + '">' + t(c.k) + '</option>'; });
+            catSel.innerHTML = h;
+        }
+        var stSel = document.getElementById('assetKhoStatus');
+        if (stSel && !stSel.options.length) {
+            var h2 = '<option value="">' + t('assets.allStatus') + '</option>';
+            Assets.STATUSES.forEach(function(s) { h2 += '<option value="' + s.v + '">' + t(s.k) + '</option>'; });
+            stSel.innerHTML = h2;
+        }
+        var fCat = document.getElementById('invCategory');
+        if (fCat && !fCat.options.length) {
+            Assets.CATALOG.forEach(function(c) { fCat.innerHTML += '<option value="' + c.v + '">' + t(c.k) + '</option>'; });
+        }
+        var fSt = document.getElementById('invStatus');
+        if (fSt && !fSt.options.length) {
+            Assets.STATUSES.forEach(function(s) { fSt.innerHTML += '<option value="' + s.v + '">' + t(s.k) + '</option>'; });
+        }
+    },
+
+    searchOf: function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; },
+
+    _loadInv: function(opts) {
+        var container = document.getElementById(opts.container);
+        if (!container) return;
+        container.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('common.loading') + '</div>';
+        var url = '/api/assets/inventory?limit=500';
+        if (opts.category) url += '&category=' + encodeURIComponent(opts.category);
+        if (opts.status) url += '&status=' + encodeURIComponent(opts.status);
+        if (opts.search) url += '&search=' + encodeURIComponent(opts.search);
+        fetch(url).then(function(r) { return r.json(); }).then(function(data) {
+            var items = data.assets || [];
+            if (!items.length) {
+                container.innerHTML = '<div class="text-center text-muted py-4">' + t('assets.noInventory') + '</div>';
+                return;
+            }
+            var html = '<table class="table-data table table-sm mb-0"><thead><tr>' +
+                '<th>' + t('assets.assetId') + '</th><th>' + t('assets.type') + '</th><th>' + t('assets.fieldName') + '</th>' +
+                '<th>' + t('assets.fieldBrand') + '</th><th>' + t('assets.fieldModel') + '</th><th>' + t('assets.fieldSerial') + '</th>' +
+                '<th>' + t('assets.status') + '</th><th>' + t('assets.fieldAssignedTo') + '</th><th>IP</th><th>Nguồn</th><th></th></tr></thead><tbody>';
+            items.forEach(function(a) {
+                var catLbl = Assets._catLbl(a.category);
+                var stLbl = Assets._stLbl(a.status);
+                var stCls = Assets._stCls(a.status);
+                var srcBadge = a.source === 'auto'
+                    ? '<span class="badge bg-primary">' + t('assets.sourceAuto') + '</span>'
+                    : '<span class="badge bg-secondary">' + t('assets.sourceManual') + '</span>';
+                var modelTxt = a.model || (a.name ? '' : '-');
+                var assigned = a.assigned_to || (a.computer_asset_id ? 'PC' : '') || '-';
+                var actions = '';
+                if (opts.showActions) {
+                    actions = '<button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editAsset(\'' + a.asset_id + '\')">✏️</button>' +
+                        '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteAsset(\'' + a.asset_id + '\')">🗑</button>';
+                    if (a.source === 'auto') {
+                        actions = '<button class="btn btn-sm btn-success py-0 px-1 ms-1" onclick="Assets.adoptAsset(\'' + a.asset_id + '\')">' + t('assets.adopt') + '</button>' + actions;
+                    }
+                }
+                html += '<tr><td><code style="font-size:10px;">' + Assets.esc(a.display_id || a.asset_id) + '</code></td>' +
+                    '<td><span class="badge bg-dark">' + Assets.esc(catLbl) + '</span></td>' +
+                    '<td>' + Assets.esc(a.name || modelTxt) + '</td>' +
+                    '<td>' + Assets.esc(a.brand || '-') + '</td>' +
+                    '<td>' + Assets.esc(modelTxt) + '</td>' +
+                    '<td>' + Assets.esc(a.serial_number || '-') + '</td>' +
+                    '<td><span class="badge ' + stCls + '">' + Assets.esc(stLbl) + '</span></td>' +
+                    '<td>' + Assets.esc(assigned) + '</td>' +
+                    '<td>' + Assets.esc(a.ip_address || '-') + '</td>' +
+                    '<td>' + srcBadge + '</td>' +
+                    '<td>' + actions + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }).catch(function(err) {
+            container.innerHTML = '<div class="text-center text-danger py-3">' + t('assets.loadErr', [err]) + '</div>';
+        });
+    },
+
+    loadPrinters: function() { Assets._loadInv({ category: 'printer', search: Assets.searchOf('assetPrinterSearch'), container: 'assetPrintersTable', showActions: true }); },
+    loadPhones: function() { Assets._loadInv({ category: 'phone', search: Assets.searchOf('assetPhoneSearch'), container: 'assetPhonesTable', showActions: true }); },
+    loadNetwork: function() { Assets._loadInv({ category: 'network_device', search: Assets.searchOf('assetNetworkSearch'), container: 'assetNetworkTable', showActions: true }); },
+    loadPeripheral: function() { Assets._loadInv({ category: 'peripheral', search: Assets.searchOf('assetPeripheralSearch'), container: 'assetPeripheralTable', showActions: true }); },
+    loadKho: function() {
+        Assets._loadInv({
+            search: Assets.searchOf('assetKhoSearch'),
+            category: document.getElementById('assetKhoCat') ? document.getElementById('assetKhoCat').value : '',
+            status: document.getElementById('assetKhoStatus') ? document.getElementById('assetKhoStatus').value : '',
+            container: 'assetKhoTable', showActions: true
+        });
+    },
+
     esc: function(s) {
         if (!s) return '';
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(s));
         return div.innerHTML;
-    }
+    },
+
+    openForm: function(asset) {
+        Assets.initInvFilters();
+        var modal = document.getElementById('invModal');
+        if (!modal) return;
+        document.getElementById('invModalTitle').textContent = asset ? t('assets.editTitle') : t('assets.addTitle');
+        document.getElementById('invAssetId').value = asset ? (asset.asset_id || '') : '';
+        document.getElementById('invSource').value = asset ? (asset.source || 'manual') : 'manual';
+        document.getElementById('invCategory').value = asset ? (asset.category || 'other') : 'other';
+        document.getElementById('invStatus').value = asset ? (asset.status || 'in_stock') : 'in_stock';
+        document.getElementById('invName').value = asset ? (asset.name || '') : '';
+        document.getElementById('invBrand').value = asset ? (asset.brand || '') : '';
+        document.getElementById('invModel').value = asset ? (asset.model || '') : '';
+        document.getElementById('invSerial').value = asset ? (asset.serial_number || '') : '';
+        document.getElementById('invAssetTag').value = asset ? (asset.asset_tag || '') : '';
+        document.getElementById('invAssignedTo').value = asset ? (asset.assigned_to || '') : '';
+        document.getElementById('invIp').value = asset ? (asset.ip_address || '') : '';
+        document.getElementById('invMac').value = asset ? (asset.mac_address || '') : '';
+        document.getElementById('invLocation').value = asset ? (asset.location || '') : '';
+        document.getElementById('invPurchaseDate').value = asset ? (asset.purchase_date || '') : '';
+        document.getElementById('invWarranty').value = asset ? (asset.warranty_until || '') : '';
+        document.getElementById('invCost').value = asset ? (asset.cost || '') : '';
+        document.getElementById('invNotes').value = asset ? (asset.notes || '') : '';
+        modal.style.display = 'block';
+    },
+    closeForm: function() { var m = document.getElementById('invModal'); if (m) m.style.display = 'none'; },
+
+    _getObj: function(asset_id) {
+        return new Promise(function(resolve) {
+            var found = null;
+            fetch('/api/assets/inventory?limit=1000').then(function(r) { return r.json(); }).then(function(d) {
+                (d.assets || []).forEach(function(a) { if (a.asset_id === asset_id) found = a; });
+                resolve(found);
+            }).catch(function() { resolve(null); });
+        });
+    },
+    editAsset: function(id) { Assets._getObj(id).then(function(a) { if (a) Assets.openForm(a); }); },
+    deleteAsset: function(id) {
+        if (!confirm(t('assets.confirmDelete'))) return;
+        fetch('/api/assets/inventory/' + encodeURIComponent(id), { method: 'DELETE' })
+            .then(function(r) { return r.json(); }).then(function() {
+                if (typeof showToast === 'function') showToast(t('assets.deletedToast'));
+                Assets.reloadVisible();
+            }).catch(function(err) { if (typeof showToast === 'function') showToast(t('assets.loadErr', [err])); });
+    },
+    adoptAsset: function(id) {
+        if (!confirm(t('assets.adopt'))) return;
+        fetch('/api/assets/inventory/' + encodeURIComponent(id) + '/adopt', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (typeof showToast === 'function') showToast(t('assets.adoptedToast'));
+            Assets.reloadVisible();
+        });
+    },
+
+    saveForm: function() {
+        var el = function(id) { return document.getElementById(id); };
+        var payload = {
+            category: el('invCategory').value,
+            status: el('invStatus').value,
+            name: el('invName').value.trim(),
+            brand: el('invBrand').value.trim(),
+            model: el('invModel').value.trim(),
+            serial_number: el('invSerial').value.trim(),
+            asset_tag: el('invAssetTag').value.trim(),
+            assigned_to: el('invAssignedTo').value.trim(),
+            ip_address: el('invIp').value.trim(),
+            mac_address: el('invMac').value.trim(),
+            location: el('invLocation').value.trim(),
+            purchase_date: el('invPurchaseDate').value,
+            warranty_until: el('invWarranty').value,
+            cost: parseFloat(el('invCost').value) || 0,
+            notes: el('invNotes').value.trim(),
+            source: el('invSource').value || 'manual'
+        };
+        var id = el('invAssetId').value;
+        var url = '/api/assets/inventory' + (id ? '/' + encodeURIComponent(id) : '');
+        var method = id ? 'PUT' : 'POST';
+        fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+            .then(function(r) { return r.json(); }).then(function(d) {
+                if (typeof showToast === 'function') showToast(t('assets.savedToast'));
+                Assets.closeForm();
+                Assets.reloadVisible();
+            }).catch(function(err) { if (typeof showToast === 'function') showToast(t('assets.loadErr', [err])); });
+    },
+    reloadVisible: function() {
+        Assets.loadComputers(); Assets.loadMonitors(); Assets.loadChanges();
+        Assets.loadPrinters(); Assets.loadPhones(); Assets.loadNetwork();
+        Assets.loadPeripheral(); Assets.loadKho();
+    },
+
+    openDiscover: function() { var m = document.getElementById('discoverModal'); if (m) m.style.display = 'block'; },
+    closeDiscover: function() { var m = document.getElementById('discoverModal'); if (m) m.style.display = 'none'; },
+    runDiscover: function() {
+        var range = document.getElementById('discoverRange') ? document.getElementById('discoverRange').value.trim() : '';
+        if (!range) range = '192.168.1.0/24';
+        var statusEl = document.getElementById('discoverStatus');
+        if (statusEl) statusEl.textContent = t('assets.discoverRun');
+        fetch('/api/assets/discovery/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ range: range }) })
+            .then(function(r) { return r.json(); }).then(function(d) {
+                if (d.error) { if (statusEl) statusEl.textContent = t('assets.discoverErr', [d.error]); return; }
+                if (statusEl) statusEl.textContent = t('assets.discovered', [d.found, d.printer, d.phone, d.network_device]);
+                Assets.reloadVisible();
+            }).catch(function(err) { if (statusEl) statusEl.textContent = t('assets.discoverErr', [err]); });
+    },
+
 };
 
 function refreshAssetComputers() { Assets.loadComputers(); }
 function refreshAssetMonitors() { Assets.loadMonitors(); }
 function refreshAssetChanges() { Assets.loadChanges(); }
+function refreshAssetPrinter() { Assets.loadPrinters(); }
+function refreshAssetPhone() { Assets.loadPhones(); }
+function refreshAssetNetwork() { Assets.loadNetwork(); }
+function refreshAssetPeripheral() { Assets.loadPeripheral(); }
+function refreshAssetKho() { Assets.loadKho(); }
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { Assets.init(); });

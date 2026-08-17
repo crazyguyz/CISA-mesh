@@ -47,6 +47,24 @@ class DatabaseManager:
             # Hardware baseline: stores first-ever config (baseline) - never updated
             c.execute("""CREATE TABLE IF NOT EXISTS hardware_baseline (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT UNIQUE,hostname TEXT,data_json TEXT,fingerprint TEXT,saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # v4.7: IT asset inventory (manual + auto-discovered: printers, phones, network devices, peripherals, components)
+            c.execute("""CREATE TABLE IF NOT EXISTS assets_inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset_id TEXT UNIQUE, display_id TEXT DEFAULT '',
+                category TEXT DEFAULT 'other', name TEXT DEFAULT '',
+                brand TEXT DEFAULT '', model TEXT DEFAULT '',
+                serial_number TEXT DEFAULT '', asset_tag TEXT DEFAULT '',
+                status TEXT DEFAULT 'in_stock',
+                assigned_to TEXT DEFAULT '', computer_asset_id TEXT DEFAULT '',
+                ip_address TEXT DEFAULT '', mac_address TEXT DEFAULT '',
+                location TEXT DEFAULT '', purchase_date TEXT DEFAULT '',
+                warranty_until TEXT DEFAULT '', cost REAL DEFAULT 0,
+                notes TEXT DEFAULT '', source TEXT DEFAULT 'manual',
+                extra_json TEXT DEFAULT '{}',
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""")
+
             # Network traffic events
             c.execute("""CREATE TABLE IF NOT EXISTS network_traffic (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,src_ip TEXT,dst_ip TEXT,src_port INTEGER,dst_port INTEGER,protocol TEXT,size INTEGER,flags TEXT,state TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,raw_data TEXT)""")
             # v2.5.17 MIGRATION: Add full packet detail columns
@@ -2355,6 +2373,135 @@ class DatabaseManager:
             c = self.conn.cursor()
             c.execute("UPDATE assets_change_log SET is_resolved=1, resolved_by=?, resolved_at=CURRENT_TIMESTAMP WHERE id=?", (resolved_by[:128], change_id))
             self.conn.commit()
+
+    # =========================================================================
+    # v4.7: IT asset inventory (manual + auto-discovered)
+    # =========================================================================
+
+    def get_asset_inventory(self, category=None, status=None, source=None, search=None, limit=500):
+        with self.read_lock:
+            c = self.conn.cursor()
+            try:
+                c.execute("SELECT 1 FROM assets_inventory LIMIT 1")
+            except sqlite3.OperationalError:
+                return []
+            q = "SELECT * FROM assets_inventory WHERE 1=1"
+            p = []
+            if category:
+                q += " AND category=?"; p.append(category)
+            if status:
+                q += " AND status=?"; p.append(status)
+            if source:
+                q += " AND source=?"; p.append(source)
+            if search:
+                q += " AND (name LIKE ? OR brand LIKE ? OR model LIKE ? OR serial_number LIKE ? OR asset_tag LIKE ? OR assigned_to LIKE ? OR display_id LIKE ? OR ip_address LIKE ?)"
+                s = f"%{search}%"; p.extend([s]*8)
+            q += " ORDER BY updated_at DESC LIMIT ?"; p.append(limit)
+            c.execute(q, p)
+            rows = [dict(r) for r in c.fetchall()]
+            for r in rows:
+                val = r.get("extra_json")
+                if isinstance(val, dict):
+                    r["extra"] = val
+                elif isinstance(val, str):
+                    try: r["extra"] = json.loads(val)
+                    except: r["extra"] = {}
+            return rows
+
+    def get_asset_inventory_stats(self):
+        with self.read_lock:
+            c = self.conn.cursor()
+            try:
+                c.execute("SELECT 1 FROM assets_inventory LIMIT 1")
+            except sqlite3.OperationalError:
+                return {"by_category": [], "by_status": [], "total": 0}
+            c.execute("SELECT category, COUNT(*) as cnt FROM assets_inventory GROUP BY category")
+            by_category = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT status, COUNT(*) as cnt FROM assets_inventory GROUP BY status")
+            by_status = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT COUNT(*) as cnt FROM assets_inventory")
+            total = c.fetchone()["cnt"]
+            return {"by_category": by_category, "by_status": by_status, "total": total}
+
+    def _inventory_asset_id(self, data):
+        import hashlib, uuid
+        asset_id = (data.get("asset_id") or "").strip()
+        if asset_id:
+            return asset_id
+        display_id = (data.get("display_id") or "").strip()
+        category = (data.get("category") or "other").strip()
+        if display_id:
+            return hashlib.md5(f"inv|{category}|{display_id}".encode("utf-8")).hexdigest()
+        return hashlib.md5(f"inv|{category}|{uuid.uuid4()}".encode("utf-8")).hexdigest()
+
+    def _new_display_id(self, category):
+        import uuid
+        prefix = {"printer": "PR", "phone": "DT", "network_device": "NM",
+                  "peripheral": "NV", "component": "LK", "other": "TS"}.get(category, "TS")
+        return f"TS-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+
+    def upsert_inventory_asset(self, data):
+        import json as _json
+        with self.write_lock:
+            c = self.conn.cursor()
+            asset_id = self._inventory_asset_id(data)
+            display_id = (data.get("display_id") or "").strip() or self._new_display_id(data.get("category") or "other")
+            extra = data.get("extra") or {}
+            row = (
+                asset_id, display_id,
+                (data.get("category") or "other"), (data.get("name") or ""),
+                (data.get("brand") or ""), (data.get("model") or ""),
+                (data.get("serial_number") or ""), (data.get("asset_tag") or ""),
+                (data.get("status") or "in_stock"),
+                (data.get("assigned_to") or ""), (data.get("computer_asset_id") or ""),
+                (data.get("ip_address") or ""), (data.get("mac_address") or ""),
+                (data.get("location") or ""), (data.get("purchase_date") or ""),
+                (data.get("warranty_until") or ""), float(data.get("cost") or 0),
+                (data.get("notes") or ""), (data.get("source") or "manual"),
+                _json.dumps(extra, ensure_ascii=False)
+            )
+            c.execute("""INSERT INTO assets_inventory (
+                asset_id, display_id, category, name, brand, model,
+                serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                ip_address, mac_address, location, purchase_date, warranty_until,
+                cost, notes, source, extra_json, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                ON CONFLICT(asset_id) DO UPDATE SET
+                display_id=excluded.display_id, category=excluded.category, name=excluded.name,
+                brand=excluded.brand, model=excluded.model, serial_number=excluded.serial_number,
+                asset_tag=excluded.asset_tag, status=excluded.status, assigned_to=excluded.assigned_to,
+                computer_asset_id=excluded.computer_asset_id, ip_address=excluded.ip_address,
+                mac_address=excluded.mac_address, location=excluded.location,
+                purchase_date=excluded.purchase_date, warranty_until=excluded.warranty_until,
+                cost=excluded.cost, notes=excluded.notes,
+                source=excluded.source, extra_json=excluded.extra_json,
+                updated_at=CURRENT_TIMESTAMP
+            """, row)
+            self.conn.commit()
+            return {"asset_id": asset_id, "display_id": display_id}
+
+    def delete_inventory_asset(self, asset_id):
+        with self.write_lock:
+            c = self.conn.cursor()
+            c.execute("DELETE FROM assets_inventory WHERE asset_id=?", (asset_id,))
+            self.conn.commit()
+            return c.rowcount > 0
+
+    def adopt_inventory_asset(self, asset_id, data=None):
+        data = data or {}
+        with self.write_lock:
+            c = self.conn.cursor()
+            fields = ["source='manual'", "updated_at=CURRENT_TIMESTAMP"]
+            p = []
+            for col in ["assigned_to", "location", "asset_tag", "status", "notes", "category"]:
+                if col in data:
+                    fields.append(f"{col}=?")
+                    p.append(data[col])
+            q = "UPDATE assets_inventory SET " + ", ".join(fields) + " WHERE asset_id=?"
+            p.append(asset_id)
+            c.execute(q, tuple(p))
+            self.conn.commit()
+            return c.rowcount > 0
 
     def close(self):
         self.conn.close()

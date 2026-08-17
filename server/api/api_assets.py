@@ -25,6 +25,91 @@ def init_assets_api(app, db):
         rows = db.get_asset_monitors(search=search, limit=limit) if db else []
         return jsonify({"monitors": rows})
 
+    # =========================================================================
+    # v4.7: IT asset inventory (Kho - manual + auto-discovered)
+    # =========================================================================
+    def _inv_method(name):
+        """Return bound db method if available, else None (safe for all backends)."""
+        return getattr(db, name, None) if db else None
+
+    @app.route("/api/assets/inventory")
+    def api_assets_inventory():
+        m = _inv_method("get_asset_inventory")
+        if not m:
+            return jsonify({"assets": []})
+        category = request.args.get("category", "").strip() or None
+        status = request.args.get("status", "").strip() or None
+        source = request.args.get("source", "").strip() or None
+        search = request.args.get("search", "").strip() or None
+        limit = int(request.args.get("limit", 500))
+        rows = m(category=category, status=status, source=source, search=search, limit=limit)
+        return jsonify({"assets": rows})
+
+    @app.route("/api/assets/inventory/stats")
+    def api_assets_inventory_stats():
+        m = _inv_method("get_asset_inventory_stats")
+        if not m:
+            return jsonify({"by_category": [], "by_status": [], "total": 0})
+        return jsonify(m())
+
+    @app.route("/api/assets/inventory", methods=["POST"])
+    def api_assets_inventory_add():
+        m = _inv_method("upsert_inventory_asset")
+        if not m:
+            return jsonify({"error": "DB method unavailable"}), 500
+        data = request.json or {}
+        if not data.get("category"):
+            return jsonify({"error": "Thiếu category"}), 400
+        data["source"] = data.get("source") or "manual"
+        result = m(data)
+        return jsonify({"success": bool(result), **result}), 201 if result else 500
+
+    @app.route("/api/assets/inventory/<asset_id>", methods=["PUT"])
+    def api_assets_inventory_update(asset_id):
+        m = _inv_method("upsert_inventory_asset")
+        if not m:
+            return jsonify({"error": "DB method unavailable"}), 500
+        data = request.json or {}
+        data["asset_id"] = asset_id
+        data["source"] = data.get("source") or "manual"
+        result = m(data)
+        return jsonify({"success": bool(result), **result})
+
+    @app.route("/api/assets/inventory/<asset_id>", methods=["DELETE"])
+    def api_assets_inventory_delete(asset_id):
+        m = _inv_method("delete_inventory_asset")
+        if not m:
+            return jsonify({"error": "DB method unavailable"}), 500
+        ok = m(asset_id)
+        return jsonify({"success": ok})
+
+    @app.route("/api/assets/inventory/<asset_id>/adopt", methods=["POST"])
+    def api_assets_inventory_adopt(asset_id):
+        """Chuyển tài sản auto->manual: gán owner/location/mã TS."""
+        m = _inv_method("adopt_inventory_asset")
+        if not m:
+            return jsonify({"error": "DB method unavailable"}), 500
+        data = request.json or {}
+        ok = m(asset_id, data)
+        return jsonify({"success": ok})
+
+    @app.route("/api/assets/discovery/scan", methods=["POST"])
+    def api_assets_discovery_scan():
+        """Quét dải IP bằng SNMP + port fingerprint -> tự nạp tài sản."""
+        data = request.json or {}
+        cidr = (data.get("range") or "").strip()
+        if not cidr:
+            return jsonify({"error": "Thiếu dải IP (vd 192.168.1.0/24)"}), 400
+        try:
+            from asset_discovery import run_scan
+        except Exception:
+            return jsonify({"error": "Module asset_discovery không tải được"}), 500
+        try:
+            summary = run_scan(cidr, db)
+            return jsonify(summary)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     @app.route("/api/assets/changes")
     def api_assets_changes():
         limit = int(request.args.get("limit", 100))
@@ -152,8 +237,59 @@ def init_assets_api(app, db):
                 cell = ws2.cell(row=r, column=col, value=val)
                 cell.border = thin_border
 
+        # =====================================================================
+        # v4.7: IT asset inventory sheets (Kho + auto-discovered devices)
+        # =====================================================================
+        inv_headers = ["Mã TS", "Loại", "Tên", "Hãng", "Model", "Serial",
+                       "Status", "Gán cho", "IP", "Vị trí", "Mua", "Bảo hành",
+                       "Giá", "Nguồn", "Ghi chú", "Cập nhật"]
+        inv_rows = db.get_asset_inventory(limit=5000) if (db and hasattr(db, 'get_asset_inventory')) else []
+        status_map = {"in_stock": "Còn hàng", "assigned": "Đã cấp",
+                      "in_repair": "Đang sửa", "disposed": "Thanh lý"}
+
+        def _fill_inventory_sheet(sheet, items):
+            for col, h in enumerate(inv_headers, 1):
+                cell = sheet.cell(row=1, column=col, value=h)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center')
+                cell.border = thin_border
+            for r, a in enumerate(items, 2):
+                source_label = 'Tự động' if a.get('source') == 'auto' else 'Nhập tay'
+                row_data = [
+                    a.get('display_id') or a.get('asset_id', '-'),
+                    a.get('category', '-'),
+                    a.get('name', '-'),
+                    a.get('brand', '-'),
+                    a.get('model', '-'),
+                    a.get('serial_number', '-'),
+                    status_map.get(a.get('status'), a.get('status', '-')),
+                    a.get('assigned_to', '-'),
+                    a.get('ip_address', '-'),
+                    a.get('location', '-'),
+                    a.get('purchase_date', '-'),
+                    a.get('warranty_until', '-'),
+                    a.get('cost', 0),
+                    source_label,
+                    a.get('notes', '-'),
+                    str(a.get('updated_at', ''))[:19],
+                ]
+                for col, val in enumerate(row_data, 1):
+                    sheet.cell(row=r, column=col, value=val).border = thin_border
+
+        def _inv_items(cat=None, manual_only=False):
+            if manual_only:
+                return [a for a in inv_rows if a.get("source") == "manual"]
+            return [a for a in inv_rows if a.get("category") == cat]
+
+        _fill_inventory_sheet(wb.create_sheet("May in"), _inv_items("printer"))
+        _fill_inventory_sheet(wb.create_sheet("Dien thoai"), _inv_items("phone"))
+        _fill_inventory_sheet(wb.create_sheet("Thiet bi mang"), _inv_items("network_device"))
+        _fill_inventory_sheet(wb.create_sheet("Ngoai vi"), _inv_items("peripheral"))
+        _fill_inventory_sheet(wb.create_sheet("Kho"), _inv_items(manual_only=True))
+
         # Auto-width
-        for ws in [ws1, ws2]:
+        for ws in wb.worksheets:
             for col in ws.columns:
                 max_len = 0
                 for cell in col:
