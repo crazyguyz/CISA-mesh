@@ -1,0 +1,1244 @@
+metadata:
+  name: GIAM-SAT Correlation Rules
+  version: 2.1.0
+  author: GIAM-SAT
+  description: Threat detection rules mapped to MITRE ATT&CK tactics and techniques
+  last_updated: '2026-07-14'
+rules:
+- conditions:
+  - event_id: '4625'
+    group_by: source_ip
+    threshold: 10
+    type: windows_event
+    within_seconds: 30
+  description: Multiple failed login attempts (Event ID 4625) from same source within
+    60 seconds
+  id: THREAT-001
+  mitre: T1110s
+  name: Brute Force Attack Detected fast
+  severity: HIGH
+  tactic: Credential Access
+- id: THREAT-009
+  name: Credential Dumping - LSASS Access
+  mitre: T1003.001
+  tactic: Credential Access
+  description: Process accessed LSASS memory (Event 4663 + potential mimikatz behavior)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4663'
+    description_contains:
+    - lsass.exe
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-010
+  name: Kerberoasting Attack Detected
+  mitre: T1558.003
+  tactic: Credential Access
+  description: RC4 ticket request (Event 4769) + encryption type 0x17 detected
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4769'
+    description_contains:
+    - '0x17'
+    threshold: 3
+    within_seconds: 300
+- id: THREAT-011
+  name: DCSync Attack Attempt
+  mitre: T1003.006
+  tactic: Credential Access
+  description: Directory replication request (Event 4662) from non-DC account
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4662'
+    description_contains:
+    - 1131f6ad-9c07-11d1-f79f-00c04fc2dcd2
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-012
+  name: SAM Dump via Reg Save
+  mitre: T1003.002
+  tactic: Credential Access
+  description: Registry save command detected (SAM/SYSTEM/SECURITY hive export)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - reg save
+    - sam
+    - system
+    - security
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-002
+  name: Ransomware Behavior - Mass File Modification
+  mitre: T1486
+  tactic: Impact
+  description: 100+ file modifications detected within 60 seconds
+  severity: CRITICAL
+  conditions:
+  - type: fim
+    action: FILE_MODIFIED
+    threshold: 100
+    within_seconds: 60
+- id: THREAT-029
+  name: Ransomware Note Creation
+  mitre: T1486
+  tactic: Impact
+  description: Ransomware ransom note file created (readme, decrypt, restore instructions)
+  severity: CRITICAL
+  conditions:
+  - type: fim
+    action: FILE_CREATED
+    description_contains:
+    - readme
+    - decrypt
+    - restore
+    - how to
+    - ransom
+    - _note
+    - recovery
+    path_contains:
+    - Desktop
+    - Documents
+    - Public
+    threshold: 3
+    within_seconds: 30
+- id: THREAT-030
+  name: Shadow Copy Deletion
+  mitre: T1490
+  tactic: Impact
+  description: vssadmin or wmic used to delete shadow copies (ransomware indicator)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - vssadmin
+    - delete
+    - shadows
+    - wmic
+    - shadowcopy
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-031
+  name: System Recovery Disabled
+  mitre: T1490
+  tactic: Impact
+  description: bcdedit used to disable recovery or boot options
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - bcdedit
+    - recoveryenabled
+    - 'no'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-003
+  name: Suspicious Service Creation
+  mitre: T1543.003
+  tactic: Persistence
+  description: New Windows service created (Event ID 7045 or 4697)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id:
+    - '7045'
+    - '4697'
+    threshold: 1
+    within_seconds: 3600
+- id: THREAT-008
+  name: Scheduled Task Persistence
+  mitre: T1053.005
+  tactic: Persistence
+  description: New scheduled task created (Event 4698) + process creation immediately
+    after
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id:
+    - '4698'
+    threshold: 1
+    within_seconds: 300
+  - type: windows_event
+    event_id:
+    - '4688'
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-013
+  name: Registry Run Key Persistence
+  mitre: T1547.001
+  tactic: Persistence
+  description: New entry added to Run/RunOnce registry keys (Sysmon Event 13 + specific
+    paths)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    subtype: Sysmon
+    event_id: '13'
+    description_contains:
+    - Run
+    - RunOnce
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-014
+  name: WMI Event Subscription Persistence
+  mitre: T1546.003
+  tactic: Persistence
+  description: New WMI filter/consumer created (Event 5861)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '5861'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-015
+  name: Startup Folder Persistence
+  mitre: T1547.001
+  tactic: Persistence
+  description: File created in Windows startup folder (FIM alert on Startup path)
+  severity: HIGH
+  conditions:
+  - type: fim
+    action: FILE_CREATED
+    threshold: 1
+    within_seconds: 60
+    path_contains:
+    - Start Menu\Programs\Startup
+    - Startup
+- id: THREAT-016
+  name: Service DLL Hijacking
+  mitre: T1574.002
+  tactic: Persistence
+  description: New service with DLL outside System32 (Event 7045 + non-standard path)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '7045'
+    threshold: 1
+    within_seconds: 60
+    description_contains:
+    - Users
+    - ProgramData
+    - Temp
+    - AppData
+    - Downloads
+- id: THREAT-017
+  name: PowerShell Download Cradle
+  mitre: T1059.001
+  tactic: Execution
+  description: PowerShell invoked with WebClient/Net.WebRequest (suspicious download)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4104'
+    description_contains:
+    - WebClient
+    - Net.WebRequest
+    - DownloadFile
+    - DownloadString
+    - Invoke-WebRequest
+    - Invoke-RestMethod
+    - System.Net.WebClient
+    - Start-BitsTransfer
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-018
+  name: DLL Sideloading Attempt
+  mitre: T1574.002
+  tactic: Persistence
+  description: Process loaded DLL from non-standard location (Sysmon 7 + path not
+    in System32)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    subtype: Sysmon
+    event_id: '7'
+    threshold: 1
+    within_seconds: 60
+    path_contains:
+    - Users
+    - ProgramData
+    - Temp
+    - AppData
+- id: THREAT-019
+  name: PowerShell Encoded Command
+  mitre: T1059.001
+  tactic: Execution
+  description: PowerShell invoked with -EncodedCommand or -e flag (obfuscation)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - -EncodedCommand
+    - '-e '
+    - '-en '
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-005
+  name: Windows Defender Disabled
+  mitre: T1562.001
+  tactic: Defense Evasion
+  description: Windows Defender or Firewall was disabled (Event ID 5001)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id:
+    - '5001'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-020
+  name: Event Log Cleared
+  mitre: T1070.001
+  tactic: Defense Evasion
+  description: Windows Event Log was cleared (Event ID 1102)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '1102'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-021
+  name: Audit Policy Changed
+  mitre: T1562.006
+  tactic: Defense Evasion
+  description: Security audit policy was modified (Event 4719)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4719'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-022
+  name: Security Group Tampering
+  mitre: T1098
+  tactic: Persistence
+  description: User added to privileged group (Event 4728/4732/4756)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id:
+    - '4728'
+    - '4732'
+    - '4756'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-032
+  name: Defender Exclusion Added
+  mitre: T1562.001
+  tactic: Defense Evasion
+  description: Windows Defender exclusion path/process/extension added
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '5007'
+    description_contains:
+    - Exclusion
+    - ExcludedPath
+    - ExcludedProcess
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-033
+  name: Firewall Rule Added
+  mitre: T1562.004
+  tactic: Defense Evasion
+  description: New firewall inbound rule allowing traffic (netsh or Event 4957/5157)
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id:
+    - '4957'
+    - '5157'
+    threshold: 2
+    within_seconds: 60
+- id: THREAT-004
+  name: Potential Lateral Movement
+  mitre: T1021
+  tactic: Lateral Movement
+  description: Remote logon (Type 3 or 10) + network connection on SMB/RDP port
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4624'
+    description_contains:
+    - 'Logon Type: 3'
+    - 'Logon Type: 10'
+    threshold: 1
+    within_seconds: 300
+  - type: network_traffic
+    dst_port:
+    - 445
+    - 3389
+    - 135
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-023
+  name: Pass-the-Hash Detection
+  mitre: T1550.002
+  tactic: Lateral Movement
+  description: Network logon (Type 3) with NTLM + suspicious source
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4624'
+    description_contains:
+    - 'Logon Type: 3'
+    - NtLmSsp
+    threshold: 2
+    within_seconds: 300
+- id: THREAT-034
+  name: PsExec Execution Detected
+  mitre: T1569.002
+  tactic: Execution
+  description: PsExec service installed (common lateral movement tool)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '7045'
+    description_contains:
+    - PSEXESVC
+    - PsExec
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-035
+  name: WinRM Remote Command
+  mitre: T1021.006
+  tactic: Lateral Movement
+  description: WinRM remote command execution (wsmprovhost process)
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - wsmprovhost
+    - WinRM
+    threshold: 2
+    within_seconds: 60
+- id: THREAT-006
+  name: C2 Communication Detected
+  mitre: T1571
+  tactic: Command and Control
+  description: Outbound connection to known C2 ports (4444, 1337, 31337, 8080, 8000)
+  severity: CRITICAL
+  conditions:
+  - type: network_traffic
+    dst_port:
+    - 4444
+    - 1337
+    - 31337
+    - 8080
+    - 8000
+    - 6666
+    - 6667
+    - 6697
+    - 9999
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-025
+  name: DNS Tunneling Suspicion
+  mitre: T1572
+  tactic: Command and Control
+  description: High volume DNS queries or connection on port 53 with large packets
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    dst_port: 53
+    threshold: 15
+    within_seconds: 10
+- id: THREAT-028
+  name: TOR Exit Node Connection
+  mitre: T1090.003
+  tactic: Command and Control
+  description: Connection to known TOR exit node (common C2 infrastructure)
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    threat_intel_tor: true
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-036
+  name: Suspicious Outbound Connection on Non-Standard Port
+  mitre: T1571
+  tactic: Command and Control
+  description: Frequent outbound connections to same IP on high port (>= 1024)
+  severity: MEDIUM
+  conditions:
+  - type: network_traffic
+    dst_port: []
+    threshold: 10
+    within_seconds: 30
+- id: THREAT-007
+  name: Process Injection Attempt
+  mitre: T1055
+  tactic: Privilege Escalation
+  description: Sysmon Event ID 8 (Process Injection) + network connection to external
+    IP
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    subtype: Sysmon
+    event_id: '8'
+    threshold: 1
+    within_seconds: 300
+  - type: network_traffic
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-037
+  name: Token Manipulation Detected
+  mitre: T1134
+  tactic: Privilege Escalation
+  description: Event 4672 (Special Logon) with SeDebugPrivilege from non-admin account
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4672'
+    description_contains:
+    - SeDebugPrivilege
+    threshold: 2
+    within_seconds: 60
+- id: THREAT-024
+  name: Internal Port Scan Detected
+  mitre: T1046
+  tactic: Discovery
+  description: Multiple connection attempts to different internal ports within 10
+    seconds
+  severity: MEDIUM
+  conditions:
+  - type: network_traffic
+    threshold: 20
+    within_seconds: 10
+- id: THREAT-038
+  name: Suspicious System Enumeration
+  mitre: T1018
+  tactic: Discovery
+  description: Multiple system discovery commands (net view, nltest, ping sweep, whoami)
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - net view
+    - nltest
+    - dsquery
+    - net group
+    - net localgroup
+    - whoami /all
+    - systeminfo
+    threshold: 4
+    within_seconds: 60
+- id: THREAT-026
+  name: Malicious IP Connection
+  mitre: T1071
+  tactic: Command and Control
+  description: Outbound connection to known malicious IP (from threat intelligence)
+  severity: CRITICAL
+  conditions:
+  - type: network_traffic
+    threat_intel_match: true
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-027
+  name: Vulnerable Software Detected
+  mitre: T1190
+  tactic: Initial Access
+  description: Software with known CVE vulnerability detected on system
+  severity: HIGH
+  conditions:
+  - type: vulnerability_alert
+    threshold: 1
+    within_seconds: 3600
+- id: THREAT-039
+  name: Suspicious Web Shell Detection
+  mitre: T1505.003
+  tactic: Persistence
+  description: Process spawned from IIS/HTTP worker (w3wp, httpd, nginx) - potential
+    web shell
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - cmd.exe
+    - powershell.exe
+    - whoami
+    - certutil
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-040
+  name: Certutil Web Download
+  mitre: T1105
+  tactic: Command and Control
+  description: certutil used to download file from URL (living-off-the-land)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - certutil
+    - urlcache
+    - split
+    - http
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-041
+  name: Large Data Exfiltration via Network
+  mitre: T1041
+  tactic: Exfiltration
+  description: Large outbound data transfer (>10MB) detected over suspicious protocol
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    threshold: 5
+    within_seconds: 30
+- id: THREAT-042
+  name: Archiving Utility Before Network Connection
+  mitre: T1560.001
+  tactic: Collection
+  description: Compression tool (7z, WinRAR, zip) run shortly before outbound connection
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - 7z
+    - WinRAR
+    - rar
+    - compress
+    - zip
+    - tar
+    threshold: 1
+    within_seconds: 120
+  - type: network_traffic
+    threshold: 1
+    within_seconds: 120
+- id: THREAT-043
+  name: Multiple Defense Evasion Techniques (OR)
+  mitre: T1562
+  tactic: Defense Evasion
+  description: 'Any defense evasion technique detected: Defender disabled, Event Log
+    cleared, Firewall rule added, or Audit policy changed'
+  severity: CRITICAL
+  logic: OR
+  conditions:
+  - type: windows_event
+    event_id: '5001'
+    threshold: 1
+    within_seconds: 60
+  - type: windows_event
+    event_id: '1102'
+    threshold: 1
+    within_seconds: 60
+  - type: windows_event
+    event_id: '4719'
+    threshold: 1
+    within_seconds: 60
+  - type: windows_event
+    event_id:
+    - '4957'
+    - '5157'
+    threshold: 2
+    within_seconds: 60
+- id: THREAT-044
+  name: Suspicious Process NOT From System32
+  mitre: T1036
+  tactic: Defense Evasion
+  description: Process created from non-standard path (NOT System32 or Program Files)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    threshold: 2
+    within_seconds: 60
+    NOT: true
+    condition:
+      description_contains:
+      - System32
+      - Program Files
+- id: THREAT-045
+  name: Network Connection NOT to Private IP
+  mitre: T1071
+  tactic: Command and Control
+  description: Outbound connection NOT going to private IP ranges (potential C2 to
+    internet)
+  severity: MEDIUM
+  conditions:
+  - type: network_traffic
+    threshold: 5
+    within_seconds: 60
+    NOT: true
+    condition:
+      field_contains:
+        dst_ip:
+        - 192.168.
+        - '10.'
+        - 172.16.
+        - 172.17.
+        - 172.18.
+        - 172.19.
+        - 172.20.
+        - 172.21.
+        - 172.22.
+        - 172.23.
+        - 172.24.
+        - 172.25.
+        - 172.26.
+        - 172.27.
+        - 172.28.
+        - 172.29.
+        - 172.30.
+        - 172.31.
+        - '127.'
+- id: THREAT-046
+  name: 'Credential Theft Chain: Failed Login -> Success -> LSASS Access'
+  mitre: T1003.001
+  tactic: Credential Access
+  description: 'Sequence: 5+ failed logins (4625) -> successful logon (4624) -> LSASS
+    access (4663) within 5 minutes'
+  severity: CRITICAL
+  rule_type: sequence
+  sequence_within_seconds: 300
+  sequence:
+  - type: windows_event
+    event_id: '4625'
+    threshold: 5
+    within_seconds: 300
+  - type: windows_event
+    event_id: '4624'
+    threshold: 1
+    within_seconds: 300
+  - type: windows_event
+    event_id: '4663'
+    description_contains:
+    - lsass.exe
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-047
+  name: 'Malware Delivery Chain: Download -> Execute -> C2'
+  mitre: T1204
+  tactic: Execution
+  description: 'Sequence: PowerShell download cradle -> new process -> outbound connection
+    within 3 minutes'
+  severity: CRITICAL
+  rule_type: sequence
+  sequence_within_seconds: 180
+  sequence:
+  - type: windows_event
+    event_id: '4104'
+    description_contains:
+    - WebClient
+    - Net.WebRequest
+    - DownloadFile
+    - DownloadString
+    threshold: 1
+    within_seconds: 180
+  - type: windows_event
+    event_id: '4688'
+    threshold: 1
+    within_seconds: 180
+    NOT: true
+    condition:
+      description_contains:
+      - svchost
+      - services
+      - MsMpEng
+  - type: network_traffic
+    threshold: 1
+    within_seconds: 180
+- id: THREAT-048
+  name: 'Privilege Escalation Chain: Service Install -> Token Manip -> New Admin'
+  mitre: T1543
+  tactic: Privilege Escalation
+  description: 'Sequence: new service created -> SeDebugPrivilege used -> user added
+    to admin group within 10 minutes'
+  severity: CRITICAL
+  rule_type: sequence
+  sequence_within_seconds: 600
+  sequence:
+  - type: windows_event
+    event_id: '7045'
+    threshold: 1
+    within_seconds: 600
+  - type: windows_event
+    event_id: '4672'
+    description_contains:
+    - SeDebugPrivilege
+    threshold: 1
+    within_seconds: 600
+  - type: windows_event
+    event_id:
+    - '4728'
+    - '4732'
+    - '4756'
+    threshold: 1
+    within_seconds: 600
+- id: THREAT-049
+  name: Port Sweep - Multiple Distinct Ports
+  mitre: T1046
+  tactic: Discovery
+  description: Connection attempts to 50+ distinct ports from same source within 30
+    seconds (port scan)
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    count_distinct: dst_port
+    threshold: 50
+    within_seconds: 30
+    group_by: src_ip
+- id: THREAT-050
+  name: Multiple Target IPs - Lateral Movement Scan
+  mitre: T1018
+  tactic: Discovery
+  description: Connections to 10+ distinct destination IPs within 60 seconds (network
+    mapping)
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    count_distinct: dst_ip
+    threshold: 10
+    within_seconds: 60
+    group_by: src_ip
+- id: THREAT-051
+  name: Multi-Channel Credential Theft
+  mitre: T1003
+  tactic: Credential Access
+  description: 3+ distinct credential access techniques detected within 10 minutes
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    count_distinct: event_id
+    threshold: 3
+    within_seconds: 600
+    event_id:
+    - '4625'
+    - '4663'
+    - '4769'
+    - '4662'
+    - '4688'
+    description_contains:
+    - lsass.exe
+    - '0x17'
+    - reg save
+    - mimikatz
+    - procdump
+- id: THREAT-052
+  name: Suspicious Process Spawning from Temp Directory
+  mitre: T1204.002
+  tactic: Execution
+  description: Process launched from TEMP or APPDATA directory
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    field_contains:
+      command_line:
+      - \Temp\
+      - \AppData\Local\Temp\
+      - \AppData\Roaming\
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-053
+  name: RDP Brute Force with Named Pipe Access
+  mitre: T1110
+  tactic: Credential Access
+  description: Multiple RDP logon failures (Logon Type 10) from same source IP
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4625'
+    field_contains:
+      description:
+      - 'Logon Type: 10'
+    threshold: 8
+    within_seconds: 300
+    group_by: source_ip
+- id: THREAT-054
+  name: Complex Ransomware Indicator
+  mitre: T1486
+  tactic: Impact
+  description: (Shadow copy deletion OR recovery disabled) AND (mass file modification
+    OR ransomware note)
+  severity: CRITICAL
+  logic: AND
+  conditions:
+  - logic: OR
+    conditions:
+    - type: windows_event
+      event_id: '4688'
+      description_contains:
+      - vssadmin
+      - delete
+      - shadows
+      threshold: 1
+      within_seconds: 120
+    - type: windows_event
+      event_id: '4688'
+      description_contains:
+      - bcdedit
+      - recoveryenabled
+      - 'no'
+      threshold: 1
+      within_seconds: 120
+  - logic: OR
+    conditions:
+    - type: fim
+      action: FILE_MODIFIED
+      threshold: 50
+      within_seconds: 120
+    - type: fim
+      action: FILE_CREATED
+      description_contains:
+      - readme
+      - decrypt
+      - restore
+      - ransom
+      threshold: 1
+      within_seconds: 120
+- id: THREAT-055
+  name: Any CRITICAL Alert - Immediate Notification
+  mitre: TA0040
+  tactic: Impact
+  description: Any alert with CRITICAL severity from any event source (catch-all for
+    critical threats)
+  severity: CRITICAL
+  logic: OR
+  conditions:
+  - type: '*'
+    severity: CRITICAL
+    threshold: 1
+    within_seconds: 10
+  - type: threat_alert
+    severity: CRITICAL
+    threshold: 1
+    within_seconds: 10
+- id: THREAT-056
+  name: Service EXE in Suspicious Location
+  mitre: T1543.003
+  tactic: Persistence
+  description: Service binary path outside System32 (Event 7045 with ImagePath in
+    Users/Temp/AppData)
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '7045'
+    field_contains:
+      description:
+      - Users\
+      - Temp\
+      - AppData\
+      - ProgramData\
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-057
+  name: Logon Type 3 from External IP
+  mitre: T1078
+  tactic: Initial Access
+  description: Network logon (Type 3) from non-private IP address
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4624'
+    field_contains:
+      description:
+      - 'Logon Type: 3'
+    threshold: 1
+    within_seconds: 60
+    NOT: true
+    condition:
+      field_contains:
+        source_ip:
+        - 192.168.
+        - '10.'
+        - '172.'
+        - '127.'
+- id: THREAT-058
+  name: Kill AV/EDR Process
+  mitre: T1562.001
+  tactic: Defense Evasion
+  description: Attempt to terminate security products via taskkill or PowerShell Stop-Process
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - taskkill
+    - Stop-Process
+    - Defender
+    - MsMpEng
+    - McAfee
+    - Sentinel
+    - CrowdStrike
+    - Sophos
+    - ESET
+    - CarbonBlack
+    - Kaspersky
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-059
+  name: UAC Bypass via Fodhelper/Eventvwr
+  mitre: T1548.002
+  tactic: Privilege Escalation
+  description: Process spawned from fodhelper.exe or eventvwr.exe (registry hijack
+    UAC bypass)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - fodhelper.exe
+    - eventvwr.exe
+    - ms-settings
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-060
+  name: Credential Dump via comsvcs.dll MiniDump
+  mitre: T1003.001
+  tactic: Credential Access
+  description: rundll32.exe comsvcs.dll MiniDump used to dump LSASS memory (fileless
+    credential theft)
+  severity: CRITICAL
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - comsvcs.dll
+    - MiniDump
+    - rundll32
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-061
+  name: Download + Execute Chain (Malware Staging)
+  mitre: T1204.002
+  tactic: Execution
+  description: 'Sequence: file downloaded via certutil/BITS/PowerShell -> then executed
+    within 120s'
+  severity: CRITICAL
+  rule_type: sequence
+  sequence_within_seconds: 120
+  sequence:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - certutil
+    - urlcache
+    - Invoke-WebRequest
+    - DownloadFile
+    - bitsadmin
+    - transfer
+    - Start-BitsTransfer
+    - wget
+    - curl
+    - http
+    threshold: 1
+    within_seconds: 120
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - .exe
+    - .dll
+    - .bat
+    - .ps1
+    - .vbs
+    - .scr
+    - .jar
+    threshold: 1
+    within_seconds: 120
+- id: THREAT-062
+  name: SMB/NetBIOS Share Enumeration
+  mitre: T1135
+  tactic: Discovery
+  description: Multiple network share access attempts (net use, net view) within 60s
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - net use
+    - net view
+    - net share
+    threshold: 5
+    within_seconds: 60
+- id: THREAT-063
+  name: Process Hollowing (Sysmon 25)
+  mitre: T1055.012
+  tactic: Defense Evasion
+  description: 'Sysmon Event 25: process tampering (replacement of legitimate process
+    with malicious code)'
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    subtype: Sysmon
+    event_id: '25'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-064
+  name: Browser Credential Theft
+  mitre: T1555.003
+  tactic: Credential Access
+  description: Access to Chrome/Edge/Firefox Login Data or Cookies file (credential
+    database theft)
+  severity: HIGH
+  conditions:
+  - type: fim
+    action: FILE_MODIFIED
+    path_contains:
+    - Login Data
+    - Cookies
+    - Web Data
+    - logins.json
+    - key4.db
+    threshold: 2
+    within_seconds: 60
+- id: THREAT-065
+  name: Hidden File Created in Sensitive Dir
+  mitre: T1564.001
+  tactic: Defense Evasion
+  description: FIM detects hidden file created in system or user appdata directories
+  severity: HIGH
+  conditions:
+  - type: fim
+    action: FILE_CREATED
+    path_contains:
+    - System32
+    - SysWOW64
+    - AppData\Roaming
+    - ProgramData
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-066
+  name: DNS-over-HTTPS Tunneling
+  mitre: T1572
+  tactic: Command and Control
+  description: Connection to known DoH resolvers (bypass DNS monitoring) on port 443
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    dst_port: 443
+    field_contains:
+      dst_ip:
+      - 1.1.1.1
+      - 1.0.0.1
+      - 8.8.8.8
+      - 8.8.4.4
+      - 9.9.9.9
+      - 149.112.112.112
+      - 208.67.222.222
+      - 208.67.220.220
+    threshold: 10
+    within_seconds: 30
+- id: THREAT-067
+  name: Local Account Created Then Admin Group
+  mitre: T1136.001
+  tactic: Persistence
+  description: 'Sequence: new account created (4720) -> added to admin group (4732)
+    within 5 minutes'
+  severity: HIGH
+  rule_type: sequence
+  sequence_within_seconds: 300
+  sequence:
+  - type: windows_event
+    event_id: '4720'
+    threshold: 1
+    within_seconds: 300
+  - type: windows_event
+    event_id:
+    - '4732'
+    - '4728'
+    - '4756'
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-068
+  name: Alternate Data Stream Execution
+  mitre: T1564.004
+  tactic: Defense Evasion
+  description: FIM detects file with NTFS ADS (file.txt:hidden.exe) - malware hiding
+    technique
+  severity: MEDIUM
+  conditions:
+  - type: fim
+    action: FILE_CREATED
+    path_contains:
+    - ':'
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-069
+  name: Scheduled Task from Remote Machine
+  mitre: T1053.005
+  tactic: Execution
+  description: schtasks /create /s (remote) - lateral movement via scheduled tasks
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - schtasks
+    - /s
+    - /u
+    - /p
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-070
+  name: WDigest Credential Caching Enabled
+  mitre: T1003.001
+  tactic: Credential Access
+  description: Registry UseLogonCredential set to 1 (forces plaintext password caching
+    for next logon)
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    subtype: Sysmon
+    event_id: '13'
+    description_contains:
+    - WDigest
+    - UseLogonCredential
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-071
+  name: BITSAdmin Download (LOLBin)
+  mitre: T1197
+  tactic: Defense Evasion
+  description: bitsadmin /transfer used to download files (Windows built-in downloader,
+    often abused)
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - bitsadmin
+    - /transfer
+    - http
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-072
+  name: Web Shell Detected via FIM
+  mitre: T1505.003
+  tactic: Persistence
+  description: New .php/.aspx/.jsp/.war file in web root (inetpub/wwwroot/htdocs)
+    - web shell upload
+  severity: CRITICAL
+  conditions:
+  - type: fim
+    action: FILE_CREATED
+    path_contains:
+    - inetpub
+    - wwwroot
+    - htdocs
+    - nginx
+    - tomcat
+    - webapps
+    field_contains:
+      path:
+      - .php
+      - .aspx
+      - .ashx
+      - .asmx
+      - .jsp
+      - .war
+      - .asp
+    threshold: 1
+    within_seconds: 60

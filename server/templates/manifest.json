@@ -1,0 +1,14 @@
+{
+  "name": "GIAM-SAT Security Monitor",
+  "short_name": "GIAM-SAT",
+  "description": "He Thong Giam Sat Bao Mat Tap Trung",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e17",
+  "theme_color": "#00d4aa",
+  "orientation": "any",
+  "icons": [
+    {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}

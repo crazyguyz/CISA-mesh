@@ -1,0 +1,648 @@
+# =============================================================================
+# GIAM-SAT Event Decoders v1.8.0
+# YAML-based field extraction from Windows Event Log descriptions.
+# Parses raw description strings into structured fields for search/filter/sort.
+#
+# Decoder types:
+#   regex: Extracts fields using regex capture groups from description text
+#   json: Parses JSON embedded in description (Sysmon)
+#   keyword: Extracts based on keyword position
+# =============================================================================
+
+metadata:
+  name: "GIAM-SAT Event Decoders"
+  version: "1.8.0"
+  author: "GIAM-SAT"
+  description: "Field-level decoders for Windows Security, Sysmon, and Linux auth events"
+
+decoders:
+  # =========================================================================
+  # WINDOWS SECURITY AUDIT EVENTS
+  # =========================================================================
+
+  # ---- Account Logon: 4624 (Successful Logon) ----
+  - event_id: "4624"
+    channel: "Security"
+    description: "Successful account logon"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Account Domain:\s+(\S+)'
+        index: 1
+      - name: "logon_id"
+        type: "string"
+        regex: 'Logon ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "logon_type"
+        type: "integer"
+        regex: 'Logon Type:\s+(\d+)'
+        index: 1
+        mapping:
+          "2": "Interactive"
+          "3": "Network"
+          "4": "Batch"
+          "5": "Service"
+          "7": "Unlock"
+          "8": "NetworkCleartext"
+          "9": "NewCredentials"
+          "10": "RemoteInteractive"
+          "11": "CachedInteractive"
+      - name: "source_ip"
+        type: "ip"
+        regex: 'Source Network Address:\s+(\S+)'
+        index: 1
+      - name: "source_host"
+        type: "string"
+        regex: 'Source Workstation:\s+(\S+)'
+        index: 1
+      - name: "process_name"
+        type: "string"
+        regex: 'Process Name:\s+(\S+)'
+        index: 1
+      - name: "process_id"
+        type: "string"
+        regex: 'Process ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "auth_package"
+        type: "string"
+        regex: 'Authentication Package:\s+(\S+)'
+        index: 1
+    severity: "LOW"
+
+  # ---- Account Logon: 4625 (Failed Logon) ----
+  - event_id: "4625"
+    channel: "Security"
+    description: "Failed account logon"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Account Domain:\s+(\S+)'
+        index: 1
+      - name: "source_ip"
+        type: "ip"
+        regex: 'Source Network Address:\s+(\S+)'
+        index: 1
+      - name: "source_host"
+        type: "string"
+        regex: 'Source Workstation:\s+(\S+)'
+        index: 1
+      - name: "logon_type"
+        type: "integer"
+        regex: 'Logon Type:\s+(\d+)'
+        index: 1
+        mapping:
+          "2": "Interactive"
+          "3": "Network"
+          "10": "RemoteInteractive"
+      - name: "failure_reason"
+        type: "string"
+        regex: 'Failure Reason:\s+(.+)'
+        index: 1
+      - name: "status_code"
+        type: "string"
+        regex: 'Status:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "sub_status"
+        type: "string"
+        regex: 'Sub Status:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+    severity: "MEDIUM"
+
+  # ---- Process Creation: 4688 ----
+  - event_id: "4688"
+    channel: "Security"
+    description: "Process creation"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Creator Subject:.*?Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Creator Subject:.*?Account Domain:\s+(\S+)'
+        index: 1
+      - name: "logon_id"
+        type: "string"
+        regex: 'Creator Subject:.*?Logon ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "target_username"
+        type: "string"
+        regex: 'Target Subject:.*?Account Name:\s+(\S+)'
+        index: 1
+      - name: "process_name"
+        type: "string"
+        regex: 'New Process Name:\s+(\S+)'
+        index: 1
+      - name: "command_line"
+        type: "string"
+        regex: 'Process Command Line:\s+(.+)'
+        index: 1
+      - name: "parent_process"
+        type: "string"
+        regex: 'Creator Process Name:\s+(\S+)'
+        index: 1
+      - name: "process_id"
+        type: "string"
+        regex: 'New Process ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "token_elevation"
+        type: "string"
+        regex: 'Token Elevation Type:\s+(\S+)'
+        index: 1
+        mapping:
+          "%%1936": "Full"
+          "%%1937": "Limited"
+    severity: "MEDIUM"
+
+  # ---- Special Logon: 4672 (Privileged service logon) ----
+  - event_id: "4672"
+    channel: "Security"
+    description: "Special privileges assigned to new logon"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Account Domain:\s+(\S+)'
+        index: 1
+      - name: "logon_id"
+        type: "string"
+        regex: 'Logon ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "privileges"
+        type: "list"
+        regex: 'Privileges:\s+(.+)'
+        index: 1
+    severity: "MEDIUM"
+
+  # ---- Kerberos TGS: 4769 ----
+  - event_id: "4769"
+    channel: "Security"
+    description: "Kerberos TGS request"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Account Domain:\s+(\S+)'
+        index: 1
+      - name: "service_name"
+        type: "string"
+        regex: 'Service Name:\s+(\S+)'
+        index: 1
+      - name: "ticket_encryption"
+        type: "string"
+        regex: 'Ticket Encryption Type:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+      - name: "source_ip"
+        type: "ip"
+        regex: 'Client Address:\s+(::ffff:)?(\S+)'
+        index: 2
+    severity: "MEDIUM"
+
+  # ---- User added to group: 4728, 4732, 4756 ----
+  - event_id: ["4728", "4732", "4756"]
+    channel: "Security"
+    description: "User added to security-enabled group"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Member Name:\s+(\S+)'
+        index: 1
+      - name: "member_sid"
+        type: "string"
+        regex: 'Member SID:\s+(\S+)'
+        index: 1
+      - name: "group_name"
+        type: "string"
+        regex: 'Group Name:\s+(\S+)'
+        index: 1
+      - name: "group_domain"
+        type: "string"
+        regex: 'Group Domain:\s+(\S+)'
+        index: 1
+      - name: "admin_name"
+        type: "string"
+        regex: 'Subject:.*?Account Name:\s+(\S+)'
+        index: 1
+    severity: "HIGH"
+
+  # ---- Audit Policy Changed: 4719 ----
+  - event_id: "4719"
+    channel: "Security"
+    description: "System audit policy was changed"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "category"
+        type: "string"
+        regex: 'Subcategory:\s+(.+)'
+        index: 1
+      - name: "change"
+        type: "string"
+        regex: 'Changes:\s+(.+)'
+        index: 1
+    severity: "HIGH"
+
+  # ---- Event Log Cleared: 1102 ----
+  - event_id: "1102"
+    channel: "Security"
+    description: "Audit log was cleared"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'Account Name:\s+(\S+)'
+        index: 1
+      - name: "domain"
+        type: "string"
+        regex: 'Account Domain:\s+(\S+)'
+        index: 1
+      - name: "logon_id"
+        type: "string"
+        regex: 'Logon ID:\s+(0x[0-9A-Fa-f]+)'
+        index: 1
+    severity: "CRITICAL"
+
+  # ---- Service Installed: 7045 ----
+  - event_id: "7045"
+    channel: "System"
+    description: "New Windows service installed"
+    fields:
+      - name: "service_name"
+        type: "string"
+        regex: 'Service Name:\s+(\S+)'
+        index: 1
+      - name: "service_file"
+        type: "string"
+        regex: 'Service File Name:\s+(.+)'
+        index: 1
+      - name: "service_type"
+        type: "string"
+        regex: 'Service Type:\s+(\S+)'
+        index: 1
+      - name: "service_start_type"
+        type: "string"
+        regex: 'Service Start Type:\s+(\S+)'
+        index: 1
+      - name: "service_account"
+        type: "string"
+        regex: 'Service Account:\s+(\S+)'
+        index: 1
+    severity: "HIGH"
+
+  # ---- Windows Defender: 5001 ----
+  - event_id: "5001"
+    channel: "System"
+    description: "Windows Defender real-time protection disabled"
+    fields:
+      - name: "product_name"
+        type: "string"
+        regex: 'Product Name:\s+(.+)'
+        index: 1
+      - name: "feature"
+        type: "string"
+        regex: 'Feature:\s+(.+)'
+        index: 1
+    severity: "CRITICAL"
+
+  # ---- Windows Defender: 5007 ----
+  - event_id: "5007"
+    channel: "System"
+    description: "Windows Defender configuration changed"
+    fields:
+      - name: "setting_name"
+        type: "string"
+        regex: 'New value:.*?HKLM\\[^=]+\\\([^)]+\)\s*=\s*([^,]+)'
+        index: 1
+      - name: "setting_value"
+        type: "string"
+        regex: 'New value:.*?0x[0-9A-Fa-f]+\)\s*(.+)'
+        index: 1
+    severity: "MEDIUM"
+
+  # ---- Windows Firewall: 4957 / 5157 ----
+  - event_id: ["4957", "5157"]
+    channel: "Security"
+    description: "Windows Firewall rule change / blocked connection"
+    fields:
+      - name: "rule_name"
+        type: "string"
+        regex: 'Rule Name:\s+(.+)'
+        index: 1
+      - name: "direction"
+        type: "string"
+        regex: 'Direction:\s+(\S+)'
+        index: 1
+      - name: "source_ip"
+        type: "ip"
+        regex: 'Source Address:\s+(\S+)'
+        index: 1
+      - name: "dest_ip"
+        type: "ip"
+        regex: 'Dest Address:\s+(\S+)'
+        index: 1
+      - name: "source_port"
+        type: "integer"
+        regex: 'Source Port:\s+(\d+)'
+        index: 1
+      - name: "dest_port"
+        type: "integer"
+        regex: 'Dest Port:\s+(\d+)'
+        index: 1
+      - name: "protocol"
+        type: "string"
+        regex: 'Protocol:\s+(\d+)'
+        index: 1
+        mapping:
+          "6": "TCP"
+          "17": "UDP"
+          "1": "ICMP"
+    severity: "MEDIUM"
+
+  # =========================================================================
+  # SYSMON EVENTS
+  # =========================================================================
+
+  # ---- Sysmon 1: Process Creation ----
+  - event_id: "1"
+    subtype: "Sysmon"
+    description: "Sysmon process creation"
+    json_extract: true
+    fields:
+      - name: "process_name"
+        type: "string"
+        json_path: "Event.EventData.Image"
+      - name: "command_line"
+        type: "string"
+        json_path: "Event.EventData.CommandLine"
+      - name: "process_id"
+        type: "string"
+        json_path: "Event.EventData.ProcessId"
+      - name: "parent_process"
+        type: "string"
+        json_path: "Event.EventData.ParentImage"
+      - name: "parent_pid"
+        type: "string"
+        json_path: "Event.EventData.ParentProcessId"
+      - name: "username"
+        type: "string"
+        json_path: "Event.EventData.User"
+      - name: "hashes"
+        type: "string"
+        json_path: "Event.EventData.Hashes"
+      - name: "process_guid"
+        type: "string"
+        json_path: "Event.EventData.ProcessGuid"
+      - name: "logon_id"
+        type: "string"
+        json_path: "Event.EventData.LogonId"
+    severity: "MEDIUM"
+
+  # ---- Sysmon 3: Network Connection ----
+  - event_id: "3"
+    subtype: "Sysmon"
+    description: "Sysmon network connection"
+    json_extract: true
+    fields:
+      - name: "process_name"
+        type: "string"
+        json_path: "Event.EventData.Image"
+      - name: "process_id"
+        type: "string"
+        json_path: "Event.EventData.ProcessId"
+      - name: "source_ip"
+        type: "ip"
+        json_path: "Event.EventData.SourceIp"
+      - name: "dest_ip"
+        type: "ip"
+        json_path: "Event.EventData.DestinationIp"
+      - name: "source_port"
+        type: "integer"
+        json_path: "Event.EventData.SourcePort"
+      - name: "dest_port"
+        type: "integer"
+        json_path: "Event.EventData.DestinationPort"
+      - name: "protocol"
+        type: "string"
+        json_path: "Event.EventData.Protocol"
+      - name: "dest_hostname"
+        type: "string"
+        json_path: "Event.EventData.DestinationHostname"
+      - name: "username"
+        type: "string"
+        json_path: "Event.EventData.User"
+    severity: "MEDIUM"
+
+  # ---- Sysmon 7: Image Loaded (DLL) ----
+  - event_id: "7"
+    subtype: "Sysmon"
+    description: "Sysmon image loaded (DLL)"
+    json_extract: true
+    fields:
+      - name: "process_name"
+        type: "string"
+        json_path: "Event.EventData.Image"
+      - name: "process_id"
+        type: "string"
+        json_path: "Event.EventData.ProcessId"
+      - name: "image_loaded"
+        type: "string"
+        json_path: "Event.EventData.ImageLoaded"
+      - name: "hashes"
+        type: "string"
+        json_path: "Event.EventData.Hashes"
+      - name: "signed"
+        type: "string"
+        json_path: "Event.EventData.Signed"
+      - name: "signature"
+        type: "string"
+        json_path: "Event.EventData.Signature"
+    severity: "MEDIUM"
+
+  # ---- Sysmon 8: CreateRemoteThread ----
+  - event_id: "8"
+    subtype: "Sysmon"
+    description: "Sysmon process injection (CreateRemoteThread)"
+    json_extract: true
+    fields:
+      - name: "source_process"
+        type: "string"
+        json_path: "Event.EventData.SourceImage"
+      - name: "source_pid"
+        type: "string"
+        json_path: "Event.EventData.SourceProcessId"
+      - name: "target_process"
+        type: "string"
+        json_path: "Event.EventData.TargetImage"
+      - name: "target_pid"
+        type: "string"
+        json_path: "Event.EventData.TargetProcessId"
+      - name: "start_address"
+        type: "string"
+        json_path: "Event.EventData.StartAddress"
+      - name: "source_username"
+        type: "string"
+        json_path: "Event.EventData.SourceUser"
+    severity: "CRITICAL"
+
+  # ---- Sysmon 11: FileCreate ----
+  - event_id: "11"
+    subtype: "Sysmon"
+    description: "Sysmon file creation"
+    json_extract: true
+    fields:
+      - name: "process_name"
+        type: "string"
+        json_path: "Event.EventData.Image"
+      - name: "target_filename"
+        type: "string"
+        json_path: "Event.EventData.TargetFilename"
+      - name: "creation_time"
+        type: "string"
+        json_path: "Event.EventData.CreationUtcTime"
+    severity: "LOW"
+
+  # ---- Sysmon 13: Registry Value Set ----
+  - event_id: "13"
+    subtype: "Sysmon"
+    description: "Sysmon registry value modification"
+    json_extract: true
+    fields:
+      - name: "process_name"
+        type: "string"
+        json_path: "Event.EventData.Image"
+      - name: "target_object"
+        type: "string"
+        json_path: "Event.EventData.TargetObject"
+      - name: "details"
+        type: "string"
+        json_path: "Event.EventData.Details"
+      - name: "event_type"
+        type: "string"
+        json_path: "Event.EventData.EventType"
+    severity: "MEDIUM"
+
+  # =========================================================================
+  # POWERSHELL EVENTS
+  # =========================================================================
+
+  # ---- PowerShell ScriptBlock: 4104 ----
+  - event_id: "4104"
+    channel: "Operational"
+    description: "PowerShell script block logging"
+    fields:
+      - name: "script_block"
+        type: "string"
+        regex: 'ScriptBlock Text:\s*(.+)'
+        index: 1
+      - name: "script_block_id"
+        type: "string"
+        regex: 'ScriptBlock ID:\s+(\S+)'
+        index: 1
+      - name: "path"
+        type: "string"
+        regex: 'Path:\s+(.+)'
+        index: 1
+    severity: "MEDIUM"
+
+  # =========================================================================
+  # LINUX AUTH EVENTS (journald / syslog)
+  # =========================================================================
+
+  # ---- SSH authentication ----
+  - event_type: "linux_auth"
+    subtype: "ssh"
+    description: "SSH authentication attempt"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: '(?:Accepted|Failed) (?:password|publickey) for (\S+)'
+        index: 1
+      - name: "source_ip"
+        type: "ip"
+        regex: 'from (\S+) port'
+        index: 1
+      - name: "source_port"
+        type: "integer"
+        regex: 'port (\d+)'
+        index: 1
+      - name: "auth_method"
+        type: "string"
+        regex: '(?:Accepted|Failed) (password|publickey|keyboard-interactive)'
+        index: 1
+      - name: "ssh_service"
+        type: "string"
+        regex: 'sshd\[\d+\]'
+        index: 0
+    severity: "MEDIUM"
+
+  # ---- Sudo command ----
+  - event_type: "linux_auth"
+    subtype: "sudo"
+    description: "Sudo command execution"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'sudo:\s+(\S+)\s+'
+        index: 1
+      - name: "command"
+        type: "string"
+        regex: 'COMMAND=(.+)'
+        index: 1
+      - name: "pwd"
+        type: "string"
+        regex: 'PWD=(.+?)\s'
+        index: 1
+      - name: "tty"
+        type: "string"
+        regex: 'TTY=(\S+)'
+        index: 1
+    severity: "MEDIUM"
+
+  # ---- su authentication ----
+  - event_type: "linux_auth"
+    subtype: "su"
+    description: "su command authentication"
+    fields:
+      - name: "from_user"
+        type: "string"
+        regex: 'pam_unix\(su[^)]*\): session opened for user (\S+)'
+        index: 1
+      - name: "by_user"
+        type: "string"
+        regex: 'by (\S+)\('
+        index: 1
+    severity: "LOW"
+
+  # ---- Failed password (generic PAM) ----
+  - event_type: "linux_auth"
+    subtype: "pam"
+    description: "PAM authentication failure"
+    fields:
+      - name: "username"
+        type: "string"
+        regex: 'authentication failure.*?user=(\S+)'
+        index: 1
+      - name: "source_ip"
+        type: "ip"
+        regex: 'rhost=(\S+)'
+        index: 1
+      - name: "reason"
+        type: "string"
+        regex: 'authentication failure.*?logname=.*?user=.*?rhost=.*?(.*)'
+        index: 1
+    severity: "MEDIUM"

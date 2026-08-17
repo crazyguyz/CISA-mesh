@@ -1,0 +1,1159 @@
+openapi: "3.0.3"
+info:
+  title: "GIAM-SAT API v1.13.0"
+  description: |
+    ## GIAM-SAT Security Monitoring System
+
+    REST API for the GIAM-SAT security monitoring platform.
+    
+    **Features:**
+    - Agent monitoring & management
+    - Event log collection & analysis  
+    - File integrity monitoring (FIM)
+    - Network traffic capture (Wireshark-level)
+    - Vulnerability scanning (NVD + CVE)
+    - YARA malware detection
+    - SCA/CIS compliance assessment
+    - Threat intelligence (OTX + VirusTotal + URLhaus + MISP)
+    - AI-powered security analysis (DeepSeek/OpenAI/Gemini/Groq/xAI)
+    - Telegram Bot notifications
+    - Agentless monitoring (SNMP/SSH/Ping)
+    
+    **Authentication:** JWT Bearer token (except localhost)
+    
+    **Rate Limits:** 5 req/min for `/api/float_ai_chat`
+    
+    **Base URL:** `http://{host}:5000`
+    
+  version: "1.13.0"
+  contact:
+    name: "GIAM-SAT"
+  license:
+    name: "Proprietary"
+
+servers:
+  - url: "http://localhost:5000"
+    description: "Local development server"
+  - url: "http://{server_ip}:5000"
+    description: "Production server"
+    variables:
+      server_ip:
+        default: "YOUR_SERVER_IP"
+        description: "GIAM-SAT server IP address"
+
+tags:
+  - name: "Auth"
+    description: "Authentication & user management"
+  - name: "Machines"
+    description: "Agent machine management"
+  - name: "Events"
+    description: "Windows/Linux event logs"
+  - name: "FIM"
+    description: "File Integrity Monitoring"
+  - name: "Network"
+    description: "Network traffic & packet capture"
+  - name: "Threats"
+    description: "Threat alerts & correlation"
+  - name: "Vulnerabilities"
+    description: "Vulnerability scanning (CVE)"
+  - name: "YARA"
+    description: "Malware detection alerts"
+  - name: "SCA"
+    description: "Security Configuration Assessment (CIS/PCI/GDPR/HIPAA/ISO)"
+  - name: "AI"
+    description: "AI Assistant & Auto-Monitor"
+  - name: "Telegram"
+    description: "Telegram Bot notifications"
+  - name: "Agentless"
+    description: "Agentless device monitoring"
+  - name: "System"
+    description: "System stats & heartbeat"
+  - name: "Commands"
+    description: "Remote command execution"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token from /api/auth/login"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: "Error message"
+          example: "Invalid credentials"
+    
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "admin"
+        password:
+          type: string
+          example: "MySecurePass123!"
+    
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: "JWT token"
+        role:
+          type: string
+          example: "admin"
+        must_change_password:
+          type: boolean
+          example: false
+    
+    Machine:
+      type: object
+      properties:
+        machine_id:
+          type: string
+          example: "DESKTOP-ABC123"
+        hostname:
+          type: string
+          example: "DESKTOP-ABC123"
+        ip:
+          type: string
+          example: "192.168.1.100"
+        os:
+          type: string
+          example: "Windows 11 Pro"
+        online:
+          type: boolean
+          example: true
+        last_seen:
+          type: string
+          format: date-time
+        cpu_percent:
+          type: number
+          example: 45.2
+        memory_percent:
+          type: number
+          example: 62.7
+        disk_percent:
+          type: number
+          example: 55.0
+    
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        event_id:
+          type: string
+          example: "4625"
+        channel:
+          type: string
+          example: "Security"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW, INFO]
+        description:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    NetworkPacket:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        src_ip:
+          type: string
+          example: "192.168.1.100"
+        dst_ip:
+          type: string
+          example: "8.8.8.8"
+        src_port:
+          type: integer
+          example: 54321
+        dst_port:
+          type: integer
+          example: 53
+        protocol:
+          type: string
+          example: "UDP"
+        protocol_app:
+          type: string
+          example: "DNS"
+        dns_info:
+          type: object
+          properties:
+            qname:
+              type: string
+            qtype_name:
+              type: string
+            rcode_name:
+              type: string
+        http_info:
+          type: object
+          properties:
+            http_method:
+              type: string
+            http_uri:
+              type: string
+        raw_data:
+          type: string
+          description: "Full packet JSON with hex dump"
+        timestamp:
+          type: string
+          format: date-time
+
+    ThreatAlert:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        rule_id:
+          type: string
+          example: "THREAT-001"
+        rule_name:
+          type: string
+          example: "Brute Force Attack Detected"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        mitre:
+          type: string
+          example: "T1110"
+        timestamp:
+          type: string
+          format: date-time
+
+    VulnerabilityAlert:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        cve_id:
+          type: string
+          example: "CVE-2024-1234"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        cvss_score:
+          type: number
+          example: 9.8
+        timestamp:
+          type: string
+          format: date-time
+
+    YaraAlert:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        rule_name:
+          type: string
+          example: "MAL_ransomware_behavior"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        file_path:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    SCAFinding:
+      type: object
+      properties:
+        id:
+          type: integer
+        machine_id:
+          type: string
+        check_id:
+          type: string
+          example: "CIS-1.1.1"
+        title:
+          type: string
+          example: "Password Length"
+        status:
+          type: string
+          enum: [PASS, FAIL, WARN]
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW]
+        description:
+          type: string
+        remediation:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    
+    HardwareInfo:
+      type: object
+      properties:
+        machine_id:
+          type: string
+        cpu_name:
+          type: string
+        cpu_cores:
+          type: integer
+        ram_gb:
+          type: number
+        disk_gb:
+          type: number
+        gpu_name:
+          type: string
+        motherboard:
+          type: string
+        bios_version:
+          type: string
+    
+    SystemStats:
+      type: object
+      properties:
+        uptime_seconds:
+          type: integer
+        cpu_percent:
+          type: number
+        memory_percent:
+          type: number
+        disk_percent:
+          type: number
+        network_bytes_sent:
+          type: integer
+        network_bytes_recv:
+          type: integer
+    
+    AgentlessDevice:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: "Core Switch"
+        ip:
+          type: string
+          example: "192.168.1.1"
+        device_type:
+          type: string
+          example: "switch"
+        method:
+          type: string
+          enum: [snmp, ssh, ping]
+        interval_seconds:
+          type: integer
+          example: 60
+    
+    AIChatRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Analyze the last hour of security events"
+        context_data:
+          type: string
+          description: "Optional JSON context data to attach"
+    
+    AIChatResponse:
+      type: object
+      properties:
+        response:
+          type: string
+          example: "```json\n{\n  \"analysis\": \"...\"\n}\n```"
+    
+    TelegramSendRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "GIAM-SAT Alert: Brute force attack detected on 192.168.1.100"
+        chat_id:
+          type: string
+          description: "Optional, defaults to configured chat_id"
+    
+    CommandRequest:
+      type: object
+      required: [machine_id, command]
+      properties:
+        machine_id:
+          type: string
+          example: "DESKTOP-ABC123"
+        command:
+          type: string
+          example: "systeminfo"
+    
+    CommandResponse:
+      type: object
+      properties:
+        exec_id:
+          type: string
+          example: "cmd_1626000000_abc123"
+        status:
+          type: string
+          enum: [queued, running, completed, failed, timeout]
+        output:
+          type: string
+    
+    CompliancePolicy:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "pci_dss"
+        standard:
+          type: string
+          example: "PCI DSS v4.0"
+        description:
+          type: string
+        checks:
+          type: integer
+          example: 26
+
+security:
+  - BearerAuth: []
+
+paths:
+  # =========================================================================
+  # AUTH
+  # =========================================================================
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: "Authenticate and get JWT token"
+      description: "Login with username/password. Account locks after 5 failed attempts for 15 minutes."
+      security: []  # No auth required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: "Login successful"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: "Invalid credentials or account locked"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "423":
+          description: "Account locked due to brute-force protection"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  
+  /api/auth/check:
+    get:
+      tags: [Auth]
+      summary: "Check JWT token validity"
+      responses:
+        "200":
+          description: "Token is valid"
+        "401":
+          description: "Token invalid or expired"
+  
+  /api/auth/change_password:
+    post:
+      tags: [Auth]
+      summary: "Change password"
+      description: "Password must be 12+ chars with uppercase, lowercase, digit, and special character."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+      responses:
+        "200":
+          description: "Password changed successfully"
+        "400":
+          description: "Password does not meet policy requirements"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # =========================================================================
+  # MACHINES
+  # =========================================================================
+  /api/machines:
+    get:
+      tags: [Machines]
+      summary: "List all agent machines"
+      parameters:
+        - name: online_only
+          in: query
+          schema:
+            type: boolean
+          description: "Filter online machines only"
+      responses:
+        "200":
+          description: "List of machines"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Machine"
+  
+  /api/machines/offline/clear:
+    post:
+      tags: [Machines]
+      summary: "Remove all offline machines from database"
+      responses:
+        "200":
+          description: "Offline machines cleared"
+  
+  /api/machines/{machine_id}/hw:
+    get:
+      tags: [Machines]
+      summary: "Get hardware information for a machine"
+      parameters:
+        - name: machine_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Hardware configuration"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HardwareInfo"
+
+  /api/machines/{machine_id}/stats:
+    get:
+      tags: [Machines]
+      summary: "Get real-time system stats for a machine"
+      parameters:
+        - name: machine_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "System statistics"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStats"
+
+  # =========================================================================
+  # EVENTS
+  # =========================================================================
+  /api/events:
+    get:
+      tags: [Events]
+      summary: "Get event logs"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+          description: "Filter by machine"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: "Max results"
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [CRITICAL, HIGH, MEDIUM, LOW, INFO]
+        - name: event_id
+          in: query
+          schema:
+            type: string
+          description: "Filter by Windows Event ID"
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: "Events after this timestamp"
+      responses:
+        "200":
+          description: "List of events"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+  
+  /api/events/clear:
+    post:
+      tags: [Events]
+      summary: "Clear all event logs"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+          description: "Clear events for specific machine (optional, all if omitted)"
+      responses:
+        "200":
+          description: "Events cleared"
+
+  /api/events/export:
+    get:
+      tags: [Events]
+      summary: "Export events as JSON"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: "JSON file download"
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+
+  # =========================================================================
+  # FIM
+  # =========================================================================
+  /api/fim:
+    get:
+      tags: [FIM]
+      summary: "Get File Integrity Monitoring events"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [FILE_CREATED, FILE_MODIFIED, FILE_DELETED]
+      responses:
+        "200":
+          description: "List of FIM events"
+
+  /api/fim/clear:
+    post:
+      tags: [FIM]
+      summary: "Clear FIM events"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "FIM events cleared"
+
+  # =========================================================================
+  # NETWORK
+  # =========================================================================
+  /api/network:
+    get:
+      tags: [Network]
+      summary: "Get network traffic logs with application layer data"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [TCP, UDP, ICMP]
+        - name: protocol_app
+          in: query
+          schema:
+            type: string
+            enum: [DNS, HTTP, TLS]
+          description: "Filter by application layer protocol"
+      responses:
+        "200":
+          description: "List of network packets with application layer info"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkPacket"
+
+  /api/network/clear:
+    post:
+      tags: [Network]
+      summary: "Clear network traffic logs"
+      responses:
+        "200":
+          description: "Network logs cleared"
+
+  # =========================================================================
+  # THREATS
+  # =========================================================================
+  /api/threats:
+    get:
+      tags: [Threats]
+      summary: "Get threat/correlation alerts"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [CRITICAL, HIGH, MEDIUM, LOW]
+      responses:
+        "200":
+          description: "List of threat alerts"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ThreatAlert"
+
+  /api/threats/clear:
+    post:
+      tags: [Threats]
+      summary: "Clear threat alerts"
+      responses:
+        "200":
+          description: "Threat alerts cleared"
+
+  # =========================================================================
+  # VULNERABILITIES
+  # =========================================================================
+  /api/vulns:
+    get:
+      tags: [Vulnerabilities]
+      summary: "Get CVE vulnerability alerts"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [CRITICAL, HIGH, MEDIUM, LOW]
+      responses:
+        "200":
+          description: "List of vulnerability alerts"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VulnerabilityAlert"
+
+  /api/vulns/clear:
+    post:
+      tags: [Vulnerabilities]
+      summary: "Clear vulnerability alerts"
+      responses:
+        "200":
+          description: "Vulnerability alerts cleared"
+
+  # =========================================================================
+  # YARA
+  # =========================================================================
+  /api/yara:
+    get:
+      tags: [YARA]
+      summary: "Get YARA malware detection alerts"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: "List of YARA alerts"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/YaraAlert"
+
+  /api/yara/clear:
+    post:
+      tags: [YARA]
+      summary: "Clear YARA alerts"
+      responses:
+        "200":
+          description: "YARA alerts cleared"
+
+  # =========================================================================
+  # SCA / COMPLIANCE
+  # =========================================================================
+  /api/sca:
+    get:
+      tags: [SCA]
+      summary: "Get SCA compliance check results"
+      parameters:
+        - name: machine_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PASS, FAIL, WARN]
+      responses:
+        "200":
+          description: "List of SCA findings"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SCAFinding"
+
+  /api/sca/policies:
+    get:
+      tags: [SCA]
+      summary: "List available compliance policy standards"
+      description: "Returns available policies: CIS, PCI DSS, GDPR, HIPAA, ISO 27001"
+      responses:
+        "200":
+          description: "Available compliance policies"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompliancePolicy"
+
+  /api/sca/clear:
+    post:
+      tags: [SCA]
+      summary: "Clear SCA findings"
+      responses:
+        "200":
+          description: "SCA findings cleared"
+
+  # =========================================================================
+  # AI
+  # =========================================================================
+  /api/float_ai_chat:
+    post:
+      tags: [AI]
+      summary: "Chat with AI assistant (DeepSeek/OpenAI/Gemini/Groq/xAI)"
+      description: |
+        **Rate limited:** 5 requests per minute per IP (HTTP 429 if exceeded).
+        API key is server-side only (never exposed to frontend).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AIChatRequest"
+      responses:
+        "200":
+          description: "AI response"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIChatResponse"
+        "429":
+          description: "Rate limit exceeded. Try again later."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "AI service unavailable (no API key configured)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # =========================================================================
+  # TELEGRAM
+  # =========================================================================
+  /api/telegram/send:
+    post:
+      tags: [Telegram]
+      summary: "Send message via Telegram Bot"
+      description: "Sends a message to the configured Telegram chat. HTML parse mode, truncated at 4000 characters."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramSendRequest"
+      responses:
+        "200":
+          description: "Message sent successfully"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  chat_id:
+                    type: string
+                    example: "123456789"
+        "500":
+          description: "Failed to send (check bot token and chat_id in .env)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # =========================================================================
+  # AGENTLESS
+  # =========================================================================
+  /api/agentless/devices:
+    get:
+      tags: [Agentless]
+      summary: "List agentless monitoring devices"
+      responses:
+        "200":
+          description: "List of agentless devices"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentlessDevice"
+    post:
+      tags: [Agentless]
+      summary: "Add new agentless monitoring device"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, ip, device_type, method]
+              properties:
+                name:
+                  type: string
+                  example: "Router Core"
+                ip:
+                  type: string
+                  example: "192.168.1.1"
+                device_type:
+                  type: string
+                  example: "router"
+                method:
+                  type: string
+                  enum: [snmp, ssh, ping]
+                interval_seconds:
+                  type: integer
+                  default: 300
+      responses:
+        "200":
+          description: "Device added"
+  
+  /api/agentless/devices/{device_id}:
+    delete:
+      tags: [Agentless]
+      summary: "Remove agentless device"
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: "Device removed"
+
+  /api/agentless/events:
+    get:
+      tags: [Agentless]
+      summary: "Get agentless monitoring results"
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: "Agentless monitoring events"
+
+  /api/agentless/clear:
+    post:
+      tags: [Agentless]
+      summary: "Clear agentless events"
+      responses:
+        "200":
+          description: "Agentless events cleared"
+
+  # =========================================================================
+  # COMMANDS
+  # =========================================================================
+  /api/commands/exec:
+    post:
+      tags: [Commands]
+      summary: "Execute remote command on agent"
+      description: "Queue a command for execution on a specific agent machine."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+      responses:
+        "200":
+          description: "Command queued"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandResponse"
+  
+  /api/commands/result/{exec_id}:
+    get:
+      tags: [Commands]
+      summary: "Get command execution result"
+      parameters:
+        - name: exec_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Command result"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandResponse"
+
+  # =========================================================================
+  # SYSTEM
+  # =========================================================================
+  /api/system_stats:
+    get:
+      tags: [System]
+      summary: "Get server system statistics"
+      responses:
+        "200":
+          description: "Server system statistics"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server_cpu:
+                    type: number
+                  server_memory:
+                    type: number
+                  server_disk:
+                    type: number
+                  agent_count:
+                    type: integer
+                  online_count:
+                    type: integer
+                  database_size_mb:
+                    type: number
+
+  /api/cluster/status:
+    get:
+      tags: [System]
+      summary: "Get cluster status (multi-node HA)"
+      responses:
+        "200":
+          description: "Cluster status information"
+
+  # =========================================================================
+  # SSE (Server-Sent Events)
+  # =========================================================================
+  /api/events/stream:
+    get:
+      tags: [Events]
+      summary: "SSE stream for real-time events"
+      description: "Server-Sent Events endpoint for receiving real-time updates."
+      responses:
+        "200":
+          description: "SSE event stream"
+          content:
+            text/event-stream:
+              schema:
+                type: string

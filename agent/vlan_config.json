@@ -1,0 +1,21 @@
+{
+  "_comment": "GIAM-SAT VLAN/Subnet Mapping Configuration v3.9.3",
+  "_usage": "Map CIDR ranges to human-readable network segment names for lateral movement visibility",
+  "subnets": {
+    "CORP-LAN": "10.0.0.0/16",
+    "DMZ": "172.16.0.0/24",
+    "MGMT": "192.168.100.0/24",
+    "SERVERS": "10.0.1.0/24",
+    "WORKSTATIONS": "10.0.2.0/24",
+    "GUEST-WIFI": "192.168.200.0/24",
+    "IOT": "10.0.100.0/24"
+  },
+  "pcap": {
+    "_comment": "Lightweight packet capture config for suspicious traffic",
+    "enabled": true,
+    "snap_len": 256,
+    "count": 5,
+    "timeout_sec": 3,
+    "capture_ports": [22, 23, 135, 139, 445, 3389, 1433, 3306, 5432, 6379, 27017, 5985, 5986, 4444, 5555]
+  }
+}

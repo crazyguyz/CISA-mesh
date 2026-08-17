@@ -1,0 +1,157 @@
+{
+  "name": "Tổng quan hệ thống",
+  "description": "Dashboard mặc định - tổng quan toàn bộ hệ thống",
+  "refresh_interval": 60,
+  "category": "monitoring",
+  "panels": [
+    {
+      "id": "stat_online",
+      "type": "stat",
+      "title": "Máy Online",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "online_machines"
+      }
+    },
+    {
+      "id": "stat_offline",
+      "type": "stat",
+      "title": "Máy Offline",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "offline_machines"
+      }
+    },
+    {
+      "id": "stat_events",
+      "type": "stat",
+      "title": "Events 24h",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "events"
+      }
+    },
+    {
+      "id": "stat_threats",
+      "type": "stat",
+      "title": "Threats 24h",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "threats"
+      }
+    },
+    {
+      "id": "stat_fim",
+      "type": "stat",
+      "title": "FIM Events 24h",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "fim_events"
+      }
+    },
+    {
+      "id": "stat_responses",
+      "type": "stat",
+      "title": "Responses 24h",
+      "size": {
+        "w": 2,
+        "h": 1
+      },
+      "data": {
+        "endpoint": "/api/stats",
+        "field": "responses"
+      }
+    },
+    {
+      "id": "table_machines",
+      "type": "table",
+      "title": "Danh sách máy trạm",
+      "size": {
+        "w": 6,
+        "h": 2
+      },
+      "data": {
+        "endpoint": "/api/machines",
+        "columns": [
+          {
+            "field": "hostname",
+            "label": "Hostname"
+          },
+          {
+            "field": "ip_address",
+            "label": "IP"
+          },
+          {
+            "field": "platform",
+            "label": "OS"
+          },
+          {
+            "field": "version",
+            "label": "Version"
+          },
+          {
+            "field": "is_online",
+            "label": "Online"
+          }
+        ]
+      }
+    },
+    {
+      "id": "table_threats",
+      "type": "table",
+      "title": "Threats gần đây",
+      "size": {
+        "w": 6,
+        "h": 2
+      },
+      "data": {
+        "endpoint": "/api/threats",
+        "params": {
+          "limit": 10
+        },
+        "columns": [
+          {
+            "field": "hostname",
+            "label": "Hostname"
+          },
+          {
+            "field": "rule_name",
+            "label": "Rule"
+          },
+          {
+            "field": "severity",
+            "label": "Severity"
+          },
+          {
+            "field": "description",
+            "label": "Description"
+          },
+          {
+            "field": "timestamp",
+            "label": "Time"
+          }
+        ]
+      }
+    }
+  ]
+}

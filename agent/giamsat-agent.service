@@ -1,0 +1,29 @@
+[Unit]
+Description=GIAM-SAT Agent v3.9.3 - Security Monitoring Agent
+Documentation=https://github.com/giangbeohu/giamsat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/giamsat_agent
+Restart=on-failure
+RestartSec=10
+User=root
+Group=root
+StandardOutput=append:/var/log/giamsat-agent.log
+StandardError=append:/var/log/giamsat-agent.err
+Environment=GIAMSAT_DATA_DIR=/var/lib/giamsat-agent
+Environment=PYTHONUNBUFFERED=1
+LimitNOFILE=65536
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/giamsat-agent /var/log /tmp
+PrivateTmp=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

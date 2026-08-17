@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIAM-SAT - Đăng nhập</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+:root {
+  --bg-dark: #0f1923;
+  --card-dark: #1a2a3a;
+  --border-color: #2a3a4a;
+  --text-muted: #c8d8e8;
+  --text-bright: #eef4f8;
+  --accent: #00d4aa;
+  --accent2: #3399ff;
+  --danger: #ff4444;
+}
+body {
+  background: var(--bg-dark);
+  color: var(--text-bright);
+  font-family: 'Segoe UI', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  margin: 0;
+}
+.login-container {
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+.login-card {
+  background: var(--card-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 40px 32px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.login-header .logo {
+  font-size: 48px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.login-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0;
+}
+.login-header .subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.form-group {
+  margin-bottom: 20px;
+}
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.form-group .input-wrapper {
+  position: relative;
+}
+.form-group .input-wrapper i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #5a6a7a;
+  font-size: 16px;
+  /* v2.0.2 FIX: Allow clicks to pass through icon to input */
+  pointer-events: none;
+  z-index: 0;
+}
+.form-group input {
+  width: 100%;
+  padding: 10px 12px 10px 40px;
+  background: #0f1923;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-bright);
+  font-size: 14px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+}
+.form-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,212,170,0.1);
+}
+.form-group input::placeholder {
+  color: #4a5a6a;
+}
+.btn-login {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+  position: relative;
+  z-index: 1;
+}
+.btn-login:hover {
+  background: #00e4b8;
+  box-shadow: 0 4px 16px rgba(0,212,170,0.3);
+}
+.btn-login:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.alert {
+  border: none;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: none;
+}
+.alert-danger {
+  background: #3a1a1a;
+  color: #ff8888;
+  border: 1px solid #5a3030;
+}
+.alert-warning {
+  background: #3a2a1a;
+  color: #ffcc66;
+  border: 1px solid #5a4a2a;
+}
+.alert-info {
+  background: #1a3a5a;
+  color: #88ccff;
+  border: 1px solid #2a4a6a;
+}
+.alert.show { display: block; }
+.password-hint {
+  font-size: 11px;
+  color: #6a8aaa;
+  margin-top: 8px;
+  text-align: center;
+}
+.footer-text {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 11px;
+  color: #5a6a7a;
+}
+/* Change password modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-dialog {
+  background: var(--card-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 32px;
+  width: 100%;
+  max-width: 420px;
+  margin: 20px;
+  position: relative;
+  z-index: 1001;
+}
+.modal-dialog h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: var(--accent);
+}
+/* v2.0.2 FIX: Ensure modal content is clickable */
+.modal-dialog .form-group input {
+  pointer-events: auto;
+}
+.modal-dialog .btn-login {
+  pointer-events: auto;
+}
+/* Loading spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #000;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="login-container" id="loginContainer">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="logo"><i class="bi bi-shield-shaded"></i></div>
+      <h2>GIAM-SAT</h2>
+      <div class="subtitle" data-i18n="login.subtitle">Hệ thống giám sát bảo mật tập trung</div>
+    </div>
+
+    <!-- Alert messages -->
+    <div class="alert" id="alertBox"></div>
+
+    <!-- Login form -->
+    <form id="loginForm" autocomplete="off">
+      <div class="form-group">
+        <label data-i18n="login.username">Tên đăng nhập</label>
+        <div class="input-wrapper">
+          <i class="bi bi-person"></i>
+          <input type="text" id="username" data-i18n-placeholder="login.usernamePh" placeholder="Nhập tên đăng nhập" autocomplete="username" required autofocus>
+        </div>
+      </div>
+      <div class="form-group">
+        <label data-i18n="login.password">Mật khẩu</label>
+        <div class="input-wrapper">
+          <i class="bi bi-lock"></i>
+          <input type="password" id="password" data-i18n-placeholder="login.passwordPh" placeholder="Nhập mật khẩu" autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="btn-login" id="loginBtn">
+        <i class="bi bi-box-arrow-in-right"></i> <span data-i18n="login.submit">Đăng nhập</span>
+      </button>
+    </form>
+
+    <div class="password-hint">
+      <i class="bi bi-shield-lock"></i> <span data-i18n="login.remoteHint">Truy cập từ xa yêu cầu xác thực</span>
+    </div>
+  </div>
+  <div class="footer-text">GIAM-SAT Server v2.0.2 &copy; 2026</div>
+</div>
+
+<script src="/static/js/i18n.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  const alertBox = document.getElementById('alertBox');
+  const loginForm = document.getElementById('loginForm');
+  const loginBtn = document.getElementById('loginBtn');
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+
+  // v2.0.2 FIX: Store auth token globally so password change can use it
+  var _giamsatToken = '';
+
+  // Check if already authenticated
+  async function checkAuth() {
+    try {
+      const resp = await fetch('/api/auth/check');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.authenticated) {
+          window.location.href = '/';
+          return true;
+        }
+      }
+    } catch(e) {}
+    return false;
+  }
+
+  function showAlert(msg, type) {
+    alertBox.className = 'alert alert-' + type + ' show';
+    alertBox.textContent = msg;
+  }
+
+  function hideAlert() {
+    alertBox.className = 'alert';
+    alertBox.textContent = '';
+  }
+
+  function setLoading(loading) {
+    if (loading) {
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = '<span class="spinner"></span> Đang đăng nhập...';
+    } else {
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Đăng nhập';
+    }
+  }
+
+  // Handle login
+  loginForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    hideAlert();
+
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    if (!username || !password) {
+      showAlert('Vui lòng nhập tên đăng nhập và mật khẩu.', 'warning');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: username, password: password})
+      });
+
+      const data = await resp.json();
+
+      if (data.success) {
+        // v2.0.2 FIX: Store token for password change request
+        _giamsatToken = data.token || '';
+        if (data.must_change_password) {
+          showChangePasswordModal(username);
+        } else {
+          window.location.href = '/';
+        }
+      } else {
+        showAlert(data.error || 'Đăng nhập thất bại. Vui lòng thử lại.', 'danger');
+        passwordInput.value = '';
+        passwordInput.focus();
+      }
+    } catch(err) {
+      showAlert('Lỗi kết nối đến máy chủ. Vui lòng thử lại.', 'danger');
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  // Change password modal (required on first login)
+  function showChangePasswordModal(username) {
+    const container = document.getElementById('loginContainer');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'changePwdModal';
+    modal.innerHTML = '\
+      <div class="modal-dialog">\
+        <h3><i class="bi bi-shield-lock-fill"></i> Đổi mật khẩu bắt buộc</h3>\
+        <div class="alert" id="pwdAlert"></div>\
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">\
+          Đây là lần đăng nhập đầu tiên. Bạn phải đổi mật khẩu trước khi tiếp tục.\
+        </p>\
+        <div class="form-group">\
+          <label>Mật khẩu cũ</label>\
+          <div class="input-wrapper">\
+            <i class="bi bi-key"></i>\
+            <input type="password" id="oldPassword" placeholder="Nhập mật khẩu mặc định" style="pointer-events:auto;">\
+          </div>\
+        </div>\
+        <div class="form-group">\
+          <label>Mật khẩu mới</label>\
+          <div class="input-wrapper">\
+            <i class="bi bi-key-fill"></i>\
+            <input type="password" id="newPassword" placeholder="Ít nhất 12 ký tự, có hoa/thường/số/ký tự đặc biệt" style="pointer-events:auto;">\
+          </div>\
+        </div>\
+        <div class="form-group">\
+          <label>Xác nhận mật khẩu mới</label>\
+          <div class="input-wrapper">\
+            <i class="bi bi-key-fill"></i>\
+            <input type="password" id="confirmPassword" placeholder="Nhập lại mật khẩu mới" style="pointer-events:auto;">\
+          </div>\
+        </div>\
+        <button class="btn-login" id="changePwdBtn" style="pointer-events:auto;">\
+          <i class="bi bi-check-circle"></i> Đổi mật khẩu\
+        </button>\
+        <p style="color:var(--danger);font-size:12px;text-align:center;margin-top:12px;font-weight:600;">\
+          <i class="bi bi-exclamation-triangle-fill"></i> \
+          Bạn phải đổi mật khẩu để tiếp tục sử dụng hệ thống.\
+        </p>\
+      </div>\
+    ';
+    container.appendChild(modal);
+
+    const pwdAlert = document.getElementById('pwdAlert');
+    const changePwdBtn = document.getElementById('changePwdBtn');
+
+    function showPwdAlert(msg, type) {
+      pwdAlert.className = 'alert alert-' + type + ' show';
+      pwdAlert.textContent = msg;
+    }
+
+    function setPwdLoading(loading) {
+      changePwdBtn.disabled = loading;
+      changePwdBtn.innerHTML = loading
+        ? '<span class="spinner"></span> Đang đổi mật khẩu...'
+        : '<i class="bi bi-check-circle"></i> Đổi mật khẩu';
+    }
+
+    // Focus on old password field
+    setTimeout(function() {
+      var oldPwdInput = document.getElementById('oldPassword');
+      if (oldPwdInput) oldPwdInput.focus();
+    }, 100);
+
+    // Change password
+    changePwdBtn.addEventListener('click', async function() {
+      pwdAlert.className = 'alert';
+
+      const oldPwd = document.getElementById('oldPassword').value;
+      const newPwd = document.getElementById('newPassword').value;
+      const confirmPwd = document.getElementById('confirmPassword').value;
+
+      if (!oldPwd || !newPwd || !confirmPwd) {
+        showPwdAlert('Vui lòng điền đầy đủ các trường.', 'warning');
+        return;
+      }
+      if (newPwd !== confirmPwd) {
+        showPwdAlert('Mật khẩu mới và xác nhận không khớp.', 'danger');
+        return;
+      }
+      if (newPwd.length < 12) {
+        showPwdAlert('Mật khẩu mới phải có ít nhất 12 ký tự.', 'danger');
+        return;
+      }
+
+      setPwdLoading(true);
+      try {
+        // v2.0.2 FIX: Send token in both cookie (credentials) AND Authorization header as fallback
+        var headers = {'Content-Type': 'application/json'};
+        if (_giamsatToken) {
+          headers['Authorization'] = 'Bearer ' + _giamsatToken;
+        }
+        const resp = await fetch('/api/users/password', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({old_password: oldPwd, new_password: newPwd}),
+          credentials: 'same-origin'
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+          // v2.0.2 FIX: Update token if server returned a new one
+          if (data.token) {
+            _giamsatToken = data.token;
+          }
+          window.location.href = '/';
+        } else {
+          showPwdAlert(data.error || 'Đổi mật khẩu thất bại.', 'danger');
+        }
+      } catch(err) {
+        showPwdAlert('Lỗi kết nối. Vui lòng thử lại.', 'danger');
+      } finally {
+        setPwdLoading(false);
+      }
+    });
+  }
+
+  // Check auth on page load
+  checkAuth();
+
+  // Handle Enter key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !loginBtn.disabled && document.activeElement === usernameInput) {
+      passwordInput.focus();
+      e.preventDefault();
+    }
+  });
+})();
+</script>
+</body>
+</html>

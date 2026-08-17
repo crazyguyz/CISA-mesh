@@ -1,0 +1,40 @@
+{
+  "enabled": true,
+  "min_severity": "MEDIUM",
+  "cooldown_seconds": 300,
+  "email": {
+    "enabled": false,
+    "smtp_host": "",
+    "smtp_port": 587,
+    "username": "",
+    "password": "",
+    "from_addr": "",
+    "to_addrs": []
+  },
+  "slack": {
+    "enabled": false,
+    "webhook_url": "",
+    "channel": "#alerts"
+  },
+  "webhook": {
+    "enabled": false,
+    "url": "",
+    "headers": {}
+  },
+  "server_url": "http://localhost:5000",
+  "telegram": {
+    "enabled": true,
+    "bot_token": "",
+    "chat_id": "",
+    "approval_timeout": 300
+  },
+  "auto_response": {
+    "mode": "off",
+    "require_confidence": 90,
+    "safe_users": [
+      "admin",
+      "administrator"
+    ],
+    "safe_machines": []
+  }
+}

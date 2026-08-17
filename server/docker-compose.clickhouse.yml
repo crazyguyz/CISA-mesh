@@ -1,0 +1,66 @@
+# GIAM-SAT ClickHouse Stack for High-Performance SIEM Storage
+# 
+# Usage:
+#   docker-compose -f docker-compose.clickhouse.yml up -d
+#
+# Web UI: http://localhost:8123/play
+# Native port: localhost:9000
+# HTTP port:  localhost:8123
+
+version: "3.8"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: giamsat-clickhouse
+    hostname: clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP interface (Tabix/Play UI)
+      - "9000:9000"   # Native TCP (clickhouse-driver)
+    volumes:
+      - ./clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse-logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: giamsat
+      CLICKHOUSE_USER: giamsat
+      CLICKHOUSE_PASSWORD: GiamSat@2026!
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
+        reservations:
+          memory: 1G
+          cpus: "1"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Tabix Web UI for ClickHouse (lightweight SQL client)
+  tabix:
+    image: spoonest/clickhouse-tabix-web-client:latest
+    container_name: giamsat-tabix
+    restart: unless-stopped
+    ports:
+      - "8124:80"
+    environment:
+      CH_HOST: http://clickhouse:8123
+      CH_USER: giamsat
+      CH_PASSWORD: GiamSat@2026!
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+# Network
+networks:
+  default:
+    name: giamsat-clickhouse-net
+    driver: bridge

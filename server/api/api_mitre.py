@@ -1,0 +1,223 @@
+"""MITRE ATT&CK Matrix API for GIAM-SAT v3.9.3."""
+from flask import jsonify, request
+import sqlite3
+import os
+import json
+
+MITRE_TACTICS = [
+    "Reconnaissance", "Resource Development", "Initial Access", "Execution",
+    "Persistence", "Privilege Escalation", "Defense Evasion", "Credential Access",
+    "Discovery", "Lateral Movement", "Collection", "Command and Control",
+    "Exfiltration", "Impact"
+]
+
+def register_routes(app, core):
+    """Register MITRE ATT&CK API routes."""
+
+    @app.route("/api/mitre/matrix")
+    def api_mitre_matrix():
+        """Return MITRE ATT&CK matrix data for dashboard visualization."""
+        machine_id = request.args.get("machine_id", "")
+        since_hours = int(request.args.get("since_hours", "24"))
+        
+        result = {
+            "tactics": MITRE_TACTICS,
+            "techniques": [],
+            "summary": {
+                "total_alerts": 0,
+                "highest_severity": "NONE",
+                "active_tactics": [],
+            },
+        }
+        
+        max_sev_score = 0
+        sev_scores = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
+        
+        try:
+            if not core.db or not core.db.conn:
+                return jsonify(result)
+
+            # Detect backend: SQLite uses `?` placeholder + datetime(), PostgreSQL uses `%s` + INTERVAL
+            is_sqlite = not hasattr(core.db, '_execute')
+
+            # Query threat alerts with MITRE data (use received_at, not timestamp TEXT)
+            if is_sqlite:
+                q = """SELECT rule_id, rule_name, severity, description, 
+                              machine_id, hostname, timestamp,
+                              raw_data
+                       FROM threat_alerts 
+                       WHERE 1=1"""
+                params = []
+                if machine_id:
+                    q += " AND machine_id = ?"
+                    params.append(machine_id)
+                if since_hours:
+                    q += " AND received_at >= datetime('now', ?)"
+                    params.append(f'-{since_hours} hours')
+                q += " ORDER BY id DESC LIMIT 2000"
+            else:
+                q = """SELECT rule_id, rule_name, severity, description, 
+                              machine_id, hostname, timestamp,
+                              raw_data
+                       FROM threat_alerts 
+                       WHERE 1=1"""
+                params = []
+                if machine_id:
+                    q += " AND machine_id = %s"
+                    params.append(machine_id)
+                if since_hours:
+                    # Use concatenation + cast to avoid %s inside quotes (psycopg2 bug)
+                    q += " AND received_at >= NOW() - (%s || ' hours')::INTERVAL"
+                    params.append(str(since_hours))
+                q += " ORDER BY id DESC LIMIT 2000"
+
+            cur = core.db.conn.cursor()
+            cur.execute(q, tuple(params))
+            rows = cur.fetchall()
+        except Exception as e:
+            print(f"[-] MITRE API query error: {e}")
+            return jsonify(result)
+        
+        techniques = {}  # technique_id -> {tactic, name, count, max_severity, alerts[]}
+        
+        for row in rows:
+            rule_id = row[0] or "UNKNOWN"
+            rule_name = row[1] or "Unknown Rule"
+            severity = row[2] or "INFO"
+            description = row[3] or ""
+            m_id = row[4] or ""
+            hostname = row[5] or ""
+            timestamp = row[6] or ""
+            raw_data_val = row[7] or {}
+            
+            # Extract MITRE data from raw_data (may be dict or JSONB string)
+            tactic = "Unknown"
+            technique_id = "N/A"
+            technique_name = ""
+            
+            # raw_data may already be a dict from PostgreSQL JSONB
+            if isinstance(raw_data_val, dict):
+                raw = raw_data_val
+            elif isinstance(raw_data_val, str):
+                try:
+                    raw = json.loads(raw_data_val)
+                except Exception:
+                    raw = {}
+            else:
+                raw = {}
+            
+            # Try multiple sources for MITRE mapping
+            mitre_tactic = raw.get("mitre_tactic", "")
+            mitre_tech_id = raw.get("mitre_technique_id", "")
+            mitre_tech_name = raw.get("mitre_technique_name", "")
+            
+            if mitre_tactic and mitre_tech_id:
+                tactic = mitre_tactic
+                technique_id = mitre_tech_id
+                technique_name = mitre_tech_name
+            else:
+                # Fallback: derive from rule_name or description (best effort)
+                tactic = _infer_tactic(rule_name, description)
+                technique_id = rule_id
+                technique_name = rule_name
+            
+            sev = sev_scores.get(severity, 0)
+            if sev > max_sev_score:
+                max_sev_score = sev
+            
+            key = technique_id
+            if key not in techniques:
+                techniques[key] = {
+                    "technique_id": technique_id,
+                    "technique_name": technique_name or rule_name,
+                    "tactic": tactic,
+                    "count": 0,
+                    "max_severity": severity,
+                    "alerts": [],
+                }
+            
+            techniques[key]["count"] += 1
+            if sev_scores.get(techniques[key]["max_severity"], 0) < sev:
+                techniques[key]["max_severity"] = severity
+            
+            # Keep last 3 alerts
+            if len(techniques[key]["alerts"]) < 3:
+                techniques[key]["alerts"].append({
+                    "rule_id": rule_id,
+                    "rule_name": rule_name,
+                    "severity": severity,
+                    "machine_id": m_id,
+                    "hostname": hostname,
+                    "timestamp": timestamp,
+                    "description": description[:200],
+                })
+        
+        # Build summary
+        sev_map = {4: "CRITICAL", 3: "HIGH", 2: "MEDIUM", 1: "LOW", 0: "INFO"}
+        result["summary"]["highest_severity"] = sev_map.get(max_sev_score, "NONE")
+        
+        # Count unique tactics
+        active_tactics = set(t["tactic"] for t in techniques.values())
+        result["summary"]["active_tactics"] = sorted(active_tactics)
+        result["summary"]["total_techniques"] = len(techniques)
+        
+        # Sort by severity then count
+        tech_list = list(techniques.values())
+        tech_list.sort(key=lambda t: (sev_scores.get(t["max_severity"], 0), t["count"]), reverse=True)
+        result["techniques"] = tech_list
+        result["summary"]["total_alerts"] = len(rows)
+        
+        return jsonify(result)
+
+    @app.route("/api/mitre/technique/<technique_id>")
+    def api_mitre_technique(technique_id):
+        """Return all alerts for a specific MITRE technique."""
+        result = {"technique_id": technique_id, "alerts": []}
+        try:
+            cur = core.db.conn.cursor()
+            cur.execute("""
+                SELECT rule_id, rule_name, severity, description, 
+                       machine_id, hostname, timestamp, raw_data
+                FROM threat_alerts
+                WHERE raw_data::text LIKE %s
+                ORDER BY id DESC LIMIT 100
+            """, (f"%{technique_id}%",))
+            rows = cur.fetchall()
+            for row in rows:
+                result["alerts"].append({
+                    "rule_id": row[0], "rule_name": row[1],
+                    "severity": row[2], "description": row[3] or "",
+                    "machine_id": row[4], "hostname": row[5],
+                    "timestamp": row[6],
+                })
+        except Exception:
+            pass
+        return jsonify(result)
+
+
+def _infer_tactic(rule_name, description):
+    """Best-effort tactic inference from rule name/description."""
+    text = (rule_name + " " + description).lower()
+    if any(k in text for k in ("brute force", "password", "credential", "lsass")):
+        return "Credential Access"
+    if any(k in text for k in ("ransomware", "encrypt", "shadow copy", "wiper")):
+        return "Impact"
+    if any(k in text for k in ("defender", "firewall disable", "defense evas", "uac")):
+        return "Defense Evasion"
+    if any(k in text for k in ("c2", "beacon", "tunnel", "command and control")):
+        return "Command and Control"
+    if any(k in text for k in ("lateral", "psexec", "winrm", "wmi", "pass-the")):
+        return "Lateral Movement"
+    if any(k in text for k in ("persist", "registry run", "startup", "service install")):
+        return "Persistence"
+    if any(k in text for k in ("privilege", "token", "injection")):
+        return "Privilege Escalation"
+    if any(k in text for k in ("execut", "powershell", "cmd", "script")):
+        return "Execution"
+    if any(k in text for k in ("discover", "scan", "enum")):
+        return "Discovery"
+    if any(k in text for k in ("phish", "exploit", "initial access")):
+        return "Initial Access"
+    if any(k in text for k in ("exfil", "data exfil", "upload")):
+        return "Exfiltration"
+    return "Unknown"

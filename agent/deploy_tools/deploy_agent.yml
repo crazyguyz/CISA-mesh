@@ -1,0 +1,162 @@
+---
+# GIAM-SAT Agent Ansible Playbook v2.0.0
+# Deploy agent to multiple Windows/Linux machines
+#
+# Usage:
+#   ansible-playbook -i inventory.ini deploy_agent.yml
+#
+# Inventory example (inventory.ini):
+#   [windows_hosts]
+#   192.168.1.100 ansible_user=Administrator ansible_password=password
+#   192.168.1.101 ansible_user=Administrator ansible_password=password
+#
+#   [linux_hosts]
+#   192.168.1.200 ansible_user=root
+#   192.168.1.201 ansible_user=root
+
+- name: Deploy GIAM-SAT Agent
+  hosts: all
+  gather_facts: true
+  vars:
+    giamsat_server_ip: "192.168.1.200"
+    giamsat_server_port: 6666
+    agent_download_url: "http://{{ giamsat_server_ip }}:5000/static/GiamSatAgent.exe"
+    agent_install_path_windows: "C:\\Program Files\\GiamSat"
+    agent_install_path_linux: "/opt/giamsat"
+
+  tasks:
+    # =========================================================================
+    # Windows Deployment
+    # =========================================================================
+    - name: Windows | Create install directory
+      ansible.windows.win_file:
+        path: "{{ agent_install_path_windows }}"
+        state: directory
+      when: ansible_os_family == "Windows"
+
+    - name: Windows | Download agent from server
+      ansible.windows.win_get_url:
+        url: "{{ agent_download_url }}"
+        dest: "{{ agent_install_path_windows }}\\GiamSatAgent.exe"
+        force: true
+      when: ansible_os_family == "Windows"
+      ignore_errors: true
+
+    - name: Windows | Copy agent from local if download fails
+      ansible.windows.win_copy:
+        src: "{{ playbook_dir }}/../dist/GiamSatAgent.exe"
+        dest: "{{ agent_install_path_windows }}\\GiamSatAgent.exe"
+      when: ansible_os_family == "Windows"
+
+    - name: Windows | Create config file
+      ansible.windows.win_shell: |
+        $config = @{ server_ip = "{{ giamsat_server_ip }}"; server_port = {{ giamsat_server_port }}; auto_start = $true } | ConvertTo-Json
+        Set-Content -Path "{{ agent_install_path_windows }}\agent_config.json" -Value $config
+      when: ansible_os_family == "Windows"
+
+    - name: Windows | Create scheduled task for auto-start
+      ansible.windows.win_scheduled_task:
+        name: "GIAM-SAT Agent Monitor"
+        description: "GIAM-SAT Security Monitoring Agent"
+        actions:
+          - path: "{{ agent_install_path_windows }}\\GiamSatAgent.exe"
+            arguments: "--server {{ giamsat_server_ip }} --port {{ giamsat_server_port }}"
+        triggers:
+          - type: boot
+        username: SYSTEM
+        run_level: highest
+        state: present
+        enabled: true
+      when: ansible_os_family == "Windows"
+
+    - name: Windows | Start agent immediately
+      ansible.windows.win_shell: |
+        Start-Process -FilePath "{{ agent_install_path_windows }}\GiamSatAgent.exe" -ArgumentList "--server {{ giamsat_server_ip }} --port {{ giamsat_server_port }}" -WindowStyle Hidden
+      when: ansible_os_family == "Windows"
+
+    - name: Windows | Add Windows Defender exclusion
+      ansible.windows.win_shell: |
+        Add-MpPreference -ExclusionPath "{{ agent_install_path_windows }}" -ErrorAction SilentlyContinue
+      when: ansible_os_family == "Windows"
+
+    # =========================================================================
+    # Linux Deployment
+    # =========================================================================
+    - name: Linux | Create install directory
+      file:
+        path: "{{ agent_install_path_linux }}"
+        state: directory
+        mode: "0755"
+      when: ansible_os_family != "Windows"
+
+    - name: Linux | Check if running from source
+      stat:
+        path: "{{ playbook_dir }}/../main.py"
+      register: source_check
+      delegate_to: localhost
+
+    - name: Linux | Copy agent Python source
+      synchronize:
+        src: "{{ playbook_dir }}/../"
+        dest: "{{ agent_install_path_linux }}"
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=*.pyc"
+          - "--exclude=dist/"
+          - "--exclude=build/"
+          - "--exclude=*.spec"
+          - "--exclude=installer_script.iss"
+      when: ansible_os_family != "Windows" and source_check.stat.exists
+
+    - name: Linux | Install Python dependencies
+      pip:
+        requirements: "{{ agent_install_path_linux }}/requirements.txt"
+        virtualenv: "{{ agent_install_path_linux }}/venv"
+      when: ansible_os_family != "Windows"
+      ignore_errors: true
+
+    - name: Linux | Create systemd service
+      copy:
+        content: |
+          [Unit]
+          Description=GIAM-SAT Security Monitoring Agent
+          After=network.target
+          Wants=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory={{ agent_install_path_linux }}
+          ExecStart={{ agent_install_path_linux }}/venv/bin/python {{ agent_install_path_linux }}/main.py --server {{ giamsat_server_ip }} --port {{ giamsat_server_port }}
+          Restart=always
+          RestartSec=30
+          StartLimitInterval=300
+          StartLimitBurst=5
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/giamsat-agent.service
+        mode: "0644"
+      when: ansible_os_family != "Windows"
+
+    - name: Linux | Enable and start service
+      systemd:
+        name: giamsat-agent
+        daemon_reload: true
+        enabled: true
+        state: started
+      when: ansible_os_family != "Windows"
+
+    # =========================================================================
+    # Verification
+    # =========================================================================
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "============================================"
+          - " GIAM-SAT Agent Deployment Complete"
+          - "============================================"
+          - " Host: {{ inventory_hostname }}"
+          - " OS: {{ ansible_os_family }}"
+          - " Server: {{ giamsat_server_ip }}:{{ giamsat_server_port }}"
+          - "============================================"

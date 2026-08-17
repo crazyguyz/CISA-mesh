@@ -1,0 +1,57 @@
+# GIAM-SAT Elasticsearch Stack v3.1
+# Single-node Elasticsearch for log analytics and threat hunting.
+#
+# Usage:
+#   docker-compose -f docker-compose.elasticsearch.yml up -d
+#
+# Then configure GIAMSAT_DB_BACKEND=elasticsearch in server .env
+
+version: "3.8"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: giamsat-elasticsearch
+    hostname: es01
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms1g -Xmx2g"
+      - cluster.name=giamsat-cluster
+      - node.name=es01
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"   # REST API (local only)
+      - "127.0.0.1:9300:9300"   # Internal transport (local only)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health 2>&1 | grep -qE 'green|yellow'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: giamsat-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"   # Kibana UI (local only)
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  es_data:
+    driver: local

@@ -1,0 +1,18 @@
+{
+  "server_host": "YOUR_SERVER_IP",
+  "server_port": 6666,
+  "tls_enabled": true,
+  "machine_id": "",
+  "hostname": "",
+  "_auto_response_modes": {
+    "off": "Không tự động hành động (mặc định - an toàn nhất). Chỉ gửi alert.",
+    "confirm": "Gửi alert -> chờ SOC approve qua Telegram/Dashboard -> execute",
+    "auto": "Tự động thực thi ngay lập tức (chỉ dùng khi đã test kỹ)"
+  },
+  "auto_response": {
+    "mode": "confirm",
+    "require_confidence": 90,
+    "safe_users": ["admin", "administrator"],
+    "safe_machines": ["DC01"]
+  }
+}

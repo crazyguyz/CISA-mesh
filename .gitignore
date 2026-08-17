@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+# *.spec (PyInstaller spec files are needed for build)
+
+# Secrets
+.env
+*.env
+!.env.example
+.user_key
+users.json
+users.json.enc
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Installer binaries
+server/setup/*.exe
+
+# Sigma Rules
+.sigma_repo/
+
+# Reports
+reports/
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Backup files
+*.bak
+
+# Agent binaries & data
+agent/Sysmon.exe
+agent/Sysmon64a.exe
+agent/data/nvd_*.json
+agent/data/nvd_*.txt
+agent/config.json
+server/agent_update/*.exe

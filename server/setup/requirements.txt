@@ -1,0 +1,13 @@
+flask
+pyjwt
+pyyaml
+cryptography
+requests
+urllib3
+psycopg2-binary
+waitress
+openpyxl
+bcrypt
+python-dotenv
+aiohttp
+watchdog

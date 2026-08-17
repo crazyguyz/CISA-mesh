@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Example Server",
+    "ip": "192.168.1.100",
+    "device_type": "server",
+    "method": "ping",
+    "enabled": false,
+    "interval_seconds": 120
+  },
+  {
+    "name": "Internet Gateway",
+    "ip": "8.8.8.8",
+    "device_type": "internet",
+    "method": "ping",
+    "enabled": false,
+    "interval_seconds": 60
+  }
+]
