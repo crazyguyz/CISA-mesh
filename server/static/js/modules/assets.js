@@ -305,7 +305,7 @@ var Assets = {
             var html = '<table class="table-data table table-sm mb-0"><thead><tr>' +
                 '<th>' + t('assets.assetId') + '</th><th>' + t('assets.type') + '</th><th>' + t('assets.fieldName') + '</th>' +
                 '<th>' + t('assets.fieldBrand') + '</th><th>' + t('assets.fieldModel') + '</th><th>' + t('assets.fieldSerial') + '</th>' +
-                '<th>' + t('assets.status') + '</th><th>SL</th><th>' + t('assets.fieldAssignedTo') + '</th><th>IP</th><th>Nguồn</th><th></th></tr></thead><tbody>';
+                '<th>' + t('assets.status') + '</th><th>' + t('assets.colQty') + '</th><th>' + t('assets.fieldAssignedTo') + '</th><th>' + t('assets.fieldIp') + '</th><th>' + t('assets.colSrc') + '</th><th></th></tr></thead><tbody>';
             items.forEach(function(a) {
                 var catLbl = Assets._catLbl(a.category);
                 var stLbl = Assets._stLbl(a.status);
