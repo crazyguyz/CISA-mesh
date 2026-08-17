@@ -305,7 +305,7 @@ var Assets = {
             var html = '<table class="table-data table table-sm mb-0"><thead><tr>' +
                 '<th>' + t('assets.assetId') + '</th><th>' + t('assets.type') + '</th><th>' + t('assets.fieldName') + '</th>' +
                 '<th>' + t('assets.fieldBrand') + '</th><th>' + t('assets.fieldModel') + '</th><th>' + t('assets.fieldSerial') + '</th>' +
-                '<th>' + t('assets.status') + '</th><th>' + t('assets.fieldAssignedTo') + '</th><th>IP</th><th>Nguồn</th><th></th></tr></thead><tbody>';
+                '<th>' + t('assets.status') + '</th><th>SL</th><th>' + t('assets.fieldAssignedTo') + '</th><th>IP</th><th>Nguồn</th><th></th></tr></thead><tbody>';
             items.forEach(function(a) {
                 var catLbl = Assets._catLbl(a.category);
                 var stLbl = Assets._stLbl(a.status);
@@ -330,6 +330,7 @@ var Assets = {
                     '<td>' + Assets.esc(modelTxt) + '</td>' +
                     '<td>' + Assets.esc(a.serial_number || '-') + '</td>' +
                     '<td><span class="badge ' + stCls + '">' + Assets.esc(stLbl) + '</span></td>' +
+                    '<td>' + Assets.esc(a.quantity || 1) + '</td>' +
                     '<td>' + Assets.esc(assigned) + '</td>' +
                     '<td>' + Assets.esc(a.ip_address || '-') + '</td>' +
                     '<td>' + srcBadge + '</td>' +
@@ -383,6 +384,7 @@ var Assets = {
         document.getElementById('invPurchaseDate').value = asset ? (asset.purchase_date || '') : '';
         document.getElementById('invWarranty').value = asset ? (asset.warranty_until || '') : '';
         document.getElementById('invCost').value = asset ? (asset.cost || '') : '';
+        document.getElementById('invQuantity').value = asset ? (asset.quantity || 1) : 1;
         document.getElementById('invNotes').value = asset ? (asset.notes || '') : '';
         modal.style.display = 'block';
     },
@@ -433,6 +435,7 @@ var Assets = {
             purchase_date: el('invPurchaseDate').value,
             warranty_until: el('invWarranty').value,
             cost: parseFloat(el('invCost').value) || 0,
+            quantity: parseInt(el('invQuantity').value) || 1,
             notes: el('invNotes').value.trim(),
             source: el('invSource').value || 'manual'
         };

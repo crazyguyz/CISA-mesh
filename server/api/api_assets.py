@@ -270,6 +270,7 @@ def init_assets_api(app, db):
                     a.get('purchase_date', '-'),
                     a.get('warranty_until', '-'),
                     a.get('cost', 0),
+                    a.get('quantity', 1),
                     source_label,
                     a.get('notes', '-'),
                     str(a.get('updated_at', ''))[:19],

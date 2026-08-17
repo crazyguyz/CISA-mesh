@@ -1,4 +1,4 @@
-# GIAM-SAT v4.1 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+﻿# GIAM-SAT v4.1 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
 > KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● 95 RULES MỚI ● HUMAN-IN-THE-LOOP ● MADE IN VIETNAM 🇻🇳
 
@@ -1223,3 +1223,6 @@ else:
 | **v4.4** | **2026-08-11** | **Module Quản lý Tài sản: 4 bảng mới, display_id, hardware change detection, monitor reassign, REST API, 3-tab UI** |
 | **v4.5** | **2026-08-11** | **Mã TS PC-001/MN-001, cột Mainboard, xuất Excel 2 sheet, tìm kiếm mở rộng (display_id + email), bộ cài setup đầy đủ** |
 | **v4.5.1** | **2026-08-12** | **Open-source release: dọn dẹp repo, .gitignore, README.md, LICENSE MIT, setup_config.ps1, fix SQLite asset methods, fix hardcoded paths, fix INTERVAL syntax (cleanup/retention), fix uptime tracking, fix asset_id (mb_serial), fix display_id (hash 8 ký tự), fix build scripts (relative paths, ConstrainedLanguage), xóa dữ liệu cá nhân** |
+| **v4.7** | **2026-08-17** | **Quan ly tai san IT mo rong: kho nhap tay + tu phat hien (may in / dien thoai IP / thiet bi mang qua SNMP+port fingerprint), bang assets_inventory, tinh nang adopt (auto->manual), xuat Excel 7 sheet** |
+| **v4.8** | **2026-08-17** | **So luong ton kho (quantity), may in USB tu gan source=auto tu agent, sua MITRE ATT&CK matrix hien thi canh bao tactic chua map (Unknown/Other)** |
+

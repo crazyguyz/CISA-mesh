@@ -58,12 +58,17 @@ class DatabaseManager:
                 assigned_to TEXT DEFAULT '', computer_asset_id TEXT DEFAULT '',
                 ip_address TEXT DEFAULT '', mac_address TEXT DEFAULT '',
                 location TEXT DEFAULT '', purchase_date TEXT DEFAULT '',
-                warranty_until TEXT DEFAULT '', cost REAL DEFAULT 0,
+                warranty_until TEXT DEFAULT '', cost REAL DEFAULT 0, quantity INTEGER DEFAULT 1,
                 notes TEXT DEFAULT '', source TEXT DEFAULT 'manual',
                 extra_json TEXT DEFAULT '{}',
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )""")
+            # v4.8 MIGRATION: quantity column for older DBs
+            try:
+                c.execute("ALTER TABLE assets_inventory ADD COLUMN quantity INTEGER DEFAULT 1")
+            except sqlite3.OperationalError:
+                pass
 
             # Network traffic events
             c.execute("""CREATE TABLE IF NOT EXISTS network_traffic (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,src_ip TEXT,dst_ip TEXT,src_port INTEGER,dst_port INTEGER,protocol TEXT,size INTEGER,flags TEXT,state TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,raw_data TEXT)""")
@@ -2293,6 +2298,35 @@ class DatabaseManager:
                                       (computer_asset_id, json.dumps(detail, ensure_ascii=False)))
                             changes.append({"type": "monitor_disconnected", "asset_id": computer_asset_id, "asset_type": "computer", "details": detail})
 
+                # v4.8: auto-register USB printers (PortName USBxxx) from machine_config as auto assets
+                try:
+                    import hashlib as _hl
+                    for pr in (config_data.get("printers", []) or []):
+                        if not isinstance(pr, dict) or pr.get("connection") != "usb":
+                            continue
+                        pr_name = (pr.get("name") or "").strip()
+                        if not pr_name:
+                            continue
+                        usb_key = f"usbprinter|{hostname or machine_id}|{pr_name}"
+                        c.execute("""INSERT INTO assets_inventory (
+                            asset_id, display_id, category, name, brand, model,
+                            serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                            ip_address, mac_address, location, purchase_date, warranty_until,
+                            cost, quantity, notes, source, extra_json, updated_at)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                            ON CONFLICT(asset_id) DO UPDATE SET
+                            name=excluded.name, model=excluded.model, status=excluded.status,
+                            assigned_to=excluded.assigned_to, source=excluded.source,
+                            extra_json=excluded.extra_json, updated_at=CURRENT_TIMESTAMP""",
+                            (_hl.md5(usb_key.encode("utf-8")).hexdigest(),
+                             _hl.md5(("disp|" + usb_key).encode("utf-8")).hexdigest()[:8].upper(),
+                             "printer", pr_name, "", pr_name, "", "", "assigned",
+                             hostname or machine_id, computer_asset_id, "", "", "", "", "",
+                             0, 1, "USB printer (auto)", "auto",
+                             json.dumps({"port": pr.get("port", ""), "driver": pr.get("driver", "")}, ensure_ascii=False)))
+                except Exception as _pe:
+                    print(f"[-] SQLite usb-printer asset: {_pe}")
+
 
                 self.conn.commit()
             except Exception as e:
@@ -2457,6 +2491,7 @@ class DatabaseManager:
                 (data.get("ip_address") or ""), (data.get("mac_address") or ""),
                 (data.get("location") or ""), (data.get("purchase_date") or ""),
                 (data.get("warranty_until") or ""), float(data.get("cost") or 0),
+                int(data.get("quantity") or 1),
                 (data.get("notes") or ""), (data.get("source") or "manual"),
                 _json.dumps(extra, ensure_ascii=False)
             )
@@ -2464,8 +2499,8 @@ class DatabaseManager:
                 asset_id, display_id, category, name, brand, model,
                 serial_number, asset_tag, status, assigned_to, computer_asset_id,
                 ip_address, mac_address, location, purchase_date, warranty_until,
-                cost, notes, source, extra_json, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                cost, quantity, notes, source, extra_json, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
                 ON CONFLICT(asset_id) DO UPDATE SET
                 display_id=excluded.display_id, category=excluded.category, name=excluded.name,
                 brand=excluded.brand, model=excluded.model, serial_number=excluded.serial_number,
@@ -2473,7 +2508,7 @@ class DatabaseManager:
                 computer_asset_id=excluded.computer_asset_id, ip_address=excluded.ip_address,
                 mac_address=excluded.mac_address, location=excluded.location,
                 purchase_date=excluded.purchase_date, warranty_until=excluded.warranty_until,
-                cost=excluded.cost, notes=excluded.notes,
+                cost=excluded.cost, quantity=excluded.quantity, notes=excluded.notes,
                 source=excluded.source, extra_json=excluded.extra_json,
                 updated_at=CURRENT_TIMESTAMP
             """, row)

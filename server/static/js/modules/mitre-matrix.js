@@ -84,6 +84,18 @@
       }
     }
 
+    // v4.8: collect techniques whose tactic is not a standard MITRE tactic
+    // into an "Other / Unknown" column so no alert is ever hidden.
+    var otherTechs = [];
+    var stdTactics = {};
+    for (var si = 0; si < TACTICS.length; si++) stdTactics[TACTICS[si]] = true;
+    for (var tk in tacticMap) {
+      if (!stdTactics[tk] && tacticMap[tk] && tacticMap[tk].length) {
+        for (var ti2 = 0; ti2 < tacticMap[tk].length; ti2++) otherTechs.push(tacticMap[tk][ti2]);
+      }
+    }
+    var otherCol = otherTechs.length > 0;
+
     // Render matrix as horizontal scrollable table
     html += '<div style="overflow-x:auto;"><table class="table table-sm table-dark table-bordered mitre-matrix-table" style="min-width:1200px;">';
     
@@ -101,6 +113,11 @@
       }
       html += '</th>';
     }
+    if (otherCol) {
+      html += '<th style="min-width:100px; background:rgba(55,71,79,0.4); vertical-align:top; padding:6px;">';
+      html += '<small style="font-size:10px;">Khác / Other</small>';
+      html += '<br><span class="badge bg-secondary mt-1">' + otherTechs.length + '</span></th>';
+    }
     html += '</tr></thead><tbody>';
 
     // Find max rows needed
@@ -109,6 +126,7 @@
       var tTechs = tacticMap[TACTICS[col]] || [];
       if (tTechs.length > maxRows) maxRows = tTechs.length;
     }
+    if (otherTechs.length > maxRows) maxRows = otherTechs.length;
     if (maxRows === 0) maxRows = 1; // At least one row
 
     // Render rows
@@ -133,6 +151,21 @@
           html += ' <span style="color:#888;">&#215;' + tech.count + '</span>';
           html += '</div>';
           html += '</td>';
+        } else {
+          html += '<td style="background:rgba(30,30,30,0.3); border:1px solid #1a1a2e; min-height:40px;"></td>';
+        }
+      }
+      if (otherCol) {
+        if (row < otherTechs.length) {
+          var techO = otherTechs[row];
+          var sevColorO = SEV_COLORS[techO.max_severity] || '#999';
+          html += '<td style="background:rgba(55,71,79,0.25); border-left:3px solid ' + sevColorO + '; padding:4px 6px; cursor:pointer;" ';
+          html += 'onclick="showTechniqueDetail(\'' + techO.technique_id + '\')" ';
+          html += 'title="' + (techO.technique_name || techO.technique_id || '') + '\\nTactic: ' + (techO.tactic || '') + '\\nSeverity: ' + techO.max_severity + '\\nCount: ' + techO.count + '">';
+          html += '<div style="font-size:11px; font-weight:600; color:#e0e0e0;">' + (techO.technique_name || techO.technique_id || '').substring(0, 30) + '</div>';
+          html += '<div style="font-size:10px; margin-top:2px;">';
+          html += '<span style="color:' + sevColorO + ';">' + techO.max_severity + '</span> <span style="color:#888;">&#215;' + techO.count + '</span>';
+          html += '</div></td>';
         } else {
           html += '<td style="background:rgba(30,30,30,0.3); border:1px solid #1a1a2e; min-height:40px;"></td>';
         }

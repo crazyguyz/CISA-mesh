@@ -490,7 +490,7 @@ class PostgresDatabase:
                 assigned_to VARCHAR(128) DEFAULT '', computer_asset_id VARCHAR(32) DEFAULT '',
                 ip_address VARCHAR(64) DEFAULT '', mac_address VARCHAR(32) DEFAULT '',
                 location VARCHAR(128) DEFAULT '', purchase_date VARCHAR(24) DEFAULT '',
-                warranty_until VARCHAR(24) DEFAULT '', cost REAL DEFAULT 0,
+                warranty_until VARCHAR(24) DEFAULT '', cost REAL DEFAULT 0, quantity INTEGER DEFAULT 1,
                 notes TEXT DEFAULT '', source VARCHAR(16) DEFAULT 'manual',
                 extra_json JSONB DEFAULT '{}',
                 first_seen TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -555,6 +555,7 @@ class PostgresDatabase:
             ("machines", "enrollment_token", "TEXT DEFAULT ''"),
             ("assets_computers", "display_id", "VARCHAR(32) DEFAULT ''"),
             ("assets_monitors", "display_id", "VARCHAR(32) DEFAULT ''"),
+            ("assets_inventory", "quantity", "INTEGER DEFAULT 1"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
         ]
         for table, col, col_type in alt_cols:
@@ -2724,6 +2725,35 @@ class PostgresDatabase:
                             "details": detail
                         })
             
+            # v4.8: auto-register USB printers as auto assets
+            try:
+                import hashlib as _hl
+                for pr in (config_data.get("printers", []) or []):
+                    if not isinstance(pr, dict) or pr.get("connection") != "usb":
+                        continue
+                    pr_name = (pr.get("name") or "").strip()
+                    if not pr_name:
+                        continue
+                    usb_key = f"usbprinter|{hostname or machine_id}|{pr_name}"
+                    self._execute("""INSERT INTO assets_inventory (
+                        asset_id, display_id, category, name, brand, model,
+                        serial_number, asset_tag, status, assigned_to, computer_asset_id,
+                        ip_address, mac_address, location, purchase_date, warranty_until,
+                        cost, quantity, notes, source, extra_json, updated_at)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                        ON CONFLICT(asset_id) DO UPDATE SET
+                        name=EXCLUDED.name, model=EXCLUDED.model, status=EXCLUDED.status,
+                        assigned_to=EXCLUDED.assigned_to, source=EXCLUDED.source,
+                        extra_json=EXCLUDED.extra_json, updated_at=NOW()""",
+                        (_hl.md5(usb_key.encode("utf-8")).hexdigest(),
+                         _hl.md5(("disp|" + usb_key).encode("utf-8")).hexdigest()[:8].upper(),
+                         "printer", pr_name, "", pr_name, "", "", "assigned",
+                         hostname or machine_id, computer_asset_id, "", "", "", "", "",
+                         0, 1, "USB printer (auto)", "auto",
+                         json.dumps({"port": pr.get("port", ""), "driver": pr.get("driver", "")}, ensure_ascii=False)))
+            except Exception as _pe:
+                print(f"[-] PG usb-printer asset: {_pe}")
+
             return {"computer_asset_id": computer_asset_id, "changes": changes}
             
         except Exception as e:
@@ -2889,8 +2919,8 @@ class PostgresDatabase:
                 asset_id, display_id, category, name, brand, model,
                 serial_number, asset_tag, status, assigned_to, computer_asset_id,
                 ip_address, mac_address, location, purchase_date, warranty_until,
-                cost, notes, source, extra_json, updated_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                cost, quantity, notes, source, extra_json, updated_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                 ON CONFLICT(asset_id) DO UPDATE SET
                 display_id=EXCLUDED.display_id, category=EXCLUDED.category, name=EXCLUDED.name,
                 brand=EXCLUDED.brand, model=EXCLUDED.model, serial_number=EXCLUDED.serial_number,
@@ -2898,7 +2928,7 @@ class PostgresDatabase:
                 computer_asset_id=EXCLUDED.computer_asset_id, ip_address=EXCLUDED.ip_address,
                 mac_address=EXCLUDED.mac_address, location=EXCLUDED.location,
                 purchase_date=EXCLUDED.purchase_date, warranty_until=EXCLUDED.warranty_until,
-                cost=EXCLUDED.cost, notes=EXCLUDED.notes, source=EXCLUDED.source,
+                cost=EXCLUDED.cost, quantity=EXCLUDED.quantity, notes=EXCLUDED.notes, source=EXCLUDED.source,
                 extra_json=EXCLUDED.extra_json, updated_at=NOW()""",
                 (asset_id, display_id, data.get("category") or "other", data.get("name") or "",
                  data.get("brand") or "", data.get("model") or "", data.get("serial_number") or "",
@@ -2906,7 +2936,8 @@ class PostgresDatabase:
                  data.get("assigned_to") or "", data.get("computer_asset_id") or "",
                  data.get("ip_address") or "", data.get("mac_address") or "", data.get("location") or "",
                  data.get("purchase_date") or "", data.get("warranty_until") or "",
-                 float(data.get("cost") or 0), data.get("notes") or "", data.get("source") or "manual",
+                 float(data.get("cost") or 0), int(data.get("quantity") or 1),
+                 data.get("notes") or "", data.get("source") or "manual",
                  _json.dumps(extra, ensure_ascii=False)))
             return {"asset_id": asset_id, "display_id": display_id}
         except Exception as e:
