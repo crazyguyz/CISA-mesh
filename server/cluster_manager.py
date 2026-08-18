@@ -561,10 +561,11 @@ class ClusterManager:
 
             try:
                 config = self.get_config_for_sync()
-                msg = {
+                # v4.10 (MED-2): sign config_sync too (receivers verify all messages)
+                msg = self._cluster_sign({
                     "type": "config_sync",
                     "config": config,
-                }
+                })
 
                 with self.lock:
                     targets = [(info["ip"], self.cluster_port) for nid, info in self.nodes.items()
