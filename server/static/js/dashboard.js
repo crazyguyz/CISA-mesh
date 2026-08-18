@@ -1474,43 +1474,77 @@ function loadStats() {
     fetch('/api/event_types').then(r=>r.json()).then(types=>{const el=document.getElementById('eventTypesChart');if(!types.length){el.innerHTML='<div class="text-center text-muted py-3">Chưa có dữ liệu</div>';return;}const total=types.reduce((a,b)=>a+b.cnt,0);el.innerHTML=types.slice(0,8).map(t=>`<div class="d-flex align-items-center mb-1"><span style="width:120px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d0d8e0;">${t.subtype||'Unknown'}</span><div class="progress flex-grow-1" style="height:16px;background:var(--bg-dark);"><div class="progress-bar" style="width:${(t.cnt/total*100).toFixed(1)}%;background:var(--accent);font-size:10px;">${t.cnt}</div></div></div>`).join('');});
 }
 
+// v4.10: Global unread-messages badge (nav "Tin nhắn") - polls independently of the
+// Messages tab so other users see the badge without having to open the tab.
+function refreshMessageBadge() {
+    fetch('/api/message/unread-count')
+        .then(function(r){return r.json();})
+        .then(function(data){
+            var badge = document.getElementById('msgBadge');
+            if (!badge) return;
+            var count = data.count || 0;
+            badge.textContent = count;
+            badge.style.display = count > 0 ? 'inline' : 'none';
+        })
+        .catch(function(){});
+}
+
 let currentView='overview';
 // v2.5.22: Debounce heartbeat reload to avoid 10 agents triggering 10 reloads simultaneously
 let _lastHeartbeatReload = 0;
 const HEARTBEAT_RELOAD_COOLDOWN = 10000; // 10 seconds between reloads from heartbeats
 function connectSSE() {
     const evtSource = new EventSource('/api/events/stream');
-    evtSource.onmessage = function(e) { if(e.data&&e.data!==': keepalive'){try{const msg=JSON.parse(e.data);
-    loadStats();
-    if(msg.type==='register'||msg.type==='heartbeat'){
-        const now = Date.now();
-        if (now - _lastHeartbeatReload > HEARTBEAT_RELOAD_COOLDOWN) {
-            _lastHeartbeatReload = now;
-            loadMachines();
+    // v4.10 FIX: the stream sends a JSON ARRAY of events (core.sse_queue slice);
+    // the old handler parsed it as a single object so register/heartbeat/
+    // response_result handling never fired. Iterate the array properly.
+    evtSource.onmessage = function(e) {
+      if (!e.data || e.data === ': keepalive') return;
+      try {
+        var events = JSON.parse(e.data);
+        var list = Array.isArray(events) ? events : [events];
+        for (var k = 0; k < list.length; k++) {
+          var msg = list[k];
+          if (!msg) continue;
+          if (msg.type === 'agent_message') refreshMessageBadge(); // v4.10: workstation sent a message
+          if (msg.type === 'register' || msg.type === 'heartbeat') {
+            var now = Date.now();
+            if (now - _lastHeartbeatReload > HEARTBEAT_RELOAD_COOLDOWN) {
+              _lastHeartbeatReload = now;
+              loadMachines();
+            }
+          }
+          else if (msg.type === 'response_result') {
+            // Always reload responses for selected machine
+            if (selectedMachine && msg.machine_id === selectedMachine) loadMachineResponses(selectedMachine);
+            // Show real-time toast for update/reset results
+            var action = msg.action || '';
+            if (action === 'agent_update') {
+              if (msg.status === 'success') showToast('✅ '+(msg.hostname||msg.machine_id)+': Update thành công - '+(msg.output||''));
+              else showToast('❌ '+(msg.hostname||msg.machine_id)+': Update thất bại - '+(msg.error||msg.output||'Lỗi'));
+              // Refresh agent update view if open
+              if (currentView === 'agentupdate') loadAgentUpdateView();
+            }
+            if (action === 'reset_user') {
+              if (msg.status === 'completed') showToast('🔄 '+(msg.hostname||msg.machine_id)+': Reset user info thành công, agent đang restart...');
+              else showToast('❌ '+(msg.hostname||msg.machine_id)+': Reset thất bại - '+(msg.error||''));
+              if (currentView === 'agentupdate') loadAgentUpdateView();
+            }
+            // Refresh agent update log tab if currently visible
+            if (document.getElementById('tabAuLog') && document.getElementById('tabAuLog').style.display !== 'none') {
+              loadAgentUpdateLogs();
+            }
+          }
+          else {
+            if (currentView === 'events') loadAllEvents();
+            if (currentView === 'fim') loadAllFim();
+            if (currentView === 'network') loadNetwork();
+            if (selectedMachine) { _debouncedReloadEvents(selectedMachine); _debouncedReloadFim(selectedMachine); }
+          }
         }
-    }
-    else if(msg.type==='response_result'){
-        // Always reload responses for selected machine
-        if(selectedMachine&&msg.machine_id===selectedMachine)loadMachineResponses(selectedMachine);
-        // Show real-time toast for update/reset results
-        const action = msg.action || '';
-        if(action==='agent_update'){
-            if(msg.status==='success') showToast('✅ '+(msg.hostname||msg.machine_id)+': Update thành công - '+(msg.output||''));
-            else showToast('❌ '+(msg.hostname||msg.machine_id)+': Update thất bại - '+(msg.error||msg.output||'Lỗi'));
-            // Refresh agent update view if open
-            if(currentView==='agentupdate') loadAgentUpdateView();
-        }
-        if(action==='reset_user'){
-            if(msg.status==='completed') showToast('🔄 '+(msg.hostname||msg.machine_id)+': Reset user info thành công, agent đang restart...');
-            else showToast('❌ '+(msg.hostname||msg.machine_id)+': Reset thất bại - '+(msg.error||''));
-            if(currentView==='agentupdate') loadAgentUpdateView();
-        }
-        // Refresh agent update log tab if currently visible
-        if(document.getElementById('tabAuLog')&&document.getElementById('tabAuLog').style.display!=='none'){
-            loadAgentUpdateLogs();
-        }
-    }
-    else{if(currentView==='events')loadAllEvents();if(currentView==='fim')loadAllFim();if(currentView==='network')loadNetwork();if(selectedMachine){_debouncedReloadEvents(selectedMachine);_debouncedReloadFim(selectedMachine);}}}catch(err){}} };
+        loadStats();
+      } catch(err) {}
+    };
     evtSource.onerror = function() { setTimeout(connectSSE, 3000); };
 }
 
@@ -2475,6 +2509,7 @@ document.addEventListener('click',function(e){
 
 loadMachines();
 loadStats();
+refreshMessageBadge();
 loadOverviewPanorama();
 connectSSE();
 // v3.7.1: Performance optimized polling - drastically reduced intervals
@@ -2482,10 +2517,12 @@ connectSSE();
 setInterval(()=>{loadMachines();loadStats();},120000);
 // Panorama (CPU/RAM/Disk): 60 seconds (was 15s)
 setInterval(()=>{if(currentView==='overview')loadOverviewPanorama();},60000);
+// v4.10: Unread messages badge - always poll (not just when Messages tab is open)
+setInterval(refreshMessageBadge,30000);
 // Active view + network: 5 minutes (was 60s)
 setInterval(()=>{reloadActiveView();loadNetwork();},300000);
 // Tránh reload khi tab không active (visibility API)
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadMachines();loadStats();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadMachines();loadStats();refreshMessageBadge();}});
 
 // ===== v2.4.0: AGENT UPDATE =====
 function loadAgentUpdateView() {

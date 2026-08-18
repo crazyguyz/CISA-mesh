@@ -314,16 +314,22 @@ window.messageChat = (function() {
   // ===== SINGLE MACHINE CHAT =====
 
   function updateUnreadBadge() {
-    fetch('/api/message/unread-count')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        var badge = document.getElementById('msgBadge');
-        if (!badge) return;
-        var count = data.count || 0;
-        badge.textContent = count;
-        badge.style.display = count > 0 ? 'inline' : 'none';
-      })
-      .catch(function() {});
+    // v4.10: reuse the global badge refresher (also run on a 30s global interval
+    // and on SSE events) to keep a single source of truth for #msgBadge.
+    if (window.refreshMessageBadge) {
+      window.refreshMessageBadge();
+    } else {
+      fetch('/api/message/unread-count')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var badge = document.getElementById('msgBadge');
+          if (!badge) return;
+          var count = data.count || 0;
+          badge.textContent = count;
+          badge.style.display = count > 0 ? 'inline' : 'none';
+        })
+        .catch(function() {});
+    }
     fetchUnreadByMachine();
   }
 

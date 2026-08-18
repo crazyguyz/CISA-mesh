@@ -272,6 +272,20 @@ def register(app, core):
                 "VALUES (?,?,?,?,?,?,?,?,?)",
                 (msg_id, machine_id, sender, title, message, 0, 'received', 'agent', now))
             core.db.conn.commit()
+            # v4.10: push SSE event so the dashboard nav badge updates immediately
+            # (previously the badge was only refreshed while the Messages tab was open)
+            try:
+                with core.sse_queue_lock:
+                    core.sse_queue.append({
+                        "type": "agent_message", "msg_id": msg_id,
+                        "machine_id": machine_id, "hostname": hostname,
+                        "sender": sender, "title": title,
+                        "timestamp": now,
+                    })
+                    if len(core.sse_queue) > 1000:
+                        core.sse_queue = core.sse_queue[-500:]
+            except Exception:
+                pass
             print(f"[MSG] Agent message received: {msg_id} from {machine_id} ({sender})")
         except Exception as e:
             print(f"[-] Failed to save agent message: {e}")
