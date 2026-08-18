@@ -184,6 +184,7 @@
       'assets.catComponent': 'Linh kiện',
       'assets.catOther': 'Khác',
       'assets.stInStock': 'Còn hàng',
+      'assets.stOnline': 'Online',
       'assets.stAssigned': 'Đã cấp',
       'assets.stRepair': 'Đang sửa',
       'assets.stDisposed': 'Thanh lý',
@@ -254,6 +255,7 @@
       'assets.stActive': 'Đang hoạt động',
       'assets.catUser': 'Người dùng',
       'assets.editUser': 'Sửa người dùng',
+      'assets.addUser': 'Thêm người dùng',
       'assets.usersNote': 'Tài khoản nội bộ = phần trước @ của email',
 
       // Group Policies
@@ -639,6 +641,7 @@
       'assets.catComponent': 'Component',
       'assets.catOther': 'Other',
       'assets.stInStock': 'In stock',
+      'assets.stOnline': 'Online',
       'assets.stAssigned': 'Assigned',
       'assets.stRepair': 'In repair',
       'assets.stDisposed': 'Disposed',
@@ -709,6 +712,7 @@
       'assets.stActive': 'Active',
       'assets.catUser': 'User',
       'assets.editUser': 'Edit user',
+      'assets.addUser': 'Add user',
       'assets.usersNote': 'Internal account = part before @ of email',
 
       // Group Policies

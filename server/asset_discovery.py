@@ -143,7 +143,7 @@ def run_scan(cidr, db=None, max_threads=64, timeout=0.6):
             try:
                 db.upsert_inventory_asset({
                     "category": cat, "name": "%s @ %s" % (cat, ip), "model": model,
-                    "brand": "", "serial_number": serial, "status": "in_stock",
+                    "brand": "", "serial_number": serial, "status": "online",
                     "ip_address": ip, "source": "auto", "notes": "auto",
                     "extra": {"method": info.get("method", cat),
                               "detected_at": time.strftime("%Y-%m-%d %H:%M:%S")}})

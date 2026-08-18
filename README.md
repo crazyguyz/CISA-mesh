@@ -123,10 +123,10 @@ GiamSatAgent.exe --server 192.168.1.10 --port 6666
 
 ### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
 
-Khi cài/chạy lại Agent, dialog nhập thông tin người dùng có các **dropdown tuỳ chỉnh** (VD "Chi nhánh"). Quản trị viên có thể **thêm/bớt/sửa tên dropdown và danh sách lựa chọn** mà **không cần build lại Agent**, bằng cách sửa file:
+Trước khi build Agent, dialog nhập thông tin người dùng có các **dropdown tuỳ chỉnh** (VD "Chi nhánh"). Quản trị viên có thể **thêm/bớt/sửa tên dropdown và danh sách lựa chọn**, bằng cách sửa file:
 
 ```
-%ProgramData%\GIAM-SAT\Agent\user_fields.json
+\Agent\user_fields.json
 ```
 
 Mỗi dropdown có cấu trúc:

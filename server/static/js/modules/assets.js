@@ -254,6 +254,7 @@ var Assets = {
     ],
     STATUSES: [
         { v: 'in_stock', k: 'assets.stInStock' },
+        { v: 'online', k: 'assets.stOnline' },
         { v: 'assigned', k: 'assets.stAssigned' },
         { v: 'in_repair', k: 'assets.stRepair' },
         { v: 'disposed', k: 'assets.stDisposed' },
@@ -262,7 +263,7 @@ var Assets = {
     _catLbl: function(v) { for (var i = 0; i < Assets.CATALOG.length; i++) { if (Assets.CATALOG[i].v === v) return t(Assets.CATALOG[i].k); } return v; },
     _stLbl: function(v) { for (var i = 0; i < Assets.STATUSES.length; i++) { if (Assets.STATUSES[i].v === v) return t(Assets.STATUSES[i].k); } return v; },
     _stCls: function(v) {
-        return (v === 'in_stock' || v === 'active') ? 'bg-success' : (v === 'assigned') ? 'bg-info' :
+        return (v === 'in_stock' || v === 'active' || v === 'online') ? 'bg-success' : (v === 'assigned') ? 'bg-info' :
                (v === 'in_repair') ? 'bg-warning text-dark' : 'bg-secondary';
     },
 
@@ -420,6 +421,7 @@ var Assets = {
     openUserForm: function(a) {
         var modal = document.getElementById('userModal');
         if (!modal) return;
+        document.getElementById('userModalTitle').textContent = a ? t('assets.editUser') : t('assets.addUser');
         document.getElementById('userAssetId').value = a ? (a.asset_id || '') : '';
         document.getElementById('userName').value = a ? (a.name || '') : '';
         document.getElementById('userEmployeeId').value = a ? (a.employee_id || '') : '';

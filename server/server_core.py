@@ -32,6 +32,8 @@ if os.path.exists(_ENV_FILE):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+# Add project root so the `common` package resolves in threads/runtime (`from common.logger import ...`)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 # v4.5.3: persist all console output to logs/giamsat.log for troubleshooting
 try:
@@ -500,8 +502,11 @@ class ServerCore:
             server.quit()
             print(f"[📧] Email sent to {to_email}: {subject}")
         except Exception as e:
-            from common.logger import log_error
-            log_error("SMTP email send failed", exc=e, context={"to": to_email, "subject": subject})
+            try:
+                from logger import log_error
+                log_error("SMTP email send failed", exc=e, context={"to": to_email, "subject": subject})
+            except Exception:
+                print(f"[-] Email alert failed to {to_email}: {e}")
 
     def stop(self):
         self._retention_running = False

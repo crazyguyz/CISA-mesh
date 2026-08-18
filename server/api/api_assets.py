@@ -283,7 +283,7 @@ def init_assets_api(app, db):
                        "Status", "Gán cho", "IP", "Vị trí", "Mua", "Bảo hành",
                        "Giá", "Nguồn", "Ghi chú", "Cập nhật"]
         inv_rows = db.get_asset_inventory(limit=5000) if (db and hasattr(db, 'get_asset_inventory')) else []
-        status_map = {"in_stock": "Còn hàng", "assigned": "Đã cấp",
+        status_map = {"in_stock": "Còn hàng", "online": "Online", "assigned": "Đã cấp",
                       "in_repair": "Đang sửa", "disposed": "Thanh lý"}
 
         def _fill_inventory_sheet(sheet, items):
