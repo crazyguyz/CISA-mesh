@@ -60,6 +60,50 @@ function Ask-Config {
     }
 }
 
+# v4.10: Password policy (same as server PASSWORD_POLICY)
+function Test-PasswordPolicy([string]$pw) {
+    if ($pw.Length -lt 12)        { return "Mat khau phai co it nhat 12 ky tu" }
+    if ($pw -notmatch '[A-Z]')    { return "Thieu ky tu IN HOA (A-Z)" }
+    if ($pw -notmatch '[a-z]')    { return "Thieu ky tu thuong (a-z)" }
+    if ($pw -notmatch '[0-9]')    { return "Thieu chu so (0-9)" }
+    if ($pw -notmatch '[^A-Za-z0-9]') { return "Thieu ky tu dac biet (!@#...)" }
+    return ""
+}
+
+# v4.10: Admin account - setup_config.ps1 owns first-run admin creation.
+function Ask-AdminCredentials {
+    $currentUser = $env["GIAMSAT_ADMIN_USER"]
+    $currentPw = $env["GIAMSAT_ADMIN_PASSWORD"]
+
+    $user = Read-Host "  Ten dang nhap admin (Enter = 'admin')"
+    if ($user -eq "") { $user = if ($currentUser) { $currentUser } else { "admin" } }
+    $env["GIAMSAT_ADMIN_USER"] = $user
+
+    if ($currentPw) {
+        Write-Host "  Mat khau admin hien tai: da co (an). Enter de giu nguyen, nhap de doi." -ForegroundColor Gray
+    }
+    $pw1 = Read-Host "  Mat khau admin (toi thieu 12 ky tu: hoa/thuong/so/dac biet)"
+    if ($pw1 -eq "" -and $currentPw) {
+        $env["GIAMSAT_ADMIN_PASSWORD"] = $currentPw
+        return
+    }
+    if ($pw1 -eq "") {
+        # Leave empty -> server auto-generates a random password (printed once)
+        $env.Remove("GIAMSAT_ADMIN_PASSWORD")
+        Write-Host "  [!] Bo qua: server se TU DONG sinh mat khau ngau nhien khi khoi dong." -ForegroundColor DarkYellow
+        return
+    }
+    while ($true) {
+        $pw2 = Read-Host "  Nhap lai mat khau admin"
+        if ($pw1 -ne $pw2) { Write-Host "  [!] Hai lan nhap khong khop, nhap lai." -ForegroundColor Red; continue }
+        $err = Test-PasswordPolicy $pw1
+        if ($err) { Write-Host "  [!] $err" -ForegroundColor Red }
+        else { break }
+        $pw1 = Read-Host "  Mat khau admin"
+    }
+    $env["GIAMSAT_ADMIN_PASSWORD"] = $pw1
+}
+
 # =============================================================================
 # 1. Database Backend
 # =============================================================================
@@ -111,7 +155,16 @@ Ask-Config "GIAMSAT_SMTP_PASS" "  SMTP Password" "" -IsPassword
 Write-Host ""
 
 # =============================================================================
-# 5. Enrollment Secret
+# 5. Admin Account - v4.10
+# =============================================================================
+Write-Host "--- Tai khoan quan tri (admin) ---" -ForegroundColor Yellow
+Write-Host "  Server chi tao admin khi CHUA co nguoi dung nao (lan chay dau tien)." -ForegroundColor Gray
+Write-Host "  Mat khau do ban nhap se duoc luu trong .env (chi dung 1 lan de tao)." -ForegroundColor Gray
+Ask-AdminCredentials
+Write-Host ""
+
+# =============================================================================
+# 6. Enrollment Secret
 # =============================================================================
 Write-Host "--- Enrollment ---" -ForegroundColor Yellow
 Write-Host "  Token xac thuc khi Agent ket noi lan dau tien." -ForegroundColor Gray
@@ -119,7 +172,7 @@ Ask-Config "GIAMSAT_ENROLLMENT_SECRET" "  Secret" "change-me-enroll-secret"
 Write-Host ""
 
 # =============================================================================
-# 6. Security Keys (PSK + Command Signing) - v4.5.5 (BAT BUOC)
+# 7. Security Keys (PSK + Command Signing) - v4.5.5 (BAT BUOC)
 # =============================================================================
 Write-Host "--- Bao mat Agent (bat buoc) ---" -ForegroundColor Yellow
 Write-Host "  GIAMSAT_AGENT_PSK: khoa xac thuc agent (TCP 6666 + HTTP polling)." -ForegroundColor Gray
@@ -176,6 +229,7 @@ $keys = @(
     "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
     "GIAMSAT_SMTP_HOST", "GIAMSAT_SMTP_PORT",
     "GIAMSAT_SMTP_USER", "GIAMSAT_SMTP_PASS",
+    "GIAMSAT_ADMIN_USER", "GIAMSAT_ADMIN_PASSWORD",
     "GIAMSAT_ENROLLMENT_SECRET",
     "GIAMSAT_AGENT_PSK",
     "GIAMSAT_COMMAND_KEY"

@@ -56,20 +56,31 @@ _first_run_admin_password = None
 
 
 def _make_default_admin():
-    """v4.10: Create first-run admin with a RANDOM password (no known default).
-    Password is printed once to console/log and must be changed on first login.
-    Fixes CRITICAL-6 (default admin/admin was a known credential for an attacker)."""
+    """v4.10: Create first-run admin (only when no users exist yet).
+    - If GIAMSAT_ADMIN_USER / GIAMSAT_ADMIN_PASSWORD are set (written by
+      setup_config.ps1), use them — the administrator chose the password.
+    - Otherwise fall back to a RANDOM password (printed once to console/log)
+      so there is never a known default credential (fixes CRITICAL-6)."""
     global _first_run_admin_password
     salt = secrets.token_bytes(_PBKDF2_SALT_BYTES)
-    pw = secrets.token_urlsafe(16)
-    _first_run_admin_password = pw
+    env_user = os.environ.get("GIAMSAT_ADMIN_USER", "").strip()
+    env_pw = os.environ.get("GIAMSAT_ADMIN_PASSWORD", "")
+    if env_user and env_pw:
+        username = env_user
+        pw = env_pw
+        must_change = False  # admin picked this password in setup_config.ps1
+    else:
+        username = "admin"
+        pw = secrets.token_urlsafe(16)
+        _first_run_admin_password = pw
+        must_change = True
     pw_hash = hashlib.pbkdf2_hmac(_PBKDF2_HASH_NAME, pw.encode(), salt, _PBKDF2_ITERATIONS)
     return {
-        "username": "admin",
+        "username": username,
         "password": pw_hash.hex(),
         "salt": salt.hex(),
         "role": "admin",
-        "must_change_password": True
+        "must_change_password": must_change
     }
 
 def _jwt_fallback_encode(payload, secret):
@@ -114,10 +125,14 @@ class AuthManager:
         # v2.5.3: Only create default admin if no users exist at all
         if not self.users:
             default_admin = _make_default_admin()
-            self.users["admin"] = default_admin
+            self.users[default_admin["username"]] = default_admin
             self._save_users()
-            print("[!] AUTH: No users found - created first-run admin (must change password).")
-            print(f"[!] AUTH: FIRST-RUN ADMIN PASSWORD (keep it safe): {_first_run_admin_password}")
+            if _first_run_admin_password:
+                print("[!] AUTH: No users found - created first-run admin (must change password).")
+                print(f"[!] AUTH: FIRST-RUN ADMIN PASSWORD (keep it safe): {_first_run_admin_password}")
+            else:
+                print(f"[!] AUTH: No users found - created first-run admin "
+                      f"'{default_admin['username']}' from setup_config.ps1 (.env).")
         else:
             # v2.5.3: Migrate old unsalted passwords to salted format
             self._migrate_passwords()
