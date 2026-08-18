@@ -93,7 +93,8 @@ def register(app, core):
             return jsonify({"success": False, "error": f"Machine {machine.get('hostname', machine_id)} is offline"}), 400
 
         # Build command for agent
-        exec_id = f"resp_{int(time.time())}_{machine_id[:8]}"
+        import uuid as _uuid
+        exec_id = f"resp_{int(time.time())}_{machine_id[:8]}_{_uuid.uuid4().hex[:6]}"
         agent_action = ACTION_MAP[action]
 
         cmd_data = {
@@ -102,15 +103,11 @@ def register(app, core):
             "params": params,
         }
 
-        # v3.9.12: Pull Model - Queue command, mark sent to avoid HTTP poll duplicate
+        # v4.10: queue as 'pending'. TCP push is best-effort - it can silently
+        # "succeed" into a half-open socket (Tailscale) and the command would be
+        # lost. Keeping 'pending' lets the agent HTTP poll re-deliver; the agent
+        # dedups by exec_id so TCP + HTTP delivery does not double-execute.
         core.db.add_command(machine_id, agent_action, json.dumps({"params": params}, ensure_ascii=False), exec_id)
-        
-        # Mark sent immediately - TCP will deliver, if it fails revert to pending
-        try:
-            core.db.conn.execute("UPDATE commands SET status='sent' WHERE exec_id=?", (exec_id,))
-            core.db.conn.commit()
-        except Exception:
-            pass
 
         # Try TCP push as best-effort
         tcp_sent = False
@@ -121,15 +118,8 @@ def register(app, core):
                     print(f"[RESP] TCP push SUCCESS for {machine_id}")
             except Exception:
                 pass
-
-        # If TCP failed, revert to pending so HTTP poll picks it up
         if not tcp_sent:
-            try:
-                core.db.conn.execute("UPDATE commands SET status='pending' WHERE exec_id=?", (exec_id,))
-                core.db.conn.commit()
-                print(f"[RESP] TCP push FAILED for {machine_id} (will rely on HTTP poll)")
-            except Exception:
-                pass
+            print(f"[RESP] TCP push FAILED for {machine_id} (will rely on HTTP poll)")
 
         # Log the action
         action_label = ACTION_LABELS.get(action, action)

@@ -166,12 +166,18 @@ Description: {alert_data.get('description', 'N/A')}
             msg.attach(MIMEText(body, "plain"))
 
             ctx = ssl.create_default_context()
-            with smtplib.SMTP(cfg["smtp_host"], cfg["smtp_port"]) as server:
-                server.ehlo()
-                server.starttls(context=ctx)
-                server.ehlo()
-                server.login(cfg["username"], cfg["password"])
-                server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
+            # v4.10 FIX: port 465 = implicit SSL (SMTP_SSL); 587/25 = STARTTLS.
+            if int(cfg.get("smtp_port", 587)) == 465:
+                with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465)), timeout=20, context=ctx) as server:
+                    server.login(cfg["username"], cfg["password"])
+                    server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
+            else:
+                with smtplib.SMTP(cfg["smtp_host"], int(cfg.get("smtp_port", 587)), timeout=20) as server:
+                    server.ehlo()
+                    server.starttls(context=ctx)
+                    server.ehlo()
+                    server.login(cfg["username"], cfg["password"])
+                    server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
             print(f"[*] Email alert sent to {cfg['to_addrs']}")
         except Exception as e:
             print(f"[-] Email alert failed: {e}")

@@ -46,7 +46,8 @@ def register(app, core):
         core.db.add_command(machine_id, "show_message", cmd_json, msg_id)
         print(f"[MSG] Queued message {msg_id} for {machine_id} (pending)")
 
-        # Try TCP push for immediate delivery
+        # Try TCP push for immediate delivery (best-effort; command stays 'pending'
+        # so the agent HTTP poll can re-deliver over unstable Tailscale links)
         tcp_sent = False
         if hasattr(core, 'tcp_server') and core.tcp_server:
             try:
@@ -55,12 +56,6 @@ def register(app, core):
                     "title": title, "message": message,
                     "sender": sender, "require_reply": require_reply,
                 })
-                if tcp_sent:
-                    try:
-                        core.db.conn.execute("UPDATE commands SET status='sent' WHERE exec_id=?", (msg_id,))
-                        core.db.conn.commit()
-                    except Exception:
-                        pass
                 print(f"[MSG] TCP push {'OK' if tcp_sent else 'FAIL'} for {machine_id}")
             except Exception as e:
                 print(f"[MSG] TCP push error for {machine_id}: {e}")
@@ -217,7 +212,7 @@ def register(app, core):
                 (msg_id, mid, sender, title, message, 1 if require_reply else 0, now))
             core.db.conn.commit()
 
-            # Queue command, mark sent immediately to avoid HTTP poll duplicate
+            # Queue command as 'pending' (HTTP poll fallback for unstable links)
             cmd_json = json.dumps({
                 "action": "show_message", "msg_id": msg_id,
                 "title": title, "message": message,
@@ -225,13 +220,7 @@ def register(app, core):
             }, ensure_ascii=False)
             core.db.add_command(mid, "show_message", cmd_json, msg_id)
 
-            try:
-                core.db.conn.execute("UPDATE commands SET status='sent' WHERE exec_id=?", (msg_id,))
-                core.db.conn.commit()
-            except Exception:
-                pass
-
-            # Try TCP push
+            # Try TCP push (best-effort)
             tcp_sent = False
             if hasattr(core, 'tcp_server') and core.tcp_server:
                 try:
@@ -240,14 +229,6 @@ def register(app, core):
                         "title": title, "message": message,
                         "sender": sender, "require_reply": require_reply,
                     })
-                except Exception:
-                    pass
-
-            # If TCP failed, revert to pending so HTTP poll can pick it up
-            if not tcp_sent:
-                try:
-                    core.db.conn.execute("UPDATE commands SET status='pending' WHERE exec_id=?", (msg_id,))
-                    core.db.conn.commit()
                 except Exception:
                     pass
 

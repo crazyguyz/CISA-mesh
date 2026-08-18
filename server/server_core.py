@@ -482,31 +482,52 @@ class ServerCore:
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
         smtp_server = os.environ.get("GIAMSAT_SMTP_HOST", "smtp-mail.outlook.com")
-        smtp_port = int(os.environ.get("GIAMSAT_SMTP_PORT", "587"))
+        smtp_port = int(os.environ.get("GIAMSAT_SMTP_PORT", "465"))
         smtp_user = os.environ.get("GIAMSAT_SMTP_USER", "it@example.com")
         smtp_pass = os.environ.get("GIAMSAT_SMTP_PASS", "")
         if not smtp_pass:
             print("[-] Email alert: SMTP password not configured (GIAMSAT_SMTP_PASS env var)")
             return
         from_email = smtp_user
-        try:
-            msg = MIMEMultipart()
-            msg["From"] = from_email
-            msg["To"] = to_email
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain", "utf-8"))
-            server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(from_email, [to_email], msg.as_string())
-            server.quit()
-            print(f"[📧] Email sent to {to_email}: {subject}")
-        except Exception as e:
+        last_err = None
+        # v4.10 FIX: port 465 = implicit SSL (SMTP_SSL); 587/25 = STARTTLS.
+        # Previously SMTP()+starttls() on 465 deadlocked (server waits for TLS
+        # ClientHello, client waits for banner) -> SMTPServerDisconnected timeout.
+        for attempt in range(1, 3):
+            server = None
             try:
-                from logger import log_error
-                log_error("SMTP email send failed", exc=e, context={"to": to_email, "subject": subject})
-            except Exception:
-                print(f"[-] Email alert failed to {to_email}: {e}")
+                msg = MIMEMultipart()
+                msg["From"] = from_email
+                msg["To"] = to_email
+                msg["Subject"] = subject
+                msg.attach(MIMEText(body, "plain", "utf-8"))
+                if smtp_port == 465:
+                    server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=20)
+                else:
+                    server = smtplib.SMTP(smtp_server, smtp_port, timeout=20)
+                    server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(from_email, [to_email], msg.as_string())
+                server.quit()
+                server = None
+                print(f"[📧] Email sent to {to_email}: {subject}")
+                return
+            except Exception as e:
+                last_err = e
+                if server:
+                    try:
+                        server.close()
+                    except Exception:
+                        pass
+                if attempt == 1:
+                    time.sleep(2)
+        try:
+            from common.logger import log_error
+            log_error("SMTP email send failed", exc=last_err,
+                      context={"to": to_email, "subject": subject,
+                               "smtp_host": smtp_server, "smtp_port": smtp_port})
+        except Exception:
+            print(f"[-] Email alert failed to {to_email}: {last_err}")
 
     def stop(self):
         self._retention_running = False

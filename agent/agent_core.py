@@ -703,16 +703,29 @@ class AgentCore:
         
         action = cmd.get("action", "")
         if action == "agent_update":
-            t = threading.Thread(target=self._handle_agent_update_command, args=(cmd,), daemon=True)
-            t.start()
+            exec_id = cmd.get("exec_id", "")
+            if exec_id and self._is_duplicate(exec_id):
+                print(f"[DEDUP] Skipping already processed agent_update ({exec_id})")
+            else:
+                t = threading.Thread(target=self._handle_agent_update_command, args=(cmd,), daemon=True)
+                t.start()
         elif action == "reset_user":
-            t = threading.Thread(target=self._handle_reset_user_command, args=(cmd,), daemon=True)
-            t.start()
+            exec_id = cmd.get("exec_id", "")
+            if exec_id and self._is_duplicate(exec_id):
+                print(f"[DEDUP] Skipping already processed reset_user ({exec_id})")
+            else:
+                t = threading.Thread(target=self._handle_reset_user_command, args=(cmd,), daemon=True)
+                t.start()
         elif action == "show_message":
             # v3.9.15: Route to ctypes MessageBoxW (no PowerShell dependency)
             # PowerShell forms crash in daemon threads / session 0 / Tailscale context
-            t = threading.Thread(target=self._handle_show_message, args=(cmd,), daemon=True)
-            t.start()
+            # v4.10: dedup by msg_id - the same message may arrive via TCP push AND HTTP poll
+            exec_id = cmd.get("msg_id") or cmd.get("exec_id") or ""
+            if exec_id and self._is_duplicate(exec_id):
+                print(f"[DEDUP] Skipping already processed show_message ({exec_id})")
+            else:
+                t = threading.Thread(target=self._handle_show_message, args=(cmd,), daemon=True)
+                t.start()
         else:
             t = threading.Thread(target=self._execute_and_report, args=(cmd,), daemon=True)
             t.start()
@@ -1626,6 +1639,12 @@ del "%~f0"
                     cmd_data["machine_id"] = self.machine_id
                     cmd_data["hostname"] = self.hostname
 
+                    # v4.10: dedup against TCP delivery (same command may be pushed
+                    # over TCP and re-delivered here while still 'pending')
+                    if self._is_duplicate(cmd.get("exec_id", "")):
+                        print(f"[DEDUP] Skipping already processed: {cmd.get('action', '?')} ({cmd.get('exec_id', '')})")
+                        continue
+
                     result = self._execute_command_locally(cmd_data)
 
                     self._report_command_result(
@@ -1687,8 +1706,28 @@ del "%~f0"
             except Exception as e:
                 return {"status": "failed", "error": str(e)[:2000], "output": "", "exit_code": -1}
 
-        # Unknown action
-        return {"status": "failed", "error": f"Unknown action: {action}", "output": "", "exit_code": -1}
+        # v4.10: fallback - let the responder try (ps, get_processes, get_services,
+        # get_connections, get_scheduled_tasks, get_startup_programs, restart_computer,
+        # shutdown_computer, lock_account, kill_tree, ...) so HTTP-poll delivery
+        # supports the same actions as TCP push.
+        try:
+            params = cmd_data.get("params", {})
+            if not params:
+                reserved = {"action", "exec_id", "machine_id", "hostname"}
+                params = {k: v for k, v in cmd_data.items() if k not in reserved}
+            result = self.responder.execute_command({
+                "action": action,
+                "params": params,
+                "command": cmd_data.get("command", ""),
+            })
+            return {
+                "status": "completed" if result.get("status") == "completed" else "failed",
+                "output": result.get("output", "")[:5000],
+                "error": result.get("error", "")[:2000],
+                "exit_code": result.get("exit_code", 0),
+            }
+        except Exception as e:
+            return {"status": "failed", "error": str(e)[:2000], "output": "", "exit_code": -1}
 
     def _report_command_result(self, exec_id, action, result):
         """v3.9.7: Report command execution result back to server via HTTP."""

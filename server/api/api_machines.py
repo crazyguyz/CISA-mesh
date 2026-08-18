@@ -114,15 +114,28 @@ def register(app, core):
         username, err, code = check_auth("command")
         if err: return err, code
         data = request.json
-        success = core.tcp_server.send_command(
-            data.get("machine_id", ""),
-            {"action": data.get("action", ""), "command": data.get("command", ""),
-             "exec_id": data.get("exec_id", f"cmd_{int(time.time())}")}
-        )
+        machine_id = (data.get("machine_id") or "").strip()
+        action = (data.get("action") or "").strip()
+        command = data.get("command", "")
+        import uuid as _uuid
+        exec_id = data.get("exec_id") or f"cmd_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
+        # v4.10: queue as 'pending' so the agent HTTP poll can deliver over unstable
+        # (Tailscale) links; TCP push is best-effort (half-open sockets can silently
+        # swallow the sendall without an error).
+        try:
+            core.db.add_command(machine_id, action, command, exec_id)
+        except Exception as e:
+            print(f"[-] api_command add_command failed: {e}")
+        success = False
+        if core.tcp_server:
+            success = core.tcp_server.send_command(
+                machine_id,
+                {"action": action, "command": command, "exec_id": exec_id}
+            )
         core.db.insert_audit_log(username, "send_command",
-                                 f"Machine: {data.get('machine_id')} Action: {data.get('action')}",
+                                 f"Machine: {machine_id} Action: {action}",
                                  request.remote_addr)
-        return jsonify({"success": success})
+        return jsonify({"success": success, "exec_id": exec_id})
 
     @app.route("/api/machine/<machine_id>/isolate", methods=["POST"])
     def api_machine_isolate(machine_id):
@@ -139,9 +152,17 @@ def register(app, core):
                 server_ip = "192.168.1.1"
         # v4.5.5 SECURITY: use dedicated isolate_network action (no arbitrary PowerShell).
         # server_ip is passed as a param and sanitized on the agent side (no shell injection).
+        # v4.10: queue as 'pending' first so HTTP poll can deliver if TCP push fails.
+        import uuid as _uuid
+        exec_id = f"isolate_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
+        try:
+            core.db.add_command(machine_id, "isolate_network",
+                                json.dumps({"server_ip": server_ip}), exec_id)
+        except Exception as e:
+            print(f"[-] isolate add_command failed: {e}")
         success = core.tcp_server.send_command(
             machine_id,
-            {"action": "isolate_network", "exec_id": f"isolate_{int(time.time())}",
+            {"action": "isolate_network", "exec_id": exec_id,
              "params": {"server_ip": server_ip}}
         )
         core.db.insert_audit_log(username, "isolate_machine", f"Machine: {machine_id} (isolated by admin)", request.remote_addr)
@@ -152,9 +173,17 @@ def register(app, core):
         username, err, code = check_auth("command")
         if err: return err, code
         # v4.5.5 SECURITY: use dedicated restore_network action (no arbitrary PowerShell).
+        # v4.10: queue as 'pending' first so HTTP poll can deliver if TCP push fails.
+        import uuid as _uuid
+        exec_id = f"unisolate_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
+        try:
+            core.db.add_command(machine_id, "restore_network",
+                                json.dumps({}), exec_id)
+        except Exception as e:
+            print(f"[-] unisolate add_command failed: {e}")
         success = core.tcp_server.send_command(
             machine_id,
-            {"action": "restore_network", "exec_id": f"unisolate_{int(time.time())}"}
+            {"action": "restore_network", "exec_id": exec_id}
         )
         core.db.insert_audit_log(username, "unisolate_machine", f"Machine: {machine_id} (isolation removed)", request.remote_addr)
         return jsonify({"success": success, "message": "Unisolate command sent" if success else "Agent offline"})
