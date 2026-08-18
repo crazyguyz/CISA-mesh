@@ -360,24 +360,58 @@ $software | Sort-Object Name -Unique | Select-Object -First 200 | ConvertTo-Json
         return software_list
 
     def _get_printers(self):
-        """Get installed printers (USB + network) via WMI Win32_Printer.
-        PortName 'USBxxx' => printer plugged directly into this machine (USB);
-        others (IP_ / network) => network printer. Used for IT asset tracking."""
+        """Get ONLY ACTUALLY CONNECTED printers (USB + network) via WMI Win32_Printer.
+        v4.10: an installed driver does NOT mean the printer is in use:
+          - USB printers: must appear as a present PnP device (class Printer/Image,
+            Status OK). If the PnP query fails, fall back to WorkOffline=False.
+          - Network printers: TCP port 9100 (raw) must be reachable; if the IP cannot
+            be parsed from PortName, fall back to WorkOffline=False."""
         printers = []
         try:
             script = (
                 "Get-WmiObject Win32_Printer | Select-Object Name, DriverName, "
-                "PortName, Network, Local, Default | ConvertTo-Json"
+                "PortName, Network, Local, Default, WorkOffline | ConvertTo-Json"
             )
             output = self._run_powershell(script)
             if output:
                 data = json.loads(output)
                 items = data if isinstance(data, list) else [data]
+
+                # USB printers physically present on this machine right now
+                usb_connected = set()
+                try:
+                    out2 = self._run_powershell(
+                        "Get-PnpDevice -Class Printer,Image -Status OK | "
+                        "Select-Object -ExpandProperty FriendlyName | ConvertTo-Json"
+                    )
+                    if out2:
+                        d2 = json.loads(out2)
+                        names2 = d2 if isinstance(d2, list) else [d2]
+                        usb_connected = {str(n).strip().lower() for n in names2 if str(n).strip()}
+                except Exception:
+                    usb_connected = set()
+
                 for p in items:
                     port = (p.get("PortName") or "").strip()
+                    name = (p.get("Name") or "").strip()
+                    if not name:
+                        continue
                     is_usb = port.lower().startswith("usb")
+                    offline = bool(p.get("WorkOffline"))
+                    if is_usb:
+                        if usb_connected and name.lower() not in usb_connected:
+                            continue  # driver installed but USB device not plugged in
+                        if not usb_connected and offline:
+                            continue
+                    else:
+                        ip = self._printer_ip_from_port(port)
+                        if ip:
+                            if not self._tcp_port_open(ip, 9100, 1.5):
+                                continue  # network printer not reachable right now
+                        elif offline:
+                            continue
                     printers.append({
-                        "name": (p.get("Name") or "").strip(),
+                        "name": name,
                         "driver": (p.get("DriverName") or "").strip(),
                         "port": port,
                         "connection": "usb" if is_usb else "network",
@@ -386,6 +420,24 @@ $software | Sort-Object Name -Unique | Select-Object -First 200 | ConvertTo-Json
         except Exception:
             pass
         return printers
+
+    @staticmethod
+    def _printer_ip_from_port(port):
+        """Extract printer IP from PortName: 'IP_192.168.1.50', '192.168.1.50', ..."""
+        m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", port or "")
+        return m.group(1) if m else ""
+
+    @staticmethod
+    def _tcp_port_open(ip, port, timeout=1.5):
+        try:
+            import socket
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            r = s.connect_ex((ip, port))
+            s.close()
+            return r == 0
+        except Exception:
+            return False
 
     def to_json(self):
         """Return collected data as JSON string."""

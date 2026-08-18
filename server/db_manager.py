@@ -2317,14 +2317,18 @@ class DatabaseManager:
                             changes.append({"type": "monitor_disconnected", "asset_id": computer_asset_id, "asset_type": "computer", "details": detail})
 
                 # v4.8: auto-register USB printers (PortName USBxxx) from machine_config as auto assets
+                # v4.10: only printers the agent confirms are currently connected are reported,
+                # and printers that disappeared from the config get removed below.
                 try:
                     import hashlib as _hl
+                    current_usb_names = set()
                     for pr in (config_data.get("printers", []) or []):
                         if not isinstance(pr, dict) or pr.get("connection") != "usb":
                             continue
                         pr_name = (pr.get("name") or "").strip()
                         if not pr_name:
                             continue
+                        current_usb_names.add(pr_name)
                         usb_key = f"usbprinter|{hostname or machine_id}|{pr_name}"
                         c.execute("""INSERT INTO assets_inventory (
                             asset_id, display_id, category, name, brand, model,
@@ -2341,7 +2345,24 @@ class DatabaseManager:
                              "printer", pr_name, "", pr_name, "", "", "assigned",
                              hostname or machine_id, computer_asset_id, "", "", "", "", "",
                              0, 1, "USB printer (auto)", "auto",
-                             json.dumps({"port": pr.get("port", ""), "driver": pr.get("driver", "")}, ensure_ascii=False)))
+                             json.dumps({"port": pr.get("port", ""), "driver": pr.get("driver", ""),
+                                         "connected": True,
+                                         "connected_at": time.strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False)))
+                    # v4.10: remove auto USB printer assets for this computer that are no
+                    # longer reported (printer unplugged / not in this machine_config anymore).
+                    c.execute("SELECT asset_id, name FROM assets_inventory "
+                              "WHERE computer_asset_id=? AND category='printer' AND source='auto'",
+                              (computer_asset_id,))
+                    for asset_id, aname in c.fetchall():
+                        an = (aname or "").strip()
+                        if an and an not in current_usb_names:
+                            c.execute("DELETE FROM assets_inventory WHERE asset_id=?", (asset_id,))
+                            detail = {"computer": hostname or machine_id, "printer": an, "action": "disconnected"}
+                            c.execute("INSERT INTO assets_change_log (asset_id, asset_type, change_type, details) "
+                                      "VALUES (?,'printer','printer_disconnected',?)",
+                                      (asset_id, json.dumps(detail, ensure_ascii=False)))
+                            changes.append({"type": "printer_disconnected", "asset_id": asset_id,
+                                            "asset_type": "printer", "details": detail})
                 except Exception as _pe:
                     print(f"[-] SQLite usb-printer asset: {_pe}")
 

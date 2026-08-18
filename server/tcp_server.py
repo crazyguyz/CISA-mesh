@@ -679,6 +679,9 @@ class TCPServer(threading.Thread):
                         elif ch_type == "monitor_disconnected":
                             print(f"[!] ASSET ALERT [monitor_disconnected] {detail.get('computer','?')}: "
                                   f"{detail.get('monitor','?')} removed")
+                        elif ch_type == "printer_disconnected":
+                            print(f"[!] ASSET ALERT [printer_disconnected] {detail.get('computer','?')}: "
+                                  f"{detail.get('printer','?')} no longer connected")
             except Exception as e:
                 print(f"[-] Asset management error: {e}")
                 import traceback

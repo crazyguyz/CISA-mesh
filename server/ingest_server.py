@@ -326,7 +326,15 @@ class IngestServer:
             hostname = msg.get("hostname", "")
             config_data = {k: v for k, v in msg.items()
                            if k not in ("type", "machine_id", "hostname", "timestamp", "source_ip", "platform", "tls")}
+            config_data["hostname"] = hostname
             self.db.save_machine_config(machine_id, config_data)
+            # v4.10: mirror main TCP server - keep assets_computers / auto USB printer
+            # assets in sync on ingest ports too (registration + disconnect cleanup).
+            try:
+                user_info = self.db.get_machine_user(machine_id) or {}
+                self.db.insert_machine_config(machine_id, config_data, user_info)
+            except Exception as _ae:
+                print(f"[-] Ingest #{self.port}: insert_machine_config failed: {_ae}")
 
     def _handle_response(self, msg):
         if self.db:
