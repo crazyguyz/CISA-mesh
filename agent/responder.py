@@ -311,18 +311,38 @@ class Responder:
             return {"status": "failed", "error": str(e)}
 
     def _restore_file(self, params: dict) -> dict:
-        """Restore a file from quarantine."""
-        quarantine_name = params.get("quarantine_name", "")
-        original_path = params.get("original_path", "")
-        quarantine_path = os.path.join(QUARANTINE_DIR, quarantine_name)
+        """Restore a file from quarantine.
 
-        if not os.path.exists(quarantine_path):
-            return {"status": "failed", "error": f"Quarantined file not found: {quarantine_path}"}
+        v4.10 (HIGH-6): quarantine_name is sanitized to a basename that must stay
+        inside QUARANTINE_DIR, and the destination original_path is read from the
+        .meta.json written at quarantine time - never trusted from command params."""
+        quarantine_name = params.get("quarantine_name", "")
+        # Only a bare filename is acceptable (blocks ..\\ path traversal)
+        quarantine_name = os.path.basename(quarantine_name)
+        quarantine_path = os.path.join(QUARANTINE_DIR, quarantine_name)
+        real_q = os.path.realpath(quarantine_path)
+        real_dir = os.path.realpath(QUARANTINE_DIR) + os.sep
+        if not real_q.startswith(real_dir):
+            return {"status": "failed", "error": "Invalid quarantine file name"}
+        if not os.path.exists(real_q):
+            return {"status": "failed", "error": f"Quarantined file not found: {real_q}"}
+
+        # Original path must come from the metadata written by _quarantine_file
+        original_path = ""
+        meta_path = real_q + ".meta.json"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as _mf:
+                    meta = json.load(_mf)
+                original_path = (meta.get("original_path") or "").strip()
+            except Exception:
+                original_path = ""
+        if not original_path:
+            return {"status": "failed", "error": "Cannot determine original path (missing metadata)"}
 
         try:
-            shutil.move(quarantine_path, original_path)
+            shutil.move(real_q, original_path)
             # Clean up metadata file
-            meta_path = quarantine_path + ".meta.json"
             if os.path.exists(meta_path):
                 os.remove(meta_path)
             return {"status": "completed", "output": f"File restored: {original_path}"}
@@ -1176,6 +1196,12 @@ Write-Output ($results -join "; ")
         }
         """
         msg_id = command_data.get("msg_id", f"msg_{int(time.time())}")
+        # v4.10 (HIGH-7): msg_id is server-controlled - never use it directly in
+        # file names (path traversal). Sanitize to safe chars only, and keep a
+        # fully-safe copy for the PowerShell string literal.
+        import re as _re
+        safe_msg_id = _re.sub(r"[^A-Za-z0-9_\-]", "_", msg_id)[:32] or "msg"
+        ps_msg_id = _re.sub(r"[^A-Za-z0-9_\-]", "", msg_id)[:32]
         title = command_data.get("title", "Thong bao")
         message = command_data.get("message", "")
         sender = command_data.get("sender", "admin")
@@ -1185,10 +1211,10 @@ Write-Output ($results -join "; ")
         ps_title = title.replace("'", "''")
         ps_message = message.replace("'", "''")
         ps_sender = sender.replace("'", "''")
-        ps_msg_id = msg_id.replace("'", "''")
+        # v4.10 (HIGH-7): ps_msg_id is already sanitized above (safe chars only)
 
-        result_file = os.path.join(tempfile.gettempdir(), f"giamsat_msg_reply_{os.getpid()}_{msg_id}.json")
-        ps_file = os.path.join(tempfile.gettempdir(), f"giamsat_msg_{os.getpid()}_{msg_id}.ps1")
+        result_file = os.path.join(tempfile.gettempdir(), f"giamsat_msg_reply_{os.getpid()}_{safe_msg_id}.json")
+        ps_file = os.path.join(tempfile.gettempdir(), f"giamsat_msg_{os.getpid()}_{safe_msg_id}.ps1")
 
         # Build PowerShell script with textbox for reply
         reply_box_height = 80 if require_reply else 0

@@ -66,8 +66,16 @@ def register(app, core):
         with open(exe_path, "rb") as _f:
             for _chunk in iter(lambda: _f.read(65536), b""):
                 _sha.update(_chunk)
+        # v4.10 (CRITICAL-1): sign the file hash with command_key so the agent can
+        # reject a MITM that forges X-File-SHA256 on the plaintext download.
+        import hmac as _hmac, os as _os
+        _cmd_key = _os.environ.get("GIAMSAT_COMMAND_KEY", "")
         resp = send_file(exe_path, as_attachment=True, download_name=exe_name)
         resp.headers["X-File-SHA256"] = _sha.hexdigest()
+        if _cmd_key:
+            resp.headers["X-File-Sig"] = _hmac.new(
+                _cmd_key.encode("utf-8"), _sha.hexdigest().encode("utf-8"), _hashlib.sha256
+            ).hexdigest()
         return resp
 
     @app.route("/api/agent/update-log", methods=["GET"])

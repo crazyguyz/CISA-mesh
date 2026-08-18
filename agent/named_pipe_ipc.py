@@ -327,6 +327,23 @@ class FallbackHttpClient:
         self.port = port
         self.timeout = timeout
 
+    def _auth_token(self):
+        """v4.10 (CRIT-2): token for updater HTTP auth - same derivation as
+        updater._updater_auth_token (sha256(command_key + ':updater'))."""
+        try:
+            cfg_path = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                                    "GIAM-SAT", "Agent", "agent_config.json")
+            key = ""
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    key = (json.load(f).get("command_key") or "").strip()
+            if not key:
+                return ""
+            import hashlib
+            return hashlib.sha256((key + ":updater").encode()).hexdigest()
+        except Exception:
+            return ""
+
     def send_command(self, command: dict) -> dict:
         """Send command via HTTP POST to Updater."""
         try:
@@ -334,7 +351,8 @@ class FallbackHttpClient:
             url = f"http://{self.host}:{self.port}/{command.get('action', 'msg')}"
             data = json.dumps(command).encode("utf-8")
             req = urlreq.Request(url, data=data,
-                headers={"Content-Type": "application/json"})
+                headers={"Content-Type": "application/json",
+                         "X-Updater-Token": self._auth_token()})
             resp = urlreq.urlopen(req, timeout=self.timeout)
             return json.loads(resp.read().decode())
         except Exception as e:

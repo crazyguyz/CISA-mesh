@@ -1351,6 +1351,7 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             resp = urlreq.urlopen(req, timeout=120)
             total_size = int(resp.headers.get("Content-Length", 0))
             expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
+            expected_sig = (resp.headers.get("X-File-Sig") or "").strip().lower()
 
             # v3.9.6: Validate minimum size (agent .exe must be >= 20MB)
             if total_size > 0 and total_size < 20 * 1024 * 1024:
@@ -1386,20 +1387,38 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                     "output": f"Download size: {downloaded} bytes"
                 }
 
-            # v4.10 (CRITICAL-4): verify downloaded EXE hash if server provided one
-            if expected_sha:
+            # v4.10 (CRITICAL-1): SHA-256 is MANDATORY and (when provided) signed by
+            # the server with HMAC-SHA256(command_key) - a MITM can no longer forge
+            # the hash header on the plaintext download.
+            if not expected_sha:
+                try:
+                    os.remove(new_exe_path)
+                except Exception:
+                    pass
+                return {"status": "error", "error": "Server did not provide X-File-SHA256 - update rejected (fail-closed)", "output": ""}
+            if expected_sig:
+                signing_key = os.environ.get("GIAMSAT_COMMAND_KEY", "") or self.config.get("command_key", "")
+                import hmac as _hmac
                 import hashlib as _hashlib
-                _h = _hashlib.sha256()
-                with open(new_exe_path, "rb") as _f:
-                    for _chunk in iter(lambda: _f.read(65536), b""):
-                        _h.update(_chunk)
-                if _h.hexdigest().lower() != expected_sha:
+                calc_sig = _hmac.new(str(signing_key).encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
+                if not _hmac.compare_digest(calc_sig, expected_sig):
                     try:
                         os.remove(new_exe_path)
                     except Exception:
                         pass
-                    return {"status": "error", "error": "Downloaded EXE hash mismatch (possible tampering)", "output": ""}
-                print("[+] Update EXE hash verified OK")
+                    return {"status": "error", "error": "Update file signature invalid (possible tampering)", "output": ""}
+            import hashlib as _hashlib
+            _h = _hashlib.sha256()
+            with open(new_exe_path, "rb") as _f:
+                for _chunk in iter(lambda: _f.read(65536), b""):
+                    _h.update(_chunk)
+            if _h.hexdigest().lower() != expected_sha:
+                try:
+                    os.remove(new_exe_path)
+                except Exception:
+                    pass
+                return {"status": "error", "error": "Downloaded EXE hash mismatch (possible tampering)", "output": ""}
+            print("[+] Update EXE hash verified OK")
 
             current_exe = sys.executable
             if not getattr(sys, 'frozen', False):
@@ -1416,7 +1435,14 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             if runtime_dir:
                 mei_cleanup = f'echo Cleaning old runtime dirs...\nfor /d %%d in ("{runtime_dir}\\_MEI*") do rd /s /q "%%d" >nul 2>&1\necho Runtime cleanup done.\n'
             
-            update_script = os.path.join(temp_dir, "giamsat_update.bat")
+            # v4.10 (CRIT-4): write the batch with an unpredictable mkstemp name and
+            # sanitize server_host/port before interpolating into the .bat.
+            import re as _re2
+            import tempfile as _tf
+            server_host_safe = _re2.sub(r"[^A-Za-z0-9._\-]", "", str(self.server_host))[:255]
+            port_safe = _re2.sub(r"[^0-9]", "", str(self.server_port))[:10] or "6666"
+            _fd, update_script = _tf.mkstemp(suffix=".bat", prefix="giamsat_update_")
+            os.close(_fd)
             with open(update_script, "w") as f:
                 f.write(f'''@echo off
 setlocal enabledelayedexpansion
@@ -1431,11 +1457,11 @@ copy /Y "{new_exe_path}" "{current_exe}"
 if !errorlevel! equ 0 (
     echo Update successful! Starting agent...
     sc start GiamSatAgent >nul 2>&1
-    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host} --port {self.server_port}
+    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
 ) else (
     echo Update failed! Could not copy file.
     sc start GiamSatAgent >nul 2>&1
-    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host} --port {self.server_port}
+    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
 )
 del "%~f0"
 ''')

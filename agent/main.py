@@ -232,11 +232,12 @@ def _save_config(host, port, user_name="", employee_id="", email="", psk="", com
         try:
             os.replace(tmp, path)
         except PermissionError:
+            # v4.10 (CRIT-3): NEVER grant BUILTIN\Users read/write on a file that
+            # contains command_key/psk/enrollment_token. Fail loud instead.
+            print("[!] CONFIG: Cannot replace agent_config.json (PermissionError). "
+                  "The GIAM-SAT Agent folder ACL must allow the agent account only.")
             try:
-                subprocess.run(["icacls", path, "/grant", "BUILTIN\\Users:(R,W)"],
-                               capture_output=True, timeout=5,
-                               creationflags=subprocess.CREATE_NO_WINDOW)
-                os.replace(tmp, path)
+                os.remove(tmp)
             except Exception:
                 pass
         # User info to APPDATA

@@ -80,6 +80,25 @@ def _server_host():
     return _cfg("server_host", "127.0.0.1")
 
 
+def _updater_auth_token():
+    """v4.10 (CRIT-2): shared secret for the localhost:5999 HTTP fallback.
+    Derived from command_key (known only to agent + updater on this machine)."""
+    key = (_cfg("command_key") or "").strip()
+    if not key:
+        return ""
+    import hashlib
+    return hashlib.sha256((key + ":updater").encode()).hexdigest()
+
+
+def _check_updater_auth(handler):
+    expected = _updater_auth_token()
+    if not expected:
+        return False
+    got = handler.headers.get("X-Updater-Token", "")
+    import hmac
+    return hmac.compare_digest(got, expected)
+
+
 def _server_port():
     """HTTP web port (always 5000, NOT TCP 6666)."""
     return 5000
@@ -184,11 +203,16 @@ def download_exe(version, host=None, port=None):
     url = f"http://{host}:{port}/api/agent/download"
     try:
         _log(f"Downloading agent {version}...")
-        # v4.10 (CRITICAL-4): PSK via header, never in URL/query string
+        # v4.10 (HIGH-8): version is used in the EXE filename - sanitize before
+        # joining to prevent path traversal via version="..\\..\\evil".
+        import re as _re
+        version = _re.sub(r"[^A-Za-z0-9._-]", "", str(version))[:64] or "unknown"
+        # v4.10 (CRITICAL-1): PSK via header, never in URL/query string
         req = urllib.request.Request(url, headers={"X-Agent-PSK": (_cfg("psk") or "")})
         resp = urllib.request.urlopen(req, timeout=120)
         total = int(resp.headers.get("Content-Length", 0))
         expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
+        expected_sig = (resp.headers.get("X-File-Sig") or "").strip().lower()
         tmp = tempfile.gettempdir()
         new_path = os.path.join(tmp, f"{AGENT_EXE_NAME}_{version}.exe")
         downloaded = 0
@@ -206,21 +230,38 @@ def download_exe(version, host=None, port=None):
         if downloaded < 1000:
             _log("ERROR: File too small")
             return None
-        # v4.10 (CRITICAL-4): verify SHA-256 if server provided one
-        if expected_sha:
-            import hashlib as _hashlib
-            _h = _hashlib.sha256()
-            with open(new_path, "rb") as _f:
-                for _chunk in iter(lambda: _f.read(65536), b""):
-                    _h.update(_chunk)
-            if _h.hexdigest().lower() != expected_sha:
-                _log("ERROR: EXE hash mismatch (possible tampering) - update aborted")
+        # v4.10 (CRITICAL-1): SHA-256 is MANDATORY + signed (HMAC with command_key)
+        if not expected_sha:
+            _log("ERROR: Server did not provide X-File-SHA256 - update rejected (fail-closed)")
+            try:
+                os.remove(new_path)
+            except Exception:
+                pass
+            return None
+        import hashlib as _hashlib
+        if expected_sig:
+            import hmac as _hmac
+            signing_key = (_cfg("command_key") or "").strip()
+            calc_sig = _hmac.new(signing_key.encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
+            if not _hmac.compare_digest(calc_sig, expected_sig):
+                _log("ERROR: EXE signature invalid (possible tampering) - update aborted")
                 try:
                     os.remove(new_path)
                 except Exception:
                     pass
                 return None
-            _log("EXE hash verified OK")
+        _h = _hashlib.sha256()
+        with open(new_path, "rb") as _f:
+            for _chunk in iter(lambda: _f.read(65536), b""):
+                _h.update(_chunk)
+        if _h.hexdigest().lower() != expected_sha:
+            _log("ERROR: EXE hash mismatch (possible tampering) - update aborted")
+            try:
+                os.remove(new_path)
+            except Exception:
+                pass
+            return None
+        _log("EXE hash verified OK")
         return new_path
     except Exception as e:
         _log(f"Download failed: {e}")
@@ -299,8 +340,16 @@ def reset_user():
             "LUU Y: May tinh se khoi dong lai sau khi nhap.",
             "GIAM-SAT Agent - Canh Bao", 0x30 | 0x1)
 
-        ps_file = os.path.join(tempfile.gettempdir(), f"giamsat_reset_{os.getpid()}.ps1")
+        # v4.10 (MED-9): unpredictable temp file name (mkstemp) - the old
+        # pid-based name in %TEMP% was predictable/racy for local users.
+        _fd, ps_file = tempfile.mkstemp(suffix=".ps1", prefix="giamsat_reset_")
+        os.close(_fd)
         result_file = os.path.join(tempfile.gettempdir(), f"giamsat_reset_result_{os.getpid()}.json")
+
+        # Escape host/port for the PowerShell double-quoted string literal
+        # (block ' $ " injection via a crafted server_host config).
+        host_ps = (str(_server_host()) or "").replace("\\", "\\\\").replace('"', '`"').replace("$", "`$")
+        port_ps = (str(_cfg("server_port", 6666)) or "").replace("\\", "\\\\").replace('"', '`"').replace("$", "`$")
 
         with open(ps_file, "w", encoding="utf-8") as f:
             f.write(r'''
@@ -316,9 +365,9 @@ function Add-TB($t,$y,[int]$w=340){$b=New-Object System.Windows.Forms.TextBox;$b
 
 $y=78
 $y=Add-Label "Dia chi may chu (IP/Hostname):" $y
-$txtHost,$y=Add-TB "''' + _server_host() + r'''" $y
+$txtHost,$y=Add-TB "''' + host_ps + r'''" $y
 $y=Add-Label "Cong ket noi:" $y
-$txtPort,$y=Add-TB "''' + str(_cfg("server_port", 6666)) + r'''" $y 80
+$txtPort,$y=Add-TB "''' + port_ps + r'''" $y 80
 $y+=8
 $y=Add-Label "THONG TIN NGUOI SU DUNG" $y
 $y=Add-Label "Nguoi su dung:" $y
@@ -418,6 +467,12 @@ class UpdaterHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        # v4.10 (CRIT-2): localhost HTTP fallback requires the updater auth token.
+        # Any local process without the token is rejected (fail-closed).
+        if not _check_updater_auth(self):
+            _log("[!] HTTP / rejected: missing or invalid X-Updater-Token")
+            self._json({"error": "unauthorized"}, 401)
+            return
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
