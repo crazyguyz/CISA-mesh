@@ -357,7 +357,7 @@ class Responder:
         """Terminate a process by name or PID."""
         process_name = params.get("name", "")
         pid = params.get("pid", 0)
-        force = params.get("force", True)
+        force = bool(params.get("force", True))
 
         if pid:
             target = str(pid)
@@ -377,8 +377,10 @@ class Responder:
                 return {"status": "completed", "output": f"Process killed: {target}"}
             return {"status": "failed", "error": stderr or "Process not found"}
         else:
-            flag = "-9" if force else ""
-            stdout, stderr, rc = _run(["kill", flag, target])
+            # v4.10 (MED-11): do not pass an empty flag argument - `kill "" pid`
+            # always fails. Build the command without the -9 flag when not forcing.
+            args = ["kill", "-9", target] if force else ["kill", target]
+            stdout, stderr, rc = _run(args, timeout=10)
             if rc == 0:
                 return {"status": "completed", "output": f"Process killed: {target}"}
             return {"status": "failed", "error": stderr or "Process not found"}
@@ -772,6 +774,12 @@ try {{
                 # Remove domain prefix if present
                 if "\\" in username:
                     username = username.split("\\")[-1]
+                # v4.10 (MED-7): sanitize username before PS interpolation
+                # (Windows allows ' in account names -> PS string breakout)
+                import re as _re
+                username = _re.sub(r"[^A-Za-z0-9._ -]", "", str(username))[:128]
+                if not username:
+                    return {"status": "failed", "error": "Invalid username to lock"}
                 stdout3, stderr, rc = _run([
                     "powershell", "-NoProfile", "-Command",
                     f"Disable-LocalUser -Name '{username}' -ErrorAction Stop; Write-Output 'LOCKED:{username}'"

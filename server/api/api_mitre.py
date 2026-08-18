@@ -21,7 +21,8 @@ def register_routes(app, core):
         _, err, code = check_auth("api")
         if err: return err, code
         machine_id = request.args.get("machine_id", "")
-        since_hours = int(request.args.get("since_hours", "24"))
+        # v4.10 (LOW-4): type=int avoids ValueError -> 500 on garbage input
+        since_hours = request.args.get("since_hours", 24, type=int)
         
         result = {
             "tactics": MITRE_TACTICS,

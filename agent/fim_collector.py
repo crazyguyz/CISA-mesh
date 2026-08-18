@@ -65,9 +65,19 @@ class FIMEventHandler(FileSystemEventHandler):
         self._debounce = {}  # Prevent duplicate events
 
     def _should_skip(self, path):
-        """Check if path should be excluded."""
+        """Check if path should be excluded.
+        v4.10 (LOW-10): a pattern starting with '.' is treated as a file
+        extension match (endswith) - the old substring match meant '.log'
+        excluded every path containing '.log' (e.g. evil.log.ps1)."""
+        low = path.lower()
         for pattern in self.exclude_patterns:
-            if pattern in path:
+            p = str(pattern).lower().strip()
+            if not p:
+                continue
+            if p.startswith("."):
+                if low.endswith(p):
+                    return True
+            elif p in low:
                 return True
         return False
 

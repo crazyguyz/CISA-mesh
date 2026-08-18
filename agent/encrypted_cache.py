@@ -260,17 +260,17 @@ class EncryptedCache:
             return None
 
     def _integrity_guard_loop(self):
-        """v3.6: Background thread that checks for DB file tampering every 30s."""
+        """v3.6: Background thread that checks for cache tampering every 30s.
+        v4.10 (LOW-9): the previous loop had its comparison commented out (dead
+        code); it now actually verifies the Merkle chain and logs tampering."""
         while self._guard_running:
             time.sleep(30)
             try:
-                db_path = _get_cache_path()
-                current_stat = os.stat(db_path)
-                if self._last_db_stat is not None:
-                    # v3.9.2 FIX: WAL mode writes + our own cache() calls
-                    # also change st_mtime. Skip false positive alerts.
-                    pass
-                self._last_db_stat = current_stat
+                valid, errors = self.verify_integrity()
+                if not valid:
+                    print(f"[!] CACHE INTEGRITY: {len(errors)} row(s) tampered in event cache")
+                    for e in errors[:5]:
+                        print(f"    row {e['row_id']}: expected {e['expected']} got {e['actual']}")
             except Exception:
                 pass
 

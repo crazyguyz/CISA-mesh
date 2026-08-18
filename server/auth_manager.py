@@ -329,57 +329,66 @@ class AuthManager:
 
     # ---- Brute Force Protection (unchanged) ----
 
-    def _check_brute_force(self, username):
-        """Check if username is locked due to brute-force. Returns (is_locked, remaining_minutes)."""
+    def _check_brute_force(self, username, ip=""):
+        """Check if username/IP is locked due to brute-force.
+        v4.10 (MED-19): also lock by client IP so an attacker cannot DoS a shared
+        account (and cannot keep trying from one IP with different usernames)."""
         with self._brute_lock:
-            if username in self.brute_force:
-                bf = self.brute_force[username]
-                if "locked_until" in bf:
-                    locked_until = bf["locked_until"]
-                    if datetime.utcnow() < locked_until:
-                        remaining = int((locked_until - datetime.utcnow()).total_seconds() / 60) + 1
-                        return True, remaining
-                    else:
-                        del self.brute_force[username]
+            for key in (username, f"ip:{ip}"):
+                if not key:
+                    continue
+                if key in self.brute_force:
+                    bf = self.brute_force[key]
+                    if "locked_until" in bf:
+                        locked_until = bf["locked_until"]
+                        if datetime.utcnow() < locked_until:
+                            remaining = int((locked_until - datetime.utcnow()).total_seconds() / 60) + 1
+                            return True, remaining
+                        else:
+                            del self.brute_force[key]
         return False, 0
 
-    def _record_failed_attempt(self, username):
+    def _record_failed_attempt(self, username, ip=""):
         with self._brute_lock:
-            if username not in self.brute_force:
-                self.brute_force[username] = {"attempts": 1}
-            else:
-                self.brute_force[username]["attempts"] = self.brute_force[username].get("attempts", 0) + 1
-            if self.brute_force[username]["attempts"] >= MAX_LOGIN_ATTEMPTS:
-                self.brute_force[username]["locked_until"] = datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+            for key in (username, f"ip:{ip}"):
+                if not key:
+                    continue
+                if key not in self.brute_force:
+                    self.brute_force[key] = {"attempts": 1}
+                else:
+                    self.brute_force[key]["attempts"] = self.brute_force[key].get("attempts", 0) + 1
+                if self.brute_force[key]["attempts"] >= MAX_LOGIN_ATTEMPTS:
+                    self.brute_force[key]["locked_until"] = datetime.utcnow() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
 
-    def _clear_brute_force(self, username):
+    def _clear_brute_force(self, username, ip=""):
         with self._brute_lock:
-            if username in self.brute_force:
-                del self.brute_force[username]
+            for key in (username, f"ip:{ip}"):
+                if key and key in self.brute_force:
+                    del self.brute_force[key]
 
     # ---- Authentication (v2.5.3: salted verification) ----
 
-    def authenticate(self, username, password):
+    def authenticate(self, username, password, ip=""):
         """Authenticate user. Returns dict with token/error/must_change_password, or None."""
-        # Check brute-force lockout
-        is_locked, remaining = self._check_brute_force(username)
+        # Check brute-force lockout (v4.10 MED-19: per-username + per-IP)
+        is_locked, remaining = self._check_brute_force(username, ip)
         if is_locked:
             return {"success": False, "error": f"Tài khoản bị khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau {remaining} phút.", "code": "ACCOUNT_LOCKED"}
 
         user = self.users.get(username)
         if not user:
-            self._record_failed_attempt(username)
+            self._record_failed_attempt(username, ip)
             remaining_attempts = MAX_LOGIN_ATTEMPTS - self.brute_force.get(username, {}).get("attempts", 0)
             return {"success": False, "error": f"Sai tên đăng nhập hoặc mật khẩu. Còn {remaining_attempts} lần thử.", "code": "INVALID_CREDENTIALS"}
 
         # v2.5.3: Verify with salt if available, fallback to unsalted (legacy)
         if not self._verify_password(password, user.get("password", ""), user.get("salt")):
-            self._record_failed_attempt(username)
+            self._record_failed_attempt(username, ip)
             remaining_attempts = MAX_LOGIN_ATTEMPTS - self.brute_force.get(username, {}).get("attempts", 0)
             return {"success": False, "error": f"Sai tên đăng nhập hoặc mật khẩu. Còn {remaining_attempts} lần thử.", "code": "INVALID_CREDENTIALS"}
 
         # Success - clear brute-force
-        self._clear_brute_force(username)
+        self._clear_brute_force(username, ip)
 
         # v2.5.3: Auto-migrate legacy unsalted password on successful login
         # v4.10 FIX (HIGH-1): use PBKDF2 _hash_password (64-hex salt). The old
@@ -432,10 +441,22 @@ class AuthManager:
             return None
 
     def invalidate_token(self, token):
-        # v4.5.4 FIX: use an insertion-ordered dict and evict OLDEST entries when
-        # full, instead of clearing ALL (which would silently re-validate every
-        # previously logged-out token).
-        self.token_blacklist[token] = True
+        # v4.10 (LOW-6): store the token's expiry (when decodable) so blacklisted
+        # tokens are evicted by expiration instead of just by oldest-insert.
+        exp_ts = None
+        try:
+            payload = self.verify_token(token)
+            exp_ts = payload.get("exp", 0) if payload else None
+        except Exception:
+            pass
+        self.token_blacklist[token] = exp_ts if isinstance(exp_ts, (int, float)) else True
+        # evict expired entries
+        now = datetime.utcnow().timestamp()
+        expired = [k for k, v in self.token_blacklist.items()
+                   if isinstance(v, (int, float)) and v < now]
+        for k in expired:
+            self.token_blacklist.pop(k, None)
+        # cap size (oldest-first fallback)
         if len(self.token_blacklist) > 1000:
             for _ in range(len(self.token_blacklist) - 900):
                 try:

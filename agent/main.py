@@ -156,6 +156,12 @@ def _check_first_boot_today():
                 data = json.loads(f.read())
             if data.get("date") == today:
                 data["count"] = data.get("count", 0) + 1
+                # v4.10 (MED-10): persist the counter (was never saved)
+                try:
+                    with open(path, "w") as f:
+                        json.dump(data, f, indent=2)
+                except Exception:
+                    pass
                 return False
             else:
                 data = {"date": today, "count": 1}

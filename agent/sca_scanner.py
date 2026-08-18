@@ -810,7 +810,10 @@ class SCAScanner:
         expr_lower = expr.lower()
         for var, val in context.items():
             if isinstance(val, str):
-                expr_lower = expr_lower.replace(var.lower(), f"'{val}'")
+                # v4.10 (MED-8): strip quote chars from interpolated values so a
+                # value cannot break out of the string literal inside eval().
+                val_safe = str(val).replace("'", "").replace('"', "")
+                expr_lower = expr_lower.replace(var.lower(), f"'{val_safe}'")
             elif isinstance(val, bool):
                 expr_lower = expr_lower.replace(var.lower(), str(val))
             else:

@@ -35,7 +35,8 @@ def register(app, core):
         # v2.5.2: Reject obviously malicious inputs
         if any(c in username for c in '<>"\';\0\n\r\t'):
             return jsonify({"success": False, "error": "Invalid credentials", "code": "INVALID_CREDENTIALS"}), 401
-        result = core.auth.authenticate(username, password)
+        # v4.10 (MED-19): pass client IP so brute-force lockout is per-IP too
+        result = core.auth.authenticate(username, password, request.remote_addr or "")
         if result and result.get("success"):
             core.db.insert_audit_log(username, "login", "User logged in", request.remote_addr)
             resp = jsonify({

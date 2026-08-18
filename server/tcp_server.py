@@ -424,7 +424,8 @@ class TCPServer(threading.Thread):
             self.event_queue.push_event(msg)
         elif self.db:
             self.db.insert_network_traffic(msg)
-        print(f"[NET] {msg.get('hostname','?')}: {msg.get('src_ip','?')}:{msg.get('src_port',0)} -> {msg.get('dst_ip','?')}:{msg.get('dst_port',0)} ({msg.get('protocol','?')})")
+        # v4.10 (MED-21): removed per-message print - network traffic is very
+        # high-frequency and this spammed the console / blocked on I/O.
 
     def _handle_threat_alert(self, msg):
         if self.event_queue:

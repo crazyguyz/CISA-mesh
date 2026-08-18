@@ -12,6 +12,15 @@ from .api_common import check_auth, check_agent_psk
 _pending_approvals = {}
 _approval_lock = __import__("threading").Lock()
 
+# v4.10 (MED-1): only these server-issued response actions may be requested for
+# approval - an agent (or anyone holding the shared PSK) cannot queue arbitrary
+# actions that the SOC then executes on the target machine.
+APPROVED_PENDING_ACTIONS = {
+    "isolate_network", "restore_network", "kill_process", "quarantine_file",
+    "restore_file", "disable_account", "firewall_block", "firewall_unblock",
+    "dump_memory",
+}
+
 
 def process_approval(core, callback_data="", approval_id="", action=""):
     """Process an approval/denial action. Returns (result_dict, status_code).
@@ -141,6 +150,17 @@ def register(app, core):
 
         if not machine_id or not action:
             return jsonify({"error": "machine_id and action required"}), 400
+
+        # v4.10 (MED-1): only allowlisted actions may be queued for approval
+        if action not in APPROVED_PENDING_ACTIONS:
+            return jsonify({"error": f"action '{action}' is not allowed for pending approval"}), 400
+        # v4.10 (MED-1): target machine must be a registered machine
+        try:
+            machines = core.db.get_machines() or []
+            if not any(m.get("machine_id") == machine_id for m in machines):
+                return jsonify({"error": "unknown machine_id"}), 400
+        except Exception:
+            pass
 
         approval_id = f"apr_{machine_id}_{action}_{int(time.time())}"
         with _approval_lock:
