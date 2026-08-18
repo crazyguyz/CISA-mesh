@@ -382,14 +382,16 @@ class AuthManager:
         self._clear_brute_force(username)
 
         # v2.5.3: Auto-migrate legacy unsalted password on successful login
+        # v4.10 FIX (HIGH-1): use PBKDF2 _hash_password (64-hex salt). The old
+        # token_hex(16) salt is exactly 32 chars, which _verify_password treats as
+        # the PBKDF2 branch -> the migrated user could never log in again.
         if "salt" not in user or not user.get("salt"):
-            new_salt = secrets.token_hex(16)
-            new_hash = hashlib.sha256((new_salt + password).encode()).hexdigest()
+            new_hash, new_salt = self._hash_password(password)
             with self.lock:
                 self.users[username]["password"] = new_hash
                 self.users[username]["salt"] = new_salt
                 self._save_users()
-            print(f"[*] AUTH: Auto-migrated {username}'s password to salted hash")
+            print(f"[*] AUTH: Auto-migrated {username}'s password to PBKDF2 salted hash")
 
         must_change = user.get("must_change_password", False)
         token = self._generate_token(username, user.get("role", "viewer"), must_change)

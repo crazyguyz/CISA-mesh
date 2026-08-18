@@ -134,31 +134,9 @@ def register(app, core):
             event_type="memory_scan_event"
         ))
 
-    # v3.2: Threat Hunting
-    @app.route("/api/hunt/start", methods=["POST"])
-    def api_hunt_start():
-        _, err, code = check_auth("api")
-        if err: return err, code
-
-        data = request.get_json(silent=True) or {}
-        hypothesis = data.get("hypothesis", "")
-        tactic = data.get("tactic", None)
-        since_hours = data.get("since_hours", 168)
-
-        if not hypothesis:
-            return jsonify({"error": "hypothesis is required"}), 400
-
-        from hunting_engine import HuntingEngine
-        if not hasattr(core, "_hunting_engine"):
-            core._hunting_engine = HuntingEngine(core.db)
-
-        result = core._hunting_engine.start_campaign(
-            hypothesis=hypothesis,
-            tactic=tactic,
-            since_hours=since_hours,
-        )
-        return jsonify(result)
-
+    # v4.10 (HIGH-4): /api/hunt/start is registered ONLY in api_hunt.py (authz
+    # "delete"). The duplicate route here used weaker "api" and Flask kept the
+    # first registration, silently downgrading the permission - removed.
     @app.route("/api/hunt/result/<campaign_id>")
     def api_hunt_result(campaign_id):
         _, err, code = check_auth("api")

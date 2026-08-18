@@ -2394,17 +2394,24 @@ class PostgresDatabase:
             return False
 
     def verify_enrollment_token(self, machine_id, token):
-        """Simple enrollment verification."""
-        ENROLLMENT_SECRET = os.environ.get("GIAMSAT_ENROLLMENT_SECRET", "change-me-enroll-secret")
+        """Enrollment verification - mirrors the SQLite backend (constant-time,
+        never accepts the raw shared secret)."""
+        import hmac as _hmac
+        ENROLLMENT_SECRET = os.environ.get("GIAMSAT_ENROLLMENT_SECRET", "")
+        # v4.10 (HIGH-13): fail-closed if the secret is missing or still the
+        # public source default - the known value must never be usable.
+        if not ENROLLMENT_SECRET or ENROLLMENT_SECRET == "change-me-enroll-secret":
+            print("[!] AUTH: Enrollment disabled - GIAMSAT_ENROLLMENT_SECRET missing or default (set a random secret).")
+            return False
         import hashlib
         expected = hashlib.sha256(f"{machine_id}:{ENROLLMENT_SECRET}".encode()).hexdigest()[:16]
-        if token == ENROLLMENT_SECRET or token == expected:
+        if _hmac.compare_digest(token or "", expected):
             return True
         if not self._connected:
             return False
         try:
             r = self._execute("SELECT enrollment_token FROM machines WHERE machine_id=%s", (machine_id,), fetch=True)
-            return bool(r and r.get("enrollment_token") == token)
+            return bool(r and _hmac.compare_digest(r.get("enrollment_token") or "", token or ""))
         except Exception:
             return False
 

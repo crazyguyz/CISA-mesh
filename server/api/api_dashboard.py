@@ -52,7 +52,8 @@ def register(app, core):
     @app.route("/api/dashboard/import", methods=["POST"])
     def dashboard_import():
         """Import a new dashboard template JSON."""
-        username, err, code = check_auth("api")
+        # v4.10 (HIGH-2): import writes files on disk - require settings, not viewer
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
@@ -65,14 +66,19 @@ def register(app, core):
         if "panels" not in data:
             return jsonify({"error": "panels array required"}), 400
 
-        # Sanitize filename
-        safe_name = name.lower().replace(" ", "_").replace("/", "_")[:50]
+        # v4.10 (HIGH-2): sanitize filename - only [a-z0-9_-], no path separators
+        import re as _re
+        safe_name = _re.sub(r"[^a-z0-9_\-]", "_", name.lower())[:50]
         if not safe_name.endswith(".json"):
             safe_name += ".json"
 
         filepath = os.path.join(TEMPLATE_DIR, safe_name)
+        # v4.10 (HIGH-2): realpath must stay inside TEMPLATE_DIR (both / and \ paths)
+        real = os.path.realpath(filepath)
+        if not real.startswith(os.path.realpath(TEMPLATE_DIR) + os.sep):
+            return jsonify({"error": "invalid filename"}), 400
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
+            with open(real, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
 
             # Reload engine to pick up new template

@@ -241,6 +241,11 @@ class TemplateEngine:
         if not tpl:
             return '<div class="alert alert-danger">Dashboard template not found: ' + name + '</div>'
 
+        # v4.10 (HIGH-3): escape template-controlled text before interpolation
+        import html as _html
+        esc_name = _html.escape(str(tpl.name), quote=False)
+        esc_desc = _html.escape(str(tpl.description), quote=False)
+
         # Pre-fetch all panel data
         panel_data_map = {}
         for panel in tpl.panels:
@@ -368,8 +373,8 @@ class TemplateEngine:
 </style>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h5 style="color:#eef4f8;margin:0;">{tpl.name}</h5>
-        <small class="text-muted">{tpl.description}</small>
+        <h5 style="color:#eef4f8;margin:0;">{esc_name}</h5>
+        <small class="text-muted">{esc_desc}</small>
     </div>
     <div>
         <button class="btn btn-sm btn-outline-secondary" onclick="location.reload();" style="font-size:11px;" title="Làm mới">
@@ -386,6 +391,11 @@ class TemplateEngine:
     // Pre-fetched panel data (server-side)
     var DASH_DATA = {json.dumps(data_map_json, default=str, ensure_ascii=False)};
     var chartInstances = {{}};
+
+    // v4.10 (HIGH-3): HTML-escape helper for all innerHTML interpolation
+    function esc(s) {{
+        return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }}
 
     function renderAllPanels() {{
         Object.keys(DASH_DATA).forEach(function(panelId) {{
@@ -414,7 +424,8 @@ class TemplateEngine:
         }}
         var displayVal = (val != null) ? val : '0';
         if (typeof displayVal === 'number') displayVal = displayVal.toLocaleString();
-        body.innerHTML = '<div class="stat-value">' + displayVal + '</div><div class="stat-label">' + (config.title || '') + '</div>';
+        // v4.10 (HIGH-3): escape all user-controlled text before innerHTML
+        body.innerHTML = '<div class="stat-value">' + esc(displayVal) + '</div><div class="stat-label">' + esc(config.title || '') + '</div>';
     }}
 
     function renderTable(panelId, data, config) {{
@@ -428,7 +439,7 @@ class TemplateEngine:
         var columns = config.columns || (items.length > 0 ? Object.keys(items[0]) : []);
         var html = '<table class="dashboard-table"><thead><tr>';
         columns.forEach(function(col) {{
-            html += '<th>' + (typeof col === 'string' ? col : (col.label || col.field || col)) + '</th>';
+            html += '<th>' + (typeof col === 'string' ? esc(col) : esc(col.label || col.field || col)) + '</th>';
         }});
         html += '</tr></thead><tbody>';
         items.slice(0, 20).forEach(function(row) {{
@@ -436,15 +447,19 @@ class TemplateEngine:
             columns.forEach(function(col) {{
                 var fieldName = typeof col === 'string' ? col : (col.field || col.label || col);
                 var val = row[fieldName] !== undefined ? row[fieldName] : '';
+                var isHtml = false;
                 if (fieldName === 'is_online') {{
                     val = (val == 1) ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
+                    isHtml = true;
                 }} else if (fieldName === 'severity') {{
                     var sev = String(val).toUpperCase();
                     var cls = sev === 'CRITICAL' ? 'bg-danger' : sev === 'HIGH' ? 'bg-warning text-dark' : 'bg-info';
-                    val = '<span class="badge ' + cls + '">' + val + '</span>';
+                    val = '<span class="badge ' + cls + '">' + esc(val) + '</span>';
+                    isHtml = true;
                 }}
                 if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
-                html += '<td>' + String(val).substring(0, 200) + '</td>';
+                // v4.10 (HIGH-3): escape cell values (except safe badge HTML above)
+                html += '<td>' + (isHtml ? val : esc(String(val).substring(0, 200))) + '</td>';
             }});
             html += '</tr>';
         }});
@@ -543,6 +558,9 @@ class TemplateEngine:
 
     def _render_panel_html(self, panel_id: str, panel_type: str, title: str, size: Dict, panel_data: Dict) -> str:
         """Render the HTML container for a single panel."""
+        import html as _html
+        # v4.10 (HIGH-3): escape panel title before interpolation
+        title_safe = _html.escape(str(title), quote=False)
         w = size.get("w", 3)
         h = size.get("h", 1)
         css_class = "stat-panel" if panel_type in ("stat", "number") else ""
@@ -556,11 +574,12 @@ class TemplateEngine:
             val = data if not field else data.get(field, "0")
             if isinstance(val, (int, float)):
                 val = f"{val:,}"
-            inner = f'<div class="stat-value">{val or "0"}</div><div class="stat-label">{title}</div>'
+            val_safe = _html.escape(str(val or "0"), quote=False)
+            inner = f'<div class="stat-value">{val_safe}</div><div class="stat-label">{title_safe}</div>'
 
         return f'''
 <div class="dashboard-panel {css_class}" style="grid-column: span {w}; grid-row: span {h};" id="{panel_id}">
-    <div class="panel-header"><span>{title}</span></div>
+    <div class="panel-header"><span>{title_safe}</span></div>
     <div class="panel-body" id="{panel_id}_body">{inner}</div>
 </div>'''
 

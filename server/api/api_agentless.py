@@ -64,7 +64,8 @@ def register(app, core):
 
     @app.route("/api/agentless/clear", methods=["POST"])
     def api_agentless_clear():
-        _, err, code = check_auth("api")
+        # v4.10 (MED-4): clearing monitoring data is destructive - require delete
+        _, err, code = check_auth("delete")
         if err: return err, code
         deleted = core.db.clear_agentless_events()
         return jsonify({"success": True, "deleted": deleted})

@@ -22,7 +22,8 @@ def register(app, core):
 
     @app.route("/api/telegram/send", methods=["POST"])
     def api_telegram_send():
-        _, err, code = check_auth("api")
+        # v4.10 (MED-6): sending Telegram messages as the SOC bot needs "command"
+        _, err, code = check_auth("command")
         if err: return err, code
         data = request.json
         message = data.get("message", "")

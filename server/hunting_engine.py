@@ -34,6 +34,15 @@ except ImportError:
     HAS_AI = False
 
 
+# v4.10 (HIGH-4): allowlist for hunting queries - AI-generated field/table names
+# must be validated before being interpolated into SQL.
+ALLOWED_HUNT_TABLES = {
+    "events", "sysmon_events", "fim_events", "network_traffic",
+    "threat_alerts", "syslog", "sca_events", "vuln_alerts", "yara_alerts",
+}
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 # Hypothesis templates mapped to SQL-like filter conditions
 HYPOTHESIS_TEMPLATES = {
     "credential_access": {
@@ -376,10 +385,20 @@ class HuntingEngine:
         """
         Scan a DB table with multiple conditions.
         v3.6: Added use_or_logic parameter for free-text hunting (OR gives more results).
+        v4.10 (HIGH-4): allowlist table + validate every field identifier before
+        building SQL (AI-generated field/table names must not reach the query).
         Returns list of matching rows.
         """
         if not hasattr(self.db, "conn") or not self.db.conn:
             return []
+        if table not in ALLOWED_HUNT_TABLES:
+            print(f"[HUNT] Blocked scan on non-allowlisted table: {table}")
+            return []
+        for cond in conditions or []:
+            field = cond.get("field", "description")
+            if not _SAFE_IDENTIFIER.match(str(field)):
+                print(f"[HUNT] Blocked non-allowlisted field: {field}")
+                return []
 
         # Build SQL WHERE clause from conditions
         where_clauses = []

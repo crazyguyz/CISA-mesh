@@ -417,7 +417,12 @@ class DatabaseManager:
         """v3.8.0: Verify enrollment token during initial agent registration.
         Server checks token against stored enrollment_token for this machine_id."""
         import hmac as _hmac
-        ENROLLMENT_SECRET = os.environ.get("GIAMSAT_ENROLLMENT_SECRET", "change-me-enroll-secret")
+        ENROLLMENT_SECRET = os.environ.get("GIAMSAT_ENROLLMENT_SECRET", "")
+        # v4.10 (HIGH-13): fail-closed if the secret is missing or still the
+        # public source default - the known value must never be usable.
+        if not ENROLLMENT_SECRET or ENROLLMENT_SECRET == "change-me-enroll-secret":
+            print("[!] AUTH: Enrollment disabled - GIAMSAT_ENROLLMENT_SECRET missing or default (set a random secret).")
+            return False
         expected_token = f"{machine_id}:{ENROLLMENT_SECRET}"
         import hashlib
         expected_hash = hashlib.sha256(expected_token.encode()).hexdigest()[:16]

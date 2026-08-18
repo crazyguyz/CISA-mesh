@@ -157,9 +157,11 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/changes/<int:change_id>/resolve", methods=["POST"])
     def api_assets_resolve_change(change_id):
-        _, err, code = check_auth("api")
+        # v4.10 (LOW-5): resolving change is an admin action; resolved_by comes
+        # from the authenticated token, not a client-supplied field.
+        username, err, code = check_auth("settings")
         if err: return err, code
-        resolved_by = request.json.get("resolved_by", "admin") if request.json else "admin"
+        resolved_by = username or "admin"
         ok = db.resolve_asset_change(change_id, resolved_by) if db else False
         return jsonify({"success": ok})
 

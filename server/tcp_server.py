@@ -154,37 +154,30 @@ class TCPServer(threading.Thread):
                         msg_type = msg.get("type", "")
                         msg_machine_id = (msg.get("machine_id") or "").strip()
 
-                        if self.psk:
-                            # PSK configured -> require valid registration + identity match
-                            if msg_type == "register":
-                                if self._process_message(msg, address, client_sock):
-                                    authenticated_machine_id = msg_machine_id
-                                    machine_id = msg_machine_id
-                                    hostname = msg.get("hostname", "Unknown")
-                                    with self.client_lock:
-                                        self.clients[machine_id] = (client_sock, address)
-                                # else: rejected — stay unauthenticated
-                                continue
-
-                            if authenticated_machine_id is None:
-                                print(f"[!] SECURITY: unauthenticated '{msg_type}' from {address[0]} ignored")
-                                continue
-                            if msg_machine_id != authenticated_machine_id:
-                                print(f"[!] SECURITY: machine_id mismatch '{msg_machine_id}' vs '{authenticated_machine_id}' from {address[0]} ignored")
-                                continue
-
-                            self._process_message(msg, address, client_sock)
-                            machine_id = authenticated_machine_id
-                            with self.client_lock:
-                                self.clients[machine_id] = (client_sock, address)
-                        else:
-                            # Legacy mode: no PSK configured — accept (dev only)
-                            self._process_message(msg, address, client_sock)
-                            if msg_machine_id:
+                        # v4.10 (MED-20): PSK is mandatory - the legacy "accept all
+                        # without PSK" mode is removed. _handle_register already
+                        # rejects registration when GIAMSAT_AGENT_PSK is unset.
+                        if msg_type == "register":
+                            if self._process_message(msg, address, client_sock):
+                                authenticated_machine_id = msg_machine_id
                                 machine_id = msg_machine_id
                                 hostname = msg.get("hostname", "Unknown")
                                 with self.client_lock:
                                     self.clients[machine_id] = (client_sock, address)
+                            # else: rejected — stay unauthenticated
+                            continue
+
+                        if authenticated_machine_id is None:
+                            print(f"[!] SECURITY: unauthenticated '{msg_type}' from {address[0]} ignored")
+                            continue
+                        if msg_machine_id != authenticated_machine_id:
+                            print(f"[!] SECURITY: machine_id mismatch '{msg_machine_id}' vs '{authenticated_machine_id}' from {address[0]} ignored")
+                            continue
+
+                        self._process_message(msg, address, client_sock)
+                        machine_id = authenticated_machine_id
+                        with self.client_lock:
+                            self.clients[machine_id] = (client_sock, address)
 
                 except socket.timeout:
                     continue

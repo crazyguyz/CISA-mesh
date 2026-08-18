@@ -11,14 +11,17 @@ def register(app, core):
 
     @app.route("/api/suppression/list", methods=["GET"])
     def api_suppression_list():
-        _, err, code = check_auth("api")
+        # v4.10 (LOW-1): "admin" is not a valid permission in USER_ROLES - every
+        # role (including admin) got 403 and the whole suppression feature was dead.
+        _, err, code = check_auth("settings")
         if err: return err, code
         list_data = core.db.get_suppressions()
         return jsonify({"suppressions": list_data})
 
     @app.route("/api/suppression/add", methods=["POST"])
     def api_suppression_add():
-        _, err, code = check_auth("admin")
+        # v4.10 (LOW-1): see list endpoint - "admin" permission does not exist
+        _, err, code = check_auth("settings")
         if err: return err, code
         data = request.json or {}
         rule_id = data.get("rule_id", "").strip()
@@ -36,7 +39,8 @@ def register(app, core):
 
     @app.route("/api/suppression/remove/<int:suppression_id>", methods=["POST"])
     def api_suppression_remove(suppression_id):
-        _, err, code = check_auth("admin")
+        # v4.10 (LOW-1): see list endpoint - "admin" permission does not exist
+        _, err, code = check_auth("settings")
         if err: return err, code
         core.db.remove_suppression(suppression_id)
         return jsonify({"success": True})

@@ -30,8 +30,10 @@ try:
     HAS_ES = True
 except ImportError:
     HAS_ES = False
+# v4.10 (CRIT-7): server_core imports HAS_ELASTICSEARCH (backward-compat alias)
+HAS_ELASTICSEARCH = HAS_ES
 
-from .db_base import DatabaseBackend
+from db_base import DatabaseBackend
 
 # Bulk indexing buffer
 BULK_FLUSH_SIZE = 500

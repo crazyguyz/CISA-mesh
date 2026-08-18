@@ -183,7 +183,9 @@ def register(app, core):
     @app.route("/api/message/broadcast", methods=["POST"])
     def message_broadcast():
         """Send a message to multiple machines at once."""
-        username, err, code = check_auth("api")
+        # v4.10 (HIGH-5): broadcast reaches every workstation screen - same
+        # privilege as /api/message/send ("command"), not viewer.
+        username, err, code = check_auth("command")
         if err:
             return err, code
 

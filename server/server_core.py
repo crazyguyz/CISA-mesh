@@ -52,7 +52,8 @@ except ImportError:
 from db_manager import DatabaseManager
 from db_postgres import PostgresDatabase, HAS_POSTGRES
 try:
-    from db_elasticsearch import ElasticsearchDatabase, HAS_ELASTICSEARCH
+    # v4.10 (CRIT-7): the real class is ElasticsearchBackend, not ElasticsearchDatabase
+    from db_elasticsearch import ElasticsearchBackend, HAS_ELASTICSEARCH
 except ImportError:
     HAS_ELASTICSEARCH = False
 from tcp_server import TCPServer
@@ -82,7 +83,7 @@ class ServerCore:
         db_backend = os.environ.get("GIAMSAT_DB_BACKEND", "sqlite").lower()
         if db_backend == "elasticsearch" and HAS_ELASTICSEARCH:
             print("[*] Using Elasticsearch backend (search-optimized)")
-            self.db = ElasticsearchDatabase()
+            self.db = ElasticsearchBackend()
         elif db_backend == "postgres" and HAS_POSTGRES:
             print("[*] Using PostgreSQL backend (scalable)")
             self.db = PostgresDatabase()

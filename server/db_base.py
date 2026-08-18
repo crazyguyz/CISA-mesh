@@ -326,25 +326,25 @@ class DatabaseBackend(ABC):
         pass
 
 
-def create_backend(backend_type: str = "sqlite", config: dict = None) -> DatabaseBackend:
+def create_backend(backend_type: str = "sqlite", config: dict = None):
     """Factory function to create the appropriate database backend.
-    
+
     Args:
         backend_type: 'sqlite', 'elasticsearch', or 'postgresql'
         config: Backend-specific configuration dict
-    
+
     Returns:
         DatabaseBackend instance
     """
+    # v4.10 (HIGH-14): fixed class names + absolute imports (server/ is not a
+    # package, so relative imports always raised ImportError). Removed the
+    # ClickHouse branch - server/db_clickhouse.py does not exist.
     if backend_type == "elasticsearch":
-        from .db_elasticsearch import ElasticsearchBackend
+        from db_elasticsearch import ElasticsearchBackend
         return ElasticsearchBackend(config)
     elif backend_type == "postgresql":
-        from .db_postgres import PostgresBackend
-        return PostgresBackend(config)
-    elif backend_type == "clickhouse":
-        from .db_clickhouse import ClickHouseBackend
-        return ClickHouseBackend(config)
+        from db_postgres import PostgresDatabase
+        return PostgresDatabase()
     else:
-        from .db_manager import SQLiteBackend
-        return SQLiteBackend(config)
+        from db_manager import DatabaseManager
+        return DatabaseManager()

@@ -34,10 +34,13 @@ def register(app, core):
             return jsonify({"error": "machine_id required"}), 400
 
         # Update machine online status (heartbeat via HTTP)
+        # v4.10 (LOW-3): NOW() is PostgreSQL-only - SQLite raised, the exception
+        # was swallowed and HTTP-polled machines were never marked online.
         try:
+            now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             core.db.conn.execute(
-                "UPDATE machines SET last_seen=NOW(), is_online=1 WHERE machine_id=?",
-                (machine_id,)
+                "UPDATE machines SET last_seen=?, is_online=1 WHERE machine_id=?",
+                (now_ts, machine_id)
             )
             core.db.conn.commit()
         except Exception:
