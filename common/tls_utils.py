@@ -103,6 +103,17 @@ def create_mtls_context(certfile, keyfile, cafile=None):
     return ctx
 
 
+def create_server_ssl_context(certfile, keyfile, cafile=None):
+    """v4.10: Server-side TLS context for TCP:6666.
+
+    server_core imports this name; it was previously MISSING from this module,
+    so the import always failed and TLS silently fell back to plaintext.
+    Now it enforces mTLS (CERT_REQUIRED signed by our CA) - the same policy the
+    code advertises - instead of silently downgrading to plaintext.
+    """
+    return create_mtls_context(certfile, keyfile, cafile)
+
+
 def gen_agent_cert(agent_id, cert_dir=None):
     """
     v3.1: Generate a per-agent certificate signed by GIAM-SAT CA.

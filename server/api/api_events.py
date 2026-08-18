@@ -231,8 +231,12 @@ def register(app, core):
     # v3.1: Sigma Rules Import
     @app.route("/api/rules/import-sigma", methods=["POST"])
     def api_import_sigma():
-        _, err, code = check_auth("api")
+        _, err, code = check_auth("settings")
         if err: return err, code
+
+        MAX_UPLOAD = 1_000_000  # 1MB
+        if request.content_length and request.content_length > MAX_UPLOAD:
+            return jsonify({"error": "Upload quá lớn (tối đa 1MB)"}), 413
 
         from sigma_parser import SigmaParser
         parser = SigmaParser()

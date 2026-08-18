@@ -13,7 +13,7 @@ def register(app, core):
 
     @app.route("/api/message/send", methods=["POST"])
     def message_send():
-        username, err, code = check_auth("api")
+        username, err, code = check_auth("command")
         if err:
             return err, code
 

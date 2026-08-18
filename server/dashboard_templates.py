@@ -117,19 +117,21 @@ class TemplateEngine:
 
     def _fetch_stats(self, db):
         try:
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
             cur = db.conn.execute("SELECT COUNT(*) FROM machines")
             total = cur.fetchone()[0]
             cur = db.conn.execute("SELECT COUNT(*) FROM machines WHERE is_online=1")
             online = cur.fetchone()[0]
-            cur = db.conn.execute("SELECT COUNT(*) FROM events WHERE received_at > NOW() - INTERVAL '1 day'")
+            cur = db.conn.execute("SELECT COUNT(*) FROM events WHERE received_at > ?", (cutoff,))
             events = cur.fetchone()[0]
-            cur = db.conn.execute("SELECT COUNT(*) FROM threat_alerts WHERE received_at > NOW() - INTERVAL '1 day'")
+            cur = db.conn.execute("SELECT COUNT(*) FROM threat_alerts WHERE received_at > ?", (cutoff,))
             threats = cur.fetchone()[0]
-            cur = db.conn.execute("SELECT COUNT(*) FROM fim_events WHERE received_at > NOW() - INTERVAL '1 day'")
+            cur = db.conn.execute("SELECT COUNT(*) FROM fim_events WHERE received_at > ?", (cutoff,))
             fim = cur.fetchone()[0]
-            cur = db.conn.execute("SELECT COUNT(*) FROM syslog WHERE received_at > NOW() - INTERVAL '1 day'")
+            cur = db.conn.execute("SELECT COUNT(*) FROM syslog WHERE received_at > ?", (cutoff,))
             syslog = cur.fetchone()[0]
-            cur = db.conn.execute("SELECT COUNT(*) FROM response_results WHERE received_at > NOW() - INTERVAL '1 day'")
+            cur = db.conn.execute("SELECT COUNT(*) FROM response_results WHERE received_at > ?", (cutoff,))
             responses = cur.fetchone()[0]
             return {
                 "total_machines": total,

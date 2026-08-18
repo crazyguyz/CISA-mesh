@@ -61,7 +61,7 @@ def register(app, core):
             return jsonify({"success": False, "error": f"Server error: {str(_exc)[:200]}"}), 500
 
     def _api_response_execute_impl():
-        u, err, code = check_auth("api")
+        u, err, code = check_auth("delete")
         if err:
             return err, code
 

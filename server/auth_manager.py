@@ -52,10 +52,18 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
 
 # v2.5.3: Default admin - will only be used if no users exist on first run
+_first_run_admin_password = None
+
+
 def _make_default_admin():
-    """v2.5.2: Create default admin with PBKDF2 password hash."""
+    """v4.10: Create first-run admin with a RANDOM password (no known default).
+    Password is printed once to console/log and must be changed on first login.
+    Fixes CRITICAL-6 (default admin/admin was a known credential for an attacker)."""
+    global _first_run_admin_password
     salt = secrets.token_bytes(_PBKDF2_SALT_BYTES)
-    pw_hash = hashlib.pbkdf2_hmac(_PBKDF2_HASH_NAME, b"admin", salt, _PBKDF2_ITERATIONS)
+    pw = secrets.token_urlsafe(16)
+    _first_run_admin_password = pw
+    pw_hash = hashlib.pbkdf2_hmac(_PBKDF2_HASH_NAME, pw.encode(), salt, _PBKDF2_ITERATIONS)
     return {
         "username": "admin",
         "password": pw_hash.hex(),
@@ -105,10 +113,11 @@ class AuthManager:
 
         # v2.5.3: Only create default admin if no users exist at all
         if not self.users:
-            print("[!] AUTH: No users found - creating default admin:admin (Must change password!)")
             default_admin = _make_default_admin()
             self.users["admin"] = default_admin
             self._save_users()
+            print("[!] AUTH: No users found - created first-run admin (must change password).")
+            print(f"[!] AUTH: FIRST-RUN ADMIN PASSWORD (keep it safe): {_first_run_admin_password}")
         else:
             # v2.5.3: Migrate old unsalted passwords to salted format
             self._migrate_passwords()

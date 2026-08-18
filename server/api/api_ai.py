@@ -120,14 +120,14 @@ def register(app, core):
 
     @app.route("/api/assistant", methods=["POST"])
     def api_assistant():
-        _, err, code = check_auth("api")
+        _, err, code = check_auth("command")
         if err: return err, code
         data = request.json
         question = data.get("question", "")
         provider = data.get("provider", "deepseek")
         api_key = data.get("api_key", "")
         context_data = data.get("context_data", "")
-        max_context = data.get("max_context", 28000)
+        max_context = min(int(data.get("max_context", 28000) or 28000), 8000)
 
         if not question:
             return jsonify({"response": "Vui lòng nhập câu hỏi."})

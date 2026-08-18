@@ -1979,10 +1979,12 @@ class DatabaseManager:
             "agentless_events": "agentless_events",
             "threat_alerts": "threat_alerts", "vuln_alerts": "vuln_alerts",
         }
+        time_cols = {"events": "time", "fim_events": "time"}
         with self.lock:
             for label, table in tables.items():
                 try:
-                    c = self.conn.execute(f"SELECT COUNT(*) as cnt, MIN(timestamp) as oldest, MAX(timestamp) as newest FROM {table}")
+                    col = time_cols.get(table, "timestamp")
+                    c = self.conn.execute(f"SELECT COUNT(*) as cnt, MIN({col}) as oldest, MAX({col}) as newest FROM {table}")
                     row = c.fetchone()
                     if row and row[0]:
                         d = dict(row)

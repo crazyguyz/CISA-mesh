@@ -22,7 +22,7 @@ def register(app, core):
 
     @app.route("/api/email/send", methods=["POST"])
     def api_email_send():
-        username, err, code = check_auth("api")
+        username, err, code = check_auth("settings")
         if err: return err, code
         data = request.json
         machine_id = data.get("machine_id", "")

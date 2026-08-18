@@ -85,8 +85,9 @@ powershell -ExecutionPolicy Bypass -File setup\setup_config.ps1
 cd server
 python main.py
 # Web UI: http://localhost:5000
-# Login mặc định: admin / admin
-# (Đổi mật khẩu ngay sau lần đăng nhập đầu tiên)
+# Lần chạy đầu tiên: server tự tạo tài khoản admin với MẬT KHẨU NGẪU NHIÊN
+# được in ra console/log (logs/giamsat.log) một lần duy nhất.
+# # (Đổi mật khẩu ngay sau lần đăng nhập đầu tiên)
 ```
 
 ---

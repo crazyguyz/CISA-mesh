@@ -7,6 +7,17 @@ from flask import request, jsonify
 from .api_common import check_auth
 
 
+def _sanitize_devices(devices):
+    """Mask credentials so they are never leaked through the API response."""
+    out = []
+    for d in devices or []:
+        sd = dict(d)
+        sd["ssh_password"] = "***" if sd.get("ssh_password") else ""
+        sd["snmp_community"] = "***" if sd.get("snmp_community") not in ("", "public") else sd.get("snmp_community", "public")
+        out.append(sd)
+    return out
+
+
 def register(app, core):
     """Register agentless routes."""
 
@@ -73,7 +84,7 @@ def register(app, core):
 
     @app.route("/api/agentless/devices", methods=["POST"])
     def api_agentless_add_device():
-        _, err, code = check_auth("api")
+        _, err, code = check_auth("settings")
         if err: return err, code
         data = request.json
         if not data or not data.get("name") or not data.get("ip"):
@@ -87,14 +98,14 @@ def register(app, core):
             ssh_password=data.get("ssh_password", ""),
             interval_seconds=data.get("interval_seconds", 300)
         )
-        return jsonify({"success": True, "devices": core.agentless.devices})
+        return jsonify({"success": True, "devices": _sanitize_devices(core.agentless.devices)})
 
     @app.route("/api/agentless/devices/<int:index>", methods=["DELETE"])
     def api_agentless_delete_device(index):
-        _, err, code = check_auth("api")
+        _, err, code = check_auth("settings")
         if err: return err, code
         if 0 <= index < len(core.agentless.devices):
-            removed = core.agentless.devices.pop(index)
+            core.agentless.devices.pop(index)
             core.agentless._save_devices()
-            return jsonify({"success": True, "removed": removed, "devices": core.agentless.devices})
+            return jsonify({"success": True, "devices": _sanitize_devices(core.agentless.devices)})
         return jsonify({"success": False, "error": "Index không hợp lệ"}), 404
