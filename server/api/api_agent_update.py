@@ -61,7 +61,14 @@ def register(app, core):
             core.db.get_server_agent_version(), "downloading",
             "Agent downloading update", "auto"
         )
-        return send_file(exe_path, as_attachment=True, download_name=exe_name)
+        import hashlib as _hashlib
+        _sha = _hashlib.sha256()
+        with open(exe_path, "rb") as _f:
+            for _chunk in iter(lambda: _f.read(65536), b""):
+                _sha.update(_chunk)
+        resp = send_file(exe_path, as_attachment=True, download_name=exe_name)
+        resp.headers["X-File-SHA256"] = _sha.hexdigest()
+        return resp
 
     @app.route("/api/agent/update-log", methods=["GET"])
     def api_agent_update_log():

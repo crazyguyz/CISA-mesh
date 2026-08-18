@@ -170,6 +170,9 @@ class IngestServer:
         buffer = ""
         machine_id = None
         hostname = None
+        # v4.10 (CRITICAL-5): once a valid register proves the PSK, bind the
+        # machine identity to this connection (mirrors tcp_server.py).
+        authenticated_machine_id = None
 
         try:
             client_sock.settimeout(60)
@@ -188,6 +191,27 @@ class IngestServer:
                         try:
                             msg = json.loads(line)
                             msg["source_ip"] = address[0]
+                            msg_type = msg.get("type", "")
+
+                            # v4.10 (CRITICAL-5): enforce PSK on ALL messages, not just register.
+                            if self.psk:
+                                # Unauthenticated connections may ONLY send a valid register.
+                                if msg_type == "register":
+                                    if self._handle_register(msg):
+                                        authenticated_machine_id = msg.get("machine_id")
+                                        machine_id = authenticated_machine_id
+                                        hostname = msg.get("hostname", "Unknown")
+                                        with self.client_lock:
+                                            self.clients[machine_id] = (client_sock, address)
+                                    continue  # register fully handled here
+                                if authenticated_machine_id is None:
+                                    print(f"[!] SECURITY: unauthenticated '{msg_type}' from {address[0]} ignored")
+                                    continue
+                                if msg.get("machine_id") != authenticated_machine_id:
+                                    print(f"[!] SECURITY: machine_id mismatch '{msg.get('machine_id')}' vs '{authenticated_machine_id}' from {address[0]} ignored")
+                                    continue
+                            # else: Legacy mode, no PSK configured - accept (dev only)
+
                             self._route_message(msg)
 
                             if "machine_id" in msg:
@@ -271,13 +295,13 @@ class IngestServer:
         if not self.psk:
             print("[!] Ingest: Registration rejected - no GIAMSAT_AGENT_PSK configured (fail-closed). "
                   "Set GIAMSAT_AGENT_PSK in .env AND set matching 'psk' in each agent's agent_config.json.")
-            return
+            return False
         import hmac as _hmac
         agent_psk = msg.get("psk", "")
         if not _hmac.compare_digest(agent_psk, self.psk):
             print(f"[!] Ingest #{self.port}: Registration rejected - invalid/empty PSK from {msg.get('source_ip')}. "
                   "Set the agent's 'psk' (agent_config.json) to match GIAMSAT_AGENT_PSK.")
-            return
+            return False
         if self.db:
             self.db.register_machine(
                 msg.get("machine_id", ""),
@@ -287,6 +311,7 @@ class IngestServer:
                 msg.get("version", "1.0.0")
             )
         print(f"[+] Ingest #{self.port}: Registered {msg.get('hostname','?')} ({msg.get('machine_id','?')})")
+        return True
 
     def _handle_heartbeat(self, msg):
         if self.db:

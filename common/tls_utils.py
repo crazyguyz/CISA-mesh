@@ -271,13 +271,13 @@ def create_tls_client_socket(host, port, cafile=None, pinned_fingerprint=None):
     for attempt in range(1, max_retries + 1):
         try:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            # v3.9.17: Enable cert verification if we have a pinned fingerprint
-            if pinned_fingerprint:
-                # Get server cert for fingerprint verification
-                ctx.check_hostname = False  # Agent connects by IP, not hostname
-                ctx.verify_mode = ssl.CERT_NONE  # Let our custom check handle it
+            ctx.check_hostname = False  # agent connects by IP, not hostname
+            if cafile and os.path.exists(cafile):
+                # v4.10 (CRITICAL-3): verify server cert against CA - no CERT_NONE.
+                ctx.verify_mode = ssl.CERT_REQUIRED
+                ctx.load_verify_locations(cafile)
             else:
-                ctx.check_hostname = False
+                # No CA available: rely on optional pinned fingerprint below.
                 ctx.verify_mode = ssl.CERT_NONE
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -332,23 +332,10 @@ def create_tls_client_socket(host, port, cafile=None, pinned_fingerprint=None):
             if attempt < max_retries:
                 time.sleep(2)
 
-    # All TLS attempts failed - fallback to plaintext with retry
-    print(f"[-] All {max_retries} TLS attempts failed ({last_error}), trying plaintext...", flush=True)
-    for attempt in range(1, max_retries + 1):
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(30)
-            sock.connect((host, port))
-            sock.settimeout(60)
-            print(f"[+] Plaintext connected to {host}:{port}", flush=True)
-            return sock, False
-        except Exception as e:
-            last_error = e
-            print(f"[-] Plaintext error (attempt {attempt}): {e}", flush=True)
-            if attempt < max_retries:
-                time.sleep(2)
-
-    print(f"[-] FATAL: All connection attempts to {host}:{port} failed: {last_error}", flush=True)
+    # All TLS attempts failed - v4.10 (CRITICAL-3): NO plaintext fallback.
+    # The caller (agent) already refuses plaintext when TLS is enabled; returning
+    # a plaintext socket here would silently defeat that guard.
+    print(f"[-] FATAL: All {max_retries} TLS attempts to {host}:{port} failed: {last_error} (no plaintext fallback)", flush=True)
     return None, False
 
 

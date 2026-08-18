@@ -184,9 +184,11 @@ def download_exe(version, host=None, port=None):
     url = f"http://{host}:{port}/api/agent/download"
     try:
         _log(f"Downloading agent {version}...")
-        req = urllib.request.Request(url)
+        # v4.10 (CRITICAL-4): PSK via header, never in URL/query string
+        req = urllib.request.Request(url, headers={"X-Agent-PSK": (_cfg("psk") or "")})
         resp = urllib.request.urlopen(req, timeout=120)
         total = int(resp.headers.get("Content-Length", 0))
+        expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
         tmp = tempfile.gettempdir()
         new_path = os.path.join(tmp, f"{AGENT_EXE_NAME}_{version}.exe")
         downloaded = 0
@@ -204,6 +206,21 @@ def download_exe(version, host=None, port=None):
         if downloaded < 1000:
             _log("ERROR: File too small")
             return None
+        # v4.10 (CRITICAL-4): verify SHA-256 if server provided one
+        if expected_sha:
+            import hashlib as _hashlib
+            _h = _hashlib.sha256()
+            with open(new_path, "rb") as _f:
+                for _chunk in iter(lambda: _f.read(65536), b""):
+                    _h.update(_chunk)
+            if _h.hexdigest().lower() != expected_sha:
+                _log("ERROR: EXE hash mismatch (possible tampering) - update aborted")
+                try:
+                    os.remove(new_path)
+                except Exception:
+                    pass
+                return None
+            _log("EXE hash verified OK")
         return new_path
     except Exception as e:
         _log(f"Download failed: {e}")

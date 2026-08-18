@@ -1328,14 +1328,16 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             except Exception:
                 pass
 
-            download_url = f"http://{server_host}:{server_web_port}/api/agent/download?token=auto&machine_id={self.machine_id}&psk={self.config.get('psk','')}"
+            download_url = f"http://{server_host}:{server_web_port}/api/agent/download?token=auto&machine_id={self.machine_id}"
             print(f"[📥] Downloading agent update from {download_url}...")
 
             new_exe_path = os.path.join(temp_dir, f"GiamSatAgent_{server_version}.exe")
 
-            req = urlreq.Request(download_url)
+            # v4.10 (CRITICAL-4): PSK via header, NOT query string (avoids leaking psk in URL/logs)
+            req = urlreq.Request(download_url, headers={"X-Agent-PSK": self.config.get('psk', '')})
             resp = urlreq.urlopen(req, timeout=120)
             total_size = int(resp.headers.get("Content-Length", 0))
+            expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
 
             # v3.9.6: Validate minimum size (agent .exe must be >= 20MB)
             if total_size > 0 and total_size < 20 * 1024 * 1024:
@@ -1370,6 +1372,21 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                     "error": f"Downloaded file too small ({downloaded} bytes), agent must be >= 20MB",
                     "output": f"Download size: {downloaded} bytes"
                 }
+
+            # v4.10 (CRITICAL-4): verify downloaded EXE hash if server provided one
+            if expected_sha:
+                import hashlib as _hashlib
+                _h = _hashlib.sha256()
+                with open(new_exe_path, "rb") as _f:
+                    for _chunk in iter(lambda: _f.read(65536), b""):
+                        _h.update(_chunk)
+                if _h.hexdigest().lower() != expected_sha:
+                    try:
+                        os.remove(new_exe_path)
+                    except Exception:
+                        pass
+                    return {"status": "error", "error": "Downloaded EXE hash mismatch (possible tampering)", "output": ""}
+                print("[+] Update EXE hash verified OK")
 
             current_exe = sys.executable
             if not getattr(sys, 'frozen', False):
@@ -1515,6 +1532,11 @@ del "%~f0"
                 if pending:
                     print(f"[📥] HTTP poll: received {len(pending)} pending command(s)")
                     for cmd in pending:
+                        # v4.10 (CRITICAL-2): verify command signature BEFORE executing
+                        # (same fail-closed path as TCP / _poll_pending_commands).
+                        if not self._verify_command_signature(cmd):
+                            print(f"[!] Command rejected (signature) via HTTP poll: {cmd.get('action', '?')}")
+                            continue
                         try:
                             cmd_str = cmd.get("command", "{}")
                             cmd_data = json.loads(cmd_str) if cmd_str else {}
