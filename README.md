@@ -75,7 +75,7 @@ cd server
 copy .env.example .env
 notepad .env
 
-# Hoặc dùng script tương tác (khuyên dùng)
+# Or use the interactive script (recommended) — asks for language (vi/en) first
 powershell -ExecutionPolicy Bypass -File setup\setup_config.ps1
 ```
 
