@@ -43,7 +43,7 @@ SYSMON_CHANNEL = "Microsoft-Windows-Sysmon/Operational"
 SYSMON_QUERY = f"*[System[Provider[@Name='Microsoft-Windows-Sysmon']]]"
 
 # Check interval
-POLL_INTERVAL = 5  # seconds
+POLL_INTERVAL = 30  # seconds (v4.10 MED-13: was 5s -> ~720 powershell spawns/hour, CPU + self-noise)
 
 # Map Sysmon EventID to GIAM-SAT event type
 EVENT_TYPE_MAP = {

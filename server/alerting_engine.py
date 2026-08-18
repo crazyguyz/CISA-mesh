@@ -4,6 +4,7 @@ Sends alerts via Email, Slack Webhook, and custom Webhook when threat/vulnerabil
 v1.6.1: CVE alerts get 1h cooldown, Telegram template uses cve as rule_id fallback.
 """
 import json
+import os
 import threading
 import time
 import ssl
@@ -86,8 +87,17 @@ class AlertingEngine:
                         except Exception:
                             pass
                         # Process the callback in-process (no HTTP round-trip)
+                        # v4.10 (LOW-7): only allow SOC users listed in
+                        # GIAMSAT_TELEGRAM_SOC_IDS (comma-separated Telegram user
+                        # ids) to approve/deny; otherwise anyone in the chat can.
                         if callback_data.startswith("giamsat_"):
                             try:
+                                from_user = (cb.get("from") or {}).get("id")
+                                allowed = [s.strip() for s in
+                                           os.environ.get("GIAMSAT_TELEGRAM_SOC_IDS", "").split(",") if s.strip()]
+                                if allowed and from_user not in [int(a) for a in allowed if a.isdigit()]:
+                                    print(f"[!] TELEGRAM: callback from unauthorized user {from_user} ignored")
+                                    continue
                                 if self._core is not None:
                                     from api.api_alert_approval import process_approval
                                     result, status = process_approval(self._core, callback_data, "", "")

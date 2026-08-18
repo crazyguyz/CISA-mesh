@@ -412,6 +412,10 @@ class ClusterManager:
         """Process incoming cluster messages."""
         try:
             msg = json.loads(data.decode("utf-8"))
+            # v4.10 (MED-2): reject unsigned/forged cluster messages
+            if not self._cluster_verified(msg):
+                print(f"[!] Cluster: unauthenticated message from {addr[0]} ignored")
+                return
             msg_type = msg.get("type")
 
             if msg_type == "heartbeat":
@@ -433,8 +437,8 @@ class ClusterManager:
                 self.sync_config(msg.get("config", {}))
 
             elif msg_type == "node_discover":
-                # Respond with our info
-                response = {
+                # Respond with our info (signed)
+                response = self._cluster_sign({
                     "type": "node_info",
                     "node_id": self.node_id,
                     "ip": self.bind_ip,
@@ -443,7 +447,7 @@ class ClusterManager:
                     "is_master": self.is_master,
                     "agent_count": self._local_agent_count,
                     "config_version": self._config_version,
-                }
+                })
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.sendto(json.dumps(response).encode("utf-8"), addr)
                 sock.close()
@@ -472,9 +476,38 @@ class ClusterManager:
                 pass
             time.sleep(HEARTBEAT_INTERVAL)
 
+    def _cluster_secret(self):
+        return os.environ.get("GIAMSAT_CLUSTER_SECRET", "")
+
+    def _cluster_sign(self, payload: dict) -> dict:
+        """v4.10 (MED-2): HMAC-SHA256 sign a cluster message with the shared secret."""
+        import json as _json, hmac as _hmac, hashlib as _hl
+        secret = self._cluster_secret()
+        msg = dict(payload)
+        msg["_sig"] = ""
+        if secret:
+            body = _json.dumps(msg, sort_keys=True, ensure_ascii=False)
+            msg["_sig"] = _hmac.new(secret.encode(), body.encode(), _hl.sha256).hexdigest()
+        return msg
+
+    def _cluster_verified(self, msg: dict) -> bool:
+        """v4.10 (MED-2): verify the HMAC signature of an incoming cluster message.
+        Fail-closed: without GIAMSAT_CLUSTER_SECRET no cluster message is accepted."""
+        import json as _json, hmac as _hmac, hashlib as _hl
+        secret = self._cluster_secret()
+        if not secret:
+            print("[!] Cluster: GIAMSAT_CLUSTER_SECRET not set - rejecting cluster messages (fail-closed)")
+            return False
+        sig = msg.get("_sig", "")
+        check = dict(msg)
+        check["_sig"] = ""
+        body = _json.dumps(check, sort_keys=True, ensure_ascii=False)
+        expected = _hmac.new(secret.encode(), body.encode(), _hl.sha256).hexdigest()
+        return bool(sig) and _hmac.compare_digest(sig, expected)
+
     def send_heartbeat(self, tcp_port=6666, web_port=5000):
         """Send heartbeat broadcast to cluster."""
-        msg = {
+        msg = self._cluster_sign({
             "type": "heartbeat",
             "node_id": self.node_id,
             "is_master": self.is_master,
@@ -483,7 +516,7 @@ class ClusterManager:
             "tcp_port": tcp_port,
             "web_port": web_port,
             "timestamp": time.time(),
-        }
+        })
 
         with self.lock:
             targets = [(info["ip"], self.cluster_port) for nid, info in self.nodes.items()

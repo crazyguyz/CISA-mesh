@@ -185,7 +185,10 @@ class AuthManager:
             return hashlib.sha256(password.encode()).hexdigest() == stored_hash
 
     def _migrate_passwords(self):
-        """v2.5.3: Migrate any unsalted password hashes to salted format."""
+        """v2.5.3: Migrate any unsalted password hashes to salted format.
+        v4.10 (MED-3): a legacy admin hash of the PUBLIC "admin" value must not
+        be re-hashed as-is (the known password would stay valid). Rotate to a
+        random password and force a change on next login."""
         migrated = 0
         for username, user in self.users.items():
             if "salt" not in user or not user.get("salt"):
@@ -195,11 +198,15 @@ class AuthManager:
                     # works. Old code used token_hex(16) (32 hex chars) + sha256, which
                     # fell into the PBKDF2 branch (len(salt)>=32) but the stored hash was
                     # SHA256 -> admin could never log in after migration.
-                    pw_hash, salt_hex = self._hash_password("admin")
+                    # v4.10 (MED-3): rotate to a random password - the old "admin"
+                    # credential is public knowledge.
+                    pw = secrets.token_urlsafe(12)
+                    pw_hash, salt_hex = self._hash_password(pw)
                     user["password"] = pw_hash
                     user["salt"] = salt_hex
                     user["must_change_password"] = True
                     migrated += 1
+                    print(f"[!] AUTH: Default admin password rotated - new first-run password: {pw}")
         if migrated > 0:
             print(f"[*] AUTH: Migrated {migrated} password(s) to salted hash")
             self._save_users()

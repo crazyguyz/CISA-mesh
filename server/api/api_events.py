@@ -4,10 +4,17 @@ API Events - Events, FIM, Syslog, Responses, Stats, SSE Stream.
 
 import json
 import time
+import threading
 from flask import request, jsonify, Response
 
 from .api_common import check_auth
 import os
+
+# v4.10 (MED-5): cap concurrent SSE connections - each one holds a thread in
+# Waitress (threads=16) and a disconnected client was never detected before.
+_SSE_MAX_CONNECTIONS = int(os.environ.get("GIAMSAT_SSE_MAX", "8"))
+_sse_count = 0
+_sse_lock = threading.Lock()
 
 
 def register(app, core):
@@ -75,21 +82,38 @@ def register(app, core):
             return Response(f"data: {json.dumps({'error': 'Authentication required'})}\n\n",
                             mimetype="text/event-stream")
 
+        # v4.10 (MED-5): limit concurrent SSE connections
+        global _sse_count
+        with _sse_lock:
+            if _sse_count >= _SSE_MAX_CONNECTIONS:
+                print(f"[!] SSE: connection limit reached ({_SSE_MAX_CONNECTIONS}), rejecting")
+                return jsonify({"error": "too many SSE connections"}), 503
+            _sse_count += 1
+
         def event_stream():
+            global _sse_count
             last_sent = 0
-            while True:
-                with core.sse_queue_lock:
-                    if len(core.sse_queue) > last_sent:
-                        new_events = core.sse_queue[last_sent:]
-                        last_sent = len(core.sse_queue)
+            try:
+                while True:
+                    with core.sse_queue_lock:
+                        if len(core.sse_queue) > last_sent:
+                            new_events = core.sse_queue[last_sent:]
+                            last_sent = len(core.sse_queue)
+                        else:
+                            new_events = []
+                    if new_events:
+                        data = json.dumps(new_events, ensure_ascii=False)
+                        yield f"data: {data}\n\n"
                     else:
-                        new_events = []
-                if new_events:
-                    data = json.dumps(new_events, ensure_ascii=False)
-                    yield f"data: {data}\n\n"
-                else:
-                    yield "data: []\n\n"
-                time.sleep(2)
+                        yield "data: []\n\n"
+                    time.sleep(2)
+            except GeneratorExit:
+                pass
+            finally:
+                # v4.10 (MED-5): release the slot when the client disconnects
+                with _sse_lock:
+                    global _sse_count
+                    _sse_count = max(0, _sse_count - 1)
 
         return Response(event_stream(), mimetype="text/event-stream",
                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
