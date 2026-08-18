@@ -69,6 +69,18 @@ if exist "%DIST_DIR%\GiamSatUpdater.exe" (
 copy /Y "%SCRIPT_DIR%tools\add_defender_exclusion.ps1" "%AGENT_DIR%\" >nul 2>&1
 echo.
 
+:: ── STEP 3.5: Deploy CA certificate (v4.10 - TLS server verification) ──
+echo [*] STEP 3.5: Deploy ca.crt (xac thuc server khi dung TLS)...
+if exist "%SCRIPT_DIR%ca.crt" (
+    mkdir "%PROGRAMDATA%\GIAM-SAT\certs" 2>nul
+    copy /Y "%SCRIPT_DIR%ca.crt" "%PROGRAMDATA%\GIAM-SAT\certs\ca.crt" >nul 2>&1
+    echo   [+] ca.crt -^> %PROGRAMDATA%\GIAM-SAT\certs\
+) else (
+    echo   [WARN] Khong tim thay ca.crt trong thu muc script.
+    echo   [WARN] Neu bat TLS, agent se TU CHOI ket noi khi khong co CA/pin (fail-closed).
+)
+echo.
+
 :: ── STEP 4: Config server address ──
 set SERVER_IP=%1
 set SERVER_PORT=%2

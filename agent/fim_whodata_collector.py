@@ -100,7 +100,9 @@ class WhodataFIMCollector:
                             if dedup_key not in self._known_events:
                                 self._known_events.add(dedup_key)
                                 if len(self._known_events) > self._event_cache_size:
-                                    self._known_events.clear()
+                                    # v4.10 (HIGH-17): prune the oldest half instead of
+                                    # clearing ALL - clearing caused periodic mass duplicates.
+                                    self._known_events = set(list(self._known_events)[-self._event_cache_size // 2:])
                                 events.append(parsed)
                 except (json.JSONDecodeError, TypeError):
                     pass

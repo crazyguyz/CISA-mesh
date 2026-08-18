@@ -290,11 +290,19 @@ class EnhancedEventCollector(threading.Thread):
             hand = win32evtlog.OpenEventLog(None, log_name)
             flags = win32evtlog.EVENTLOG_BACKWARDS_READ | win32evtlog.EVENTLOG_SEQUENTIAL_READ
 
-            chunk = win32evtlog.ReadEventLog(hand, flags, 0)
+            # v4.10 (HIGH-16): ReadEventLog returns at most ~1024 records per call.
+            # Drain in a loop until empty so high-volume logs (Security on DCs/busy
+            # hosts) never silently lose events between polls.
+            event_records = []
+            for _chunk_i in range(200):
+                chunk = win32evtlog.ReadEventLog(hand, flags, 0)
+                if not chunk:
+                    break
+                event_records.extend(list(chunk))
+                if len(chunk) < 1024:
+                    break
             last_seen = self.last_event_ids.get(log_name, 0)
             new_max_id = last_seen
-
-            event_records = list(chunk)
 
             for event in event_records:
                 try:

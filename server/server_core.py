@@ -173,7 +173,9 @@ class ServerCore:
             alerting_engine=self.alerting,
             tls_enabled=tls_enabled,
             network_baseline=self.network_baseline,
-            event_queue=self.event_queue
+            event_queue=self.event_queue,
+            # v4.10 (CRIT-6): hand over the mTLS context instead of dropping it
+            tls_context=tls_context
         )
         self.tcp_server._uptime_alert_callback = on_uptime_alert
 

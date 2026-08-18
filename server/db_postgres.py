@@ -74,10 +74,19 @@ class PGCompatCursor:
 
     def execute(self, sql, params=None):
         """Emulate sqlite3.Cursor.execute(). Converts ? placeholders to %s.
+        v4.10 (HIGH-11): '?' is replaced only when it is a real placeholder -
+        '?' inside single-quoted literals (e.g. jsonb '?' operator, text values)
+        is preserved. Query errors are logged and re-raised instead of being
+        silently swallowed into an empty result set.
         Auto-detects SELECT vs mutation to use correct fetch mode."""
         self._last_sql = sql
         self._last_params = params
-        pg_sql = sql.replace("?", "%s")
+        import re as _re
+        # match '?' only when it is a real parameter placeholder: not inside a
+        # single-quoted literal and not the jsonb '?' operator (followed by a
+        # quoted value, e.g. `data ? 'key'`).
+        _pg_ph = _re.compile(r"\?(?!\s*')(?=(?:[^']*'[^']*')*[^']*$)")
+        pg_sql = _pg_ph.sub("%s", sql)
         sql_upper = pg_sql.strip().upper()
         is_select = sql_upper.startswith("SELECT") or sql_upper.startswith("WITH")
         try:
@@ -92,9 +101,11 @@ class PGCompatCursor:
             else:
                 self.rowcount = self._db._execute(pg_sql, params) or 0
                 self._results = []
-        except Exception:
+        except Exception as e:
             self._results = []
             self.rowcount = 0
+            print(f"[-] PG query failed: {e}\nSQL: {sql[:300]}")
+            raise
         return self
 
     def fetchone(self):

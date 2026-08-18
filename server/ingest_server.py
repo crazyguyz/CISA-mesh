@@ -53,13 +53,15 @@ class IngestServer:
 
     def __init__(self, host="0.0.0.0", port=6667, db_manager=None,
                  event_queue=None, tls_enabled=False, psk=None,
-                 max_agents=250, rate_limiter=None):
+                 max_agents=250, rate_limiter=None, tls_context=None):
         self.host = host
         self.port = port
         self.db = db_manager
         self.event_queue = event_queue
         self.tls_enabled = tls_enabled and _HAS_TLS
-        self.tls_context = None
+        # v4.10 (CRIT-6): accept a pre-built mTLS context (CERT_REQUIRED) from
+        # the caller instead of always generating a CERT_NONE self-signed one.
+        self.tls_context = tls_context
         self.max_agents = max_agents
         self.running = True
         self.clients = {}
@@ -98,12 +100,15 @@ class IngestServer:
         server_sock.settimeout(5)
 
         if self.tls_enabled:
-            certfile, keyfile, _ = generate_self_signed_cert()
-            if certfile and keyfile:
-                self.tls_context = create_tls_context(certfile, keyfile)
-                protocol = "TLS"
+            if self.tls_context:
+                protocol = "mTLS"
             else:
-                protocol = "plaintext"
+                certfile, keyfile, _ = generate_self_signed_cert()
+                if certfile and keyfile:
+                    self.tls_context = create_tls_context(certfile, keyfile)
+                    protocol = "TLS"
+                else:
+                    protocol = "plaintext"
         else:
             protocol = "plaintext"
 

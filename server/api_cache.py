@@ -45,6 +45,8 @@ class ApiCache:
         redis_host = cfg.get("host") or os.environ.get("GIAMSAT_REDIS_HOST", "127.0.0.1")
         redis_port = int(cfg.get("port") or os.environ.get("GIAMSAT_REDIS_PORT", "6379"))
         redis_db = int(cfg.get("db") or os.environ.get("GIAMSAT_REDIS_DB", "1"))  # DB 1 for cache
+        # v4.10 (MED-15): read Redis password (was silently connecting unauthenticated)
+        redis_password = cfg.get("password") or os.environ.get("GIAMSAT_REDIS_PASSWORD", "") or None
 
         self.default_ttl = int(os.environ.get("GIAMSAT_CACHE_TTL", "15"))
 
@@ -52,6 +54,7 @@ class ApiCache:
             try:
                 self._redis = redis.Redis(
                     host=redis_host, port=redis_port, db=redis_db,
+                    password=redis_password,
                     decode_responses=True,
                     socket_connect_timeout=2, socket_timeout=2,
                 )
@@ -190,7 +193,8 @@ class ApiCache:
                        COALESCE(u.email, '') as email,
                        COALESCE(t.cnt, 0) as alert_threats,
                        COALESCE(v.cnt, 0) as alert_vulns,
-                       COALESCE(y.cnt, 0) as alert_yara
+                       COALESCE(y.cnt, 0) as alert_yara,
+                       NOW() as refreshed_at
                 FROM machines m
                 LEFT JOIN machine_users u ON m.machine_id = u.machine_id
                 LEFT JOIN (

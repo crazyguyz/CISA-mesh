@@ -252,7 +252,14 @@ try {{
                         events = [events]
                     latest = max(e.get("TimeCreated", self.last_timestamp) for e in events)
                     if latest > self.last_timestamp:
-                        self.last_timestamp = latest
+                        # v4.10 (HIGH-15): Get-WinEvent StartTime is inclusive (>=),
+                        # so store latest + 1ms to avoid re-reading the same event.
+                        try:
+                            from datetime import datetime as _dt, timedelta as _td
+                            latest_dt = _dt.strptime(latest, "%Y-%m-%dT%H:%M:%S.%fZ") + _td(milliseconds=1)
+                            self.last_timestamp = latest_dt.strftime("%Y-%m-%dT%H:%M:%S.") + latest_dt.strftime("%f")[:3] + "Z"
+                        except Exception:
+                            self.last_timestamp = latest
                 return events if isinstance(events, list) else [events]
             elif r.returncode != 0:
                 if r.stderr and self.event_count == 0:

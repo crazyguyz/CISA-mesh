@@ -271,14 +271,29 @@ def create_tls_client_socket(host, port, cafile=None, pinned_fingerprint=None):
     for attempt in range(1, max_retries + 1):
         try:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ctx.check_hostname = False  # agent connects by IP, not hostname
-            if cafile and os.path.exists(cafile):
+            # v4.10 (CRIT-5): enable hostname verification when connecting by
+            # hostname and we have a CA to verify against (agents usually connect
+            # by IP, where check_hostname is not meaningful without IP SANs).
+            try:
+                import ipaddress as _ipaddr
+                _is_ip = True
+                _ipaddr.ip_address(host)
+            except Exception:
+                _is_ip = False
+            have_ca = bool(cafile) and os.path.exists(cafile)
+            ctx.check_hostname = have_ca and not _is_ip
+            if have_ca:
                 # v4.10 (CRITICAL-3): verify server cert against CA - no CERT_NONE.
                 ctx.verify_mode = ssl.CERT_REQUIRED
                 ctx.load_verify_locations(cafile)
-            else:
-                # No CA available: rely on optional pinned fingerprint below.
+            elif pinned_fingerprint:
+                # No CA: custom fingerprint check below is the identity verification.
                 ctx.verify_mode = ssl.CERT_NONE
+            else:
+                # v4.10 (CRIT-5): fail-closed - never connect with zero server
+                # identity verification (a MITM could impersonate the server).
+                print(f"[!] TLS: no CA certificate or pinned fingerprint configured for {host} - refusing insecure connection", flush=True)
+                return None, False
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(30)

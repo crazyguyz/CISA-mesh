@@ -24,7 +24,7 @@ from command_signer import sign_command
 class TCPServer(threading.Thread):
     def __init__(self, host="0.0.0.0", port=6666, db_manager=None, message_callback=None,
                  alerting_engine=None, tls_enabled=True, psk=None, network_baseline=None,
-                 event_queue=None, rate_limiter=None):
+                 event_queue=None, rate_limiter=None, tls_context=None):
         super().__init__(daemon=True)
         self.host = host
         self.port = port
@@ -32,7 +32,10 @@ class TCPServer(threading.Thread):
         self.message_callback = message_callback
         self.alerting_engine = alerting_engine
         self.tls_enabled = tls_enabled and _HAS_TLS
-        self.tls_context = None
+        # v4.10 (CRIT-6): server_core passes its mTLS context (CERT_REQUIRED).
+        # Previously the context was created and thrown away; TCPServer generated
+        # its own CERT_NONE context so mTLS never actually applied.
+        self.tls_context = tls_context
         self.running = True
         # v2.6.5: Network baseline for NW-005 false positive reduction
         self.network_baseline = network_baseline
@@ -61,14 +64,17 @@ class TCPServer(threading.Thread):
 
         # Chuẩn bị TLS context để wrap từng client connection sau accept
         if self.tls_enabled:
-            certfile, keyfile, _ = generate_self_signed_cert()
-            if certfile and keyfile:
-                self.tls_context = create_tls_context(certfile, keyfile)
-                print(f"[*] TCP Server listening on {self.host}:{self.port} (TLS ENCRYPTED)")
+            if self.tls_context:
+                print(f"[*] TCP Server listening on {self.host}:{self.port} (mTLS ENCRYPTED)")
             else:
-                self.tls_enabled = False
-                self.tls_context = None
-                print(f"[*] TCP Server listening on {self.host}:{self.port} (plaintext - cert gen failed)")
+                certfile, keyfile, _ = generate_self_signed_cert()
+                if certfile and keyfile:
+                    self.tls_context = create_tls_context(certfile, keyfile)
+                    print(f"[*] TCP Server listening on {self.host}:{self.port} (TLS ENCRYPTED - dev self-signed, no client cert check)")
+                else:
+                    self.tls_enabled = False
+                    self.tls_context = None
+                    print(f"[*] TCP Server listening on {self.host}:{self.port} (plaintext - cert gen failed)")
         else:
             print(f"[*] TCP Server listening on {self.host}:{self.port} (plaintext)")
 
