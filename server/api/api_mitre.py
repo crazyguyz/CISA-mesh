@@ -37,7 +37,7 @@ def register_routes(app, core):
         sev_scores = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
         
         try:
-            if not core.db or not core.db.conn:
+            if not core.db:
                 return jsonify(result)
 
             # Detect backend: SQLite uses `?` placeholder + datetime(), PostgreSQL uses `%s` + INTERVAL
@@ -74,9 +74,12 @@ def register_routes(app, core):
                     params.append(str(since_hours))
                 q += " ORDER BY id DESC LIMIT 2000"
 
-            cur = core.db.conn.cursor()
-            cur.execute(q, tuple(params))
-            rows = cur.fetchall()
+            if is_sqlite:
+                cur = core.db.conn.cursor()
+                cur.execute(q, tuple(params))
+                rows = [dict(r) for r in cur.fetchall()]
+            else:
+                rows = core.db._execute(q, tuple(params), fetchall=True) or []
         except Exception as e:
             print(f"[-] MITRE API query error: {e}")
             return jsonify(result)
@@ -84,14 +87,14 @@ def register_routes(app, core):
         techniques = {}  # technique_id -> {tactic, name, count, max_severity, alerts[]}
         
         for row in rows:
-            rule_id = row[0] or "UNKNOWN"
-            rule_name = row[1] or "Unknown Rule"
-            severity = row[2] or "INFO"
-            description = row[3] or ""
-            m_id = row[4] or ""
-            hostname = row[5] or ""
-            timestamp = row[6] or ""
-            raw_data_val = row[7] or {}
+            rule_id = row.get("rule_id") or "UNKNOWN"
+            rule_name = row.get("rule_name") or "Unknown Rule"
+            severity = row.get("severity") or "INFO"
+            description = row.get("description") or ""
+            m_id = row.get("machine_id") or ""
+            hostname = row.get("hostname") or ""
+            timestamp = row.get("timestamp") or ""
+            raw_data_val = row.get("raw_data") or {}
             
             # Extract MITRE data from raw_data (may be dict or JSONB string)
             tactic = "Unknown"
