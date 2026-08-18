@@ -13,6 +13,12 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "giamsat_data
 _UPTIME_GAP_SECONDS = 600
 
 
+def _like_escape(s):
+    """Escape SQL LIKE wildcards so user input %/_ is treated literally.
+    Use with ESCAPE '\\' in queries."""
+    return str(s or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class DatabaseManager:
     def __init__(self):
         self.write_lock = threading.RLock()
@@ -22,6 +28,7 @@ class DatabaseManager:
         self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._summary_cache = {"data": None, "ts": 0}
+        self._data_summary_cache = {"data": None, "ts": 0}
         self._init_db()
 
     def _init_db(self):
@@ -777,7 +784,7 @@ class DatabaseManager:
             if source_ip:
                 q += " AND source_ip=?"; p.append(source_ip)
             if search:
-                q += " AND message LIKE ?"; p.append(f"%{search}%")
+                q += " AND message LIKE ? ESCAPE '\\'"; p.append(f"%{_like_escape(search)}%")
             q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
@@ -1386,8 +1393,8 @@ class DatabaseManager:
             q = "SELECT * FROM fim_baseline WHERE machine_id=?"
             p = [machine_id]
             if search:
-                q += " AND path LIKE ?"
-                p.append(f"%{search}%")
+                q += " AND path LIKE ? ESCAPE '\\'"
+                p.append(f"%{_like_escape(search)}%")
             if only_changed:
                 q += " AND change_count > 0"
             q += f" ORDER BY {order_clause} LIMIT ? OFFSET ?"
@@ -1967,8 +1974,8 @@ class DatabaseManager:
         """Get summary of data sizes for display in cleanup UI. Cached 5 min."""
         CACHE_TTL = 300
         now = time.time()
-        if self._summary_cache["data"] is not None and (now - self._summary_cache["ts"]) < CACHE_TTL:
-            return self._summary_cache["data"]
+        if self._data_summary_cache["data"] is not None and (now - self._data_summary_cache["ts"]) < CACHE_TTL:
+            return self._data_summary_cache["data"]
 
         summary = {}
         tables = {
@@ -1996,7 +2003,7 @@ class DatabaseManager:
                 except:
                     summary[label] = {"count": 0, "oldest": "", "newest": ""}
 
-        self._summary_cache = {"data": summary, "ts": now}
+        self._data_summary_cache = {"data": summary, "ts": now}
         return summary
 
     # =========================================================================

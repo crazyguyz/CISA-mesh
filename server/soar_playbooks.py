@@ -17,6 +17,7 @@ import json
 import re
 import time
 import threading
+import uuid
 from datetime import datetime, timedelta
 
 try:
@@ -297,18 +298,20 @@ class SOARPlaybookEngine:
                 "reason": f"Auto-response requires CRITICAL severity, got {severity}",
             }
 
-        # SAFETY GATE 2: Cooldown per machine (60s between actions)
+        # SAFETY GATE 2: Cooldown per (machine, rule) 60s - prevents repeated
+        # auto-responses for the same rule while allowing a different rule/incident
         if not machine_id:
             return {"status": "skipped", "reason": "No machine_id in alert"}
+        cooldown_key = f"{machine_id}:{rule_id}"
         with self._auto_response_lock:
-            last_action = self._auto_response_cooldown.get(machine_id, 0)
+            last_action = self._auto_response_cooldown.get(cooldown_key, 0)
             now = time.time()
             if now - last_action < 60:
                 return {
                     "status": "skipped",
                     "reason": f"Cooldown active ({int(now - last_action)}s since last action)",
                 }
-            self._auto_response_cooldown[machine_id] = now
+            self._auto_response_cooldown[cooldown_key] = now
 
         # SAFETY GATE 3: TCP server must be available
         if not self.tcp_server:
@@ -325,7 +328,7 @@ class SOARPlaybookEngine:
         }
         agent_action = action_map.get(action_name, action_name)
 
-        exec_id = f"soar_{rule_id}_{int(time.time())}"
+        exec_id = f"soar_{rule_id}_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         cmd_data = {
             "action": agent_action,
             "command": json.dumps(params, ensure_ascii=False),

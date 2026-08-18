@@ -394,7 +394,7 @@ class EventWorkerPool:
                 deadline = time.time() - 300
                 cursor = self.db.conn.execute(
                     "SELECT machine_id, hostname, last_seen, is_revoked FROM machines "
-                    "WHERE is_revoked = 0 AND is_online = 1"
+                    "WHERE is_revoked = 0"
                 )
                 dead_machines = []
                 for row in cursor.fetchall():

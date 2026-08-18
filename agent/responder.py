@@ -1070,9 +1070,10 @@ Write-Output ($results -join "; ")
             ])
             if rc == 0:
                 return {"status": "completed", "output": stdout.strip() if stdout else "[]"}
-            # Fallback to netstat
-            stdout2, _, _ = _run(["netstat", "-ano", "|", "findstr", "ESTABLISHED"])
-            return {"status": "completed", "output": stdout2.strip() if stdout2 else "[]"}
+            # Fallback to netstat (filter ESTABLISHED in Python - `|` is not a pipe in arg-list)
+            stdout2, _, _ = _run(["netstat", "-ano"])
+            filtered = "\n".join(line for line in (stdout2 or "").splitlines() if "ESTABLISHED" in line)
+            return {"status": "completed", "output": filtered if filtered else "[]"}
         else:
             stdout, stderr, rc = _run(["ss", "-tuln"])
             return {"status": "completed", "output": stdout.strip()}
