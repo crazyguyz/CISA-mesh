@@ -141,7 +141,9 @@ class PostgresDatabase:
             "port": cfg.get("port") or int(os.environ.get("GIAMSAT_PG_PORT", "5432")),
             "dbname": cfg.get("dbname") or os.environ.get("GIAMSAT_PG_DBNAME", "giamsat"),
             "user": cfg.get("user") or os.environ.get("GIAMSAT_PG_USER", "giamsat"),
-            "password": cfg.get("password") or os.environ.get("GIAMSAT_PG_PASSWORD", "giamsat"),
+            # v4.10 (MED-18): no public default password - fail with a clear
+            # connection error instead of silently using a known credential.
+            "password": cfg.get("password") or os.environ.get("GIAMSAT_PG_PASSWORD", ""),
         }
         self.pool_min = int(os.environ.get("GIAMSAT_PG_POOL_MIN", "10"))
         self.pool_max = int(os.environ.get("GIAMSAT_PG_POOL_MAX", "50"))

@@ -136,14 +136,38 @@ def setup_file_logging():
 
         _orig_print = _bi.print
         _lock = _threading.Lock()
+        # v4.10 (LOW-12): keep the file open instead of open/close on every print,
+        # and rotate when it grows past 20MB (the old tee never rotated and could
+        # fill the disk).
+        _MAX_LOG_BYTES = 20 * 1024 * 1024
+
+        def _rotate():
+            nonlocal log_file
+            try:
+                _fh.close()
+                backup = log_file + ".1"
+                if os.path.exists(backup):
+                    os.remove(backup)
+                os.rename(log_file, backup)
+            except Exception:
+                pass
+            return open(log_file, "a", encoding="utf-8")
+
+        _fh = open(log_file, "a", encoding="utf-8")
 
         def _tee(*args, **kwargs):
+            nonlocal _fh
             try:
                 msg = " ".join(str(a) for a in args)
                 line = f"[{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
                 with _lock:
-                    with open(log_file, "a", encoding="utf-8") as f:
-                        f.write(line + "\n")
+                    try:
+                        if _fh.tell() > _MAX_LOG_BYTES:
+                            _fh = _rotate()
+                        _fh.write(line + "\n")
+                        _fh.flush()
+                    except Exception:
+                        pass
             except Exception:
                 pass
             try:

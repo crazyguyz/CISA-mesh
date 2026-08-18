@@ -40,7 +40,7 @@ def main():
         sys.exit(1)
     with open(KEY_PATH, "rb") as f:
         key = f.read()
-    print(f"[*] KEY: {key.decode()}")
+    # v4.10 (MED-16): do NOT print the Fernet master key (it decrypts users.json)
     
     fernet = Fernet(key)
     

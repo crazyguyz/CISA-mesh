@@ -98,7 +98,8 @@ def _jwt_fallback_decode(token, secret):
     expected_sig = base64.urlsafe_b64encode(hmac.new(secret.encode(), f"{header}.{payload_enc}".encode(), hashlib.sha256).digest()).rstrip(b'=').decode()
     if not hmac.compare_digest(sig, expected_sig):
         return None
-    payload = _json.loads(base64.urlsafe_b64decode(payload_enc + "==="))
+    payload_enc = payload_enc + "=" * (-len(payload_enc) % 4)  # v4.10 (LOW-15): correct padding
+    payload = _json.loads(base64.urlsafe_b64decode(payload_enc))
     if payload.get("exp", 0) < datetime.utcnow().timestamp():
         return None
     return payload
@@ -252,15 +253,9 @@ class AuthManager:
             f = Fernet(self._file_key)
             return f.encrypt(data.encode("utf-8"))
         else:
-            # XOR fallback with random IV (not as strong as Fernet but better than plaintext)
-            key = self._file_key
-            iv = secrets.token_bytes(16)
-            data_bytes = data.encode("utf-8")
-            result = bytearray(data_bytes)
-            for i in range(len(result)):
-                offset = (i + len(iv)) % len(key)
-                result[i] ^= key[offset % len(key)]
-            return bytes(iv) + bytes(result)
+            # v4.10 (LOW-14): cryptography is mandatory - the XOR fallback was
+            # trivially breakable and the plaintext key leaked to disk.
+            raise RuntimeError("cryptography library required to protect users.json - run: pip install cryptography")
 
     def _decrypt(self, data: bytes) -> str:
         """Decrypt data with file key."""
@@ -268,17 +263,8 @@ class AuthManager:
             f = Fernet(self._file_key)
             return f.decrypt(data).decode("utf-8")
         else:
-            # XOR fallback
-            if len(data) < 16:
-                raise ValueError("Encrypted data too short")
-            key = self._file_key
-            iv = data[:16]
-            encrypted = data[16:]
-            result = bytearray(encrypted)
-            for i in range(len(result)):
-                offset = (i + len(iv)) % len(key)
-                result[i] ^= key[offset % len(key)]
-            return bytes(result).decode("utf-8")
+            # v4.10 (LOW-14): see _encrypt - no weak XOR fallback.
+            raise RuntimeError("cryptography library required to protect users.json - run: pip install cryptography")
 
     def _load_users(self):
         path = self._get_users_path()

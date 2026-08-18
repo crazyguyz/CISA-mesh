@@ -41,19 +41,26 @@ def generate_self_signed_cert(cert_dir=None, hostname="giamsat-server"):
             .public_key(ca_key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(dt.datetime.utcnow() - dt.timedelta(days=1))
-            .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=3650))
+            .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=825))
             .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
             .sign(ca_key, hashes.SHA256()))
 
         server_key = rsa.generate_private_key(public_exponent=65537, key_size=4096)
         server_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)])
+        # v4.10 (LOW-11): cert valid 825 days (Apple/industry limit) + SANs so
+        # hostname verification works for clients that connect by name.
         server_cert = (x509.CertificateBuilder()
             .subject_name(server_name).issuer_name(ca_name)
             .public_key(server_key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(dt.datetime.utcnow() - dt.timedelta(days=1))
-            .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=3650))
+            .not_valid_after(dt.datetime.utcnow() + dt.timedelta(days=825))
             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.SubjectAlternativeName([
+                x509.DNSName(hostname),
+                x509.DNSName("giamsat-server"),
+                x509.IPAddress(__import__("ipaddress").ip_address("127.0.0.1")),
+            ]), critical=False)
             .sign(ca_key, hashes.SHA256()))
 
         ca_keyfile = os.path.join(cert_dir, "ca.key")

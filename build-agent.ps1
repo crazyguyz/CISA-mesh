@@ -101,7 +101,11 @@ try {
 # STEP 7: Restart server (only with -RestartServer flag)
 if ($RestartServer) {
     Write-STEP "STEP 7: Restarting server..."
-    taskkill /F /IM python.exe 2>$null
+    # v4.10 (LOW-16): kill ONLY the server process (python running main.py) -
+    # `taskkill /F /IM python.exe` killed every python.exe on the machine.
+    Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*main.py*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Seconds 2
     Start-Process python -ArgumentList "$SERVER_DIR\main.py" -WorkingDirectory $SERVER_DIR -WindowStyle Hidden
     Write-OK "Server restarted"

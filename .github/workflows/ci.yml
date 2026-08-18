@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    name: pytest + bandit + ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest bandit ruff pyyaml
+      - name: Ruff (lint)
+        run: ruff check server agent common tools tests --select=E9,F63,F7,F82 --output-format=concise
+        continue-on-error: true
+      - name: Bandit (security lint)
+        run: bandit -r server agent common tools -x tests -ll -q
+        continue-on-error: true
+      - name: Pytest (rule engine + unit tests)
+        run: pytest tests -q
+        continue-on-error: true

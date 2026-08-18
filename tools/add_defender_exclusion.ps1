@@ -28,10 +28,8 @@ $pathsToExclude = @(
     "$env:ProgramData\dist"
 )
 
-$processesToExclude = @(
-    "GiamSatAgent.exe",
-    "GiamSatUpdater.exe"
-)
+$processesToExclude = @()  # v4.10 (MED-17): process exclusions removed - an
+# unsigned GiamSatAgent.exe must NOT be exempt from Defender scanning.
 
 Write-Host "[*] Dang them folder exclusions..." -ForegroundColor Yellow
 foreach ($path in $pathsToExclude) {

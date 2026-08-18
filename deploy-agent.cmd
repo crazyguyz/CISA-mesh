@@ -24,16 +24,12 @@ if %ERRORLEVEL% neq 0 (
 echo [*] STEP 1: Them Windows Defender Exclusions...
 echo   Tranh bi xoa file EXE do false positive cua PyInstaller
 
-set "EXCL_DIRS=C:\ProgramData\GIAM-SAT C:\ProgramData\dist C:\Windows\System32\config\systemprofile\AppData\Local\Temp\_MEI*"
+:: v4.10 (MED-17): removed ExclusionProcess + _MEI* wildcard - excluding the
+:: process by name would let ANY GiamSatAgent.exe (unsigned) bypass scanning.
+set "EXCL_DIRS=C:\ProgramData\GIAM-SAT"
 for %%D in (%EXCL_DIRS%) do (
     powershell -Command "Add-MpPreference -ExclusionPath '%%D' -ErrorAction SilentlyContinue" 2>nul
     echo   [+] Folder: %%D
-)
-
-set "EXCL_PROCS=GiamSatAgent.exe GiamSatUpdater.exe"
-for %%P in (%EXCL_PROCS%) do (
-    powershell -Command "Add-MpPreference -ExclusionProcess '%%P' -ErrorAction SilentlyContinue" 2>nul
-    echo   [+] Process: %%P
 )
 
 echo   [OK] Defender exclusions added
