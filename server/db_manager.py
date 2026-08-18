@@ -2353,7 +2353,7 @@ class DatabaseManager:
             c = self.conn.cursor()
             try:
                 c.execute("SELECT 1 FROM assets_computers LIMIT 1")
-            except sqlite3.OperationalError:
+            except Exception:
                 return []
             q = "SELECT * FROM assets_computers WHERE 1=1"
             params = []
@@ -2378,7 +2378,7 @@ class DatabaseManager:
             c = self.conn.cursor()
             try:
                 c.execute("SELECT 1 FROM assets_monitors LIMIT 1")
-            except sqlite3.OperationalError:
+            except Exception:
                 return []
             q = """SELECT m.*, r.computer_asset_id, c.hostname as computer_hostname, c.user_name as computer_user
                    FROM assets_monitors m
@@ -2400,7 +2400,7 @@ class DatabaseManager:
             c = self.conn.cursor()
             try:
                 c.execute("SELECT 1 FROM assets_change_log LIMIT 1")
-            except sqlite3.OperationalError:
+            except Exception:
                 return []
             q = "SELECT * FROM assets_change_log WHERE 1=1"
             params = []

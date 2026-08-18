@@ -282,7 +282,10 @@ var Assets = {
         }
         var fCat = document.getElementById('invCategory');
         if (fCat && !fCat.options.length) {
-            Assets.CATALOG.forEach(function(c) { fCat.innerHTML += '<option value="' + c.v + '">' + t(c.k) + '</option>'; });
+            Assets.CATALOG.forEach(function(c) {
+                if (c.v === 'user') return; // users are added via the Người dùng tab, not via kho assets
+                fCat.innerHTML += '<option value="' + c.v + '">' + t(c.k) + '</option>';
+            });
         }
         var fSt = document.getElementById('invStatus');
         if (fSt && !fSt.options.length) {
@@ -302,6 +305,7 @@ var Assets = {
         if (opts.search) url += '&search=' + encodeURIComponent(opts.search);
         fetch(url).then(function(r) { return r.json(); }).then(function(data) {
             var items = data.assets || [];
+            if (opts.preFilter) { items = items.filter(opts.preFilter); }
             if (!items.length) {
                 container.innerHTML = '<div class="text-center text-muted py-4">' + t('assets.noInventory') + '</div>';
                 return;
@@ -356,7 +360,14 @@ var Assets = {
             search: Assets.searchOf('assetKhoSearch'),
             category: document.getElementById('assetKhoCat') ? document.getElementById('assetKhoCat').value : '',
             status: document.getElementById('assetKhoStatus') ? document.getElementById('assetKhoStatus').value : '',
-            container: 'assetKhoTable', showActions: true
+            container: 'assetKhoTable', showActions: true,
+            // Kho = chi tai san vat ly dang luu kho / cho cap phat.
+            // Loai bo: nguoi dung (user), tai san dang hoat dong (online/active = thiet bi tu phat hien dang dung).
+            preFilter: function(a) {
+                if (a.category === 'user') return false;
+                if (a.status === 'online' || a.status === 'active') return false;
+                return true;
+            }
         });
     },
 

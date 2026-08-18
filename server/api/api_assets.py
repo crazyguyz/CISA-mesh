@@ -171,8 +171,11 @@ def init_assets_api(app, db):
         m = _inv_method("get_asset_change_log")
         if not m:
             return jsonify({"count": 0})
-        rows = m(limit=100000, unresolved_only=True) or []
-        return jsonify({"count": len(rows)})
+        try:
+            rows = m(limit=100000, unresolved_only=True) or []
+            return jsonify({"count": len(rows)})
+        except Exception:
+            return jsonify({"count": 0})
 
     @app.route("/api/assets/export")
     def api_assets_export():
