@@ -4,6 +4,7 @@ REST endpoints cho danh sách tài sản và lịch sử thay đổi.
 """
 import json
 from flask import Blueprint, request, jsonify
+from .api_common import check_auth
 
 assets_bp = Blueprint("api_assets", __name__)
 
@@ -13,6 +14,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/computers")
     def api_assets_computers():
+        _, err, code = check_auth("api")
+        if err: return err, code
         search = request.args.get("search", "").strip()
         limit = int(request.args.get("limit", 200))
         rows = db.get_asset_computers(search=search, limit=limit) if db else []
@@ -20,6 +23,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/monitors")
     def api_assets_monitors():
+        _, err, code = check_auth("api")
+        if err: return err, code
         search = request.args.get("search", "").strip()
         limit = int(request.args.get("limit", 200))
         rows = db.get_asset_monitors(search=search, limit=limit) if db else []
@@ -34,6 +39,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory")
     def api_assets_inventory():
+        _, err, code = check_auth("api")
+        if err: return err, code
         m = _inv_method("get_asset_inventory")
         if not m:
             return jsonify({"assets": []})
@@ -47,6 +54,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory/stats")
     def api_assets_inventory_stats():
+        _, err, code = check_auth("api")
+        if err: return err, code
         m = _inv_method("get_asset_inventory_stats")
         if not m:
             return jsonify({"by_category": [], "by_status": [], "total": 0})
@@ -54,6 +63,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory", methods=["POST"])
     def api_assets_inventory_add():
+        _, err, code = check_auth("delete")
+        if err: return err, code
         m = _inv_method("upsert_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
@@ -66,6 +77,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory/<asset_id>", methods=["PUT"])
     def api_assets_inventory_update(asset_id):
+        _, err, code = check_auth("delete")
+        if err: return err, code
         m = _inv_method("upsert_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
@@ -77,6 +90,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory/<asset_id>", methods=["DELETE"])
     def api_assets_inventory_delete(asset_id):
+        _, err, code = check_auth("delete")
+        if err: return err, code
         m = _inv_method("delete_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
@@ -86,6 +101,8 @@ def init_assets_api(app, db):
     @app.route("/api/assets/inventory/<asset_id>/adopt", methods=["POST"])
     def api_assets_inventory_adopt(asset_id):
         """Chuyển tài sản auto->manual: gán owner/location/mã TS."""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         m = _inv_method("adopt_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
@@ -96,6 +113,8 @@ def init_assets_api(app, db):
     @app.route("/api/assets/users/sync", methods=["POST"])
     def api_assets_users_sync():
         """Đồng bộ danh sách người dùng (họ tên, mã NV, email) từ assets_computers -> assets_inventory category=user."""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         m = _inv_method("sync_user_assets")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
@@ -107,23 +126,30 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/discovery/scan", methods=["POST"])
     def api_assets_discovery_scan():
-        """Quét dải IP bằng SNMP + port fingerprint -> tự nạp tài sản."""
+        """Quét dải IP bằng SNMP + port fingerprint -> tự nạp tài sản. (Admin only)"""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         data = request.json or {}
         cidr = (data.get("range") or "").strip()
         if not cidr:
             return jsonify({"error": "Thiếu dải IP (vd 192.168.1.0/24)"}), 400
         try:
-            from asset_discovery import run_scan
+            from asset_discovery import parse_cidr, run_scan
         except Exception:
             return jsonify({"error": "Module asset_discovery không tải được"}), 500
+        ips = parse_cidr(cidr)
+        if len(ips) > 4096:
+            return jsonify({"error": "Dải IP quá lớn (tối đa 4096 địa chỉ, VD /22). Khuyến nghị quét /24."}), 400
         try:
-            summary = run_scan(cidr, db)
+            summary = run_scan(cidr, db, max_threads=32, timeout=0.4)
             return jsonify(summary)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/assets/changes")
     def api_assets_changes():
+        _, err, code = check_auth("api")
+        if err: return err, code
         limit = int(request.args.get("limit", 100))
         unresolved_only = request.args.get("unresolved", "0") == "1"
         rows = db.get_asset_change_log(limit=limit, unresolved_only=unresolved_only) if db else []
@@ -131,6 +157,8 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/changes/<int:change_id>/resolve", methods=["POST"])
     def api_assets_resolve_change(change_id):
+        _, err, code = check_auth("api")
+        if err: return err, code
         resolved_by = request.json.get("resolved_by", "admin") if request.json else "admin"
         ok = db.resolve_asset_change(change_id, resolved_by) if db else False
         return jsonify({"success": ok})
@@ -138,20 +166,19 @@ def init_assets_api(app, db):
     @app.route("/api/assets/unresolved_count")
     def api_assets_unresolved_count():
         """Return count of unresolved asset changes for badge display."""
-        if not db:
+        _, err, code = check_auth("api")
+        if err: return err, code
+        m = _inv_method("get_asset_change_log")
+        if not m:
             return jsonify({"count": 0})
-        try:
-            result = db._execute(
-                "SELECT COUNT(*) as cnt FROM assets_change_log WHERE is_resolved=FALSE",
-                fetch=True
-            )
-            return jsonify({"count": result.get("cnt", 0) if result else 0})
-        except Exception:
-            return jsonify({"count": 0})
+        rows = m(limit=100000, unresolved_only=True) or []
+        return jsonify({"count": len(rows)})
 
     @app.route("/api/assets/export")
     def api_assets_export():
         """Export all assets as Excel file with 2 sheets."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         try:
             import openpyxl
             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side

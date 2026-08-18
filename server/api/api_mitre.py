@@ -3,6 +3,7 @@ from flask import jsonify, request
 import sqlite3
 import os
 import json
+from .api_common import check_auth
 
 MITRE_TACTICS = [
     "Reconnaissance", "Resource Development", "Initial Access", "Execution",
@@ -17,6 +18,8 @@ def register_routes(app, core):
     @app.route("/api/mitre/matrix")
     def api_mitre_matrix():
         """Return MITRE ATT&CK matrix data for dashboard visualization."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         machine_id = request.args.get("machine_id", "")
         since_hours = int(request.args.get("since_hours", "24"))
         
@@ -171,25 +174,37 @@ def register_routes(app, core):
 
     @app.route("/api/mitre/technique/<technique_id>")
     def api_mitre_technique(technique_id):
-        """Return all alerts for a specific MITRE technique."""
+        """Return all alerts for a specific MITRE technique (backend-agnostic)."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         result = {"technique_id": technique_id, "alerts": []}
+        if not core.db:
+            return jsonify(result)
         try:
-            cur = core.db.conn.cursor()
-            cur.execute("""
-                SELECT rule_id, rule_name, severity, description, 
-                       machine_id, hostname, timestamp, raw_data
-                FROM threat_alerts
-                WHERE raw_data::text LIKE %s
-                ORDER BY id DESC LIMIT 100
-            """, (f"%{technique_id}%",))
-            rows = cur.fetchall()
-            for row in rows:
-                result["alerts"].append({
-                    "rule_id": row[0], "rule_name": row[1],
-                    "severity": row[2], "description": row[3] or "",
-                    "machine_id": row[4], "hostname": row[5],
-                    "timestamp": row[6],
-                })
+            rows = core.db.get_threat_alerts(limit=1000) or []
+            for r in rows:
+                raw = r.get("raw_data") or {}
+                if isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except Exception:
+                        raw = {}
+                if not isinstance(raw, dict):
+                    raw = {}
+                tid = raw.get("mitre_technique_id") or ""
+                rid = r.get("rule_id") or ""
+                if technique_id and (tid == technique_id or rid == technique_id
+                                     or str(technique_id) in json.dumps(raw, default=str)):
+                    result["alerts"].append({
+                        "rule_id": rid, "rule_name": r.get("rule_name", ""),
+                        "severity": r.get("severity", ""),
+                        "description": r.get("description", "") or "",
+                        "machine_id": r.get("machine_id", ""),
+                        "hostname": r.get("hostname", ""),
+                        "timestamp": r.get("timestamp", ""),
+                    })
+                    if len(result["alerts"]) >= 100:
+                        break
         except Exception:
             pass
         return jsonify(result)

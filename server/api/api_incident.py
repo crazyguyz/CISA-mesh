@@ -15,6 +15,7 @@ Each timeline gathers:
 """
 
 from flask import request, jsonify
+from .api_common import check_auth
 from datetime import datetime, timedelta
 
 INCIDENT_TIMEWINDOW_MINUTES = 15  # ±15 minutes around alert time
@@ -30,6 +31,8 @@ def register(app, core):
     @app.route("/api/incident/list")
     def api_incident_list():
         """List all threat alerts for the incident workspace sidebar."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         try:
             limit = request.args.get("limit", 50, type=int)
             severity = request.args.get("severity", None)
@@ -59,6 +62,8 @@ def register(app, core):
     @app.route("/api/incident/<threat_id>")
     def api_incident_timeline(threat_id):
         """Get full incident timeline for a specific threat alert."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         db = core.db
 
         # 1. Find the threat alert

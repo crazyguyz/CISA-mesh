@@ -8,6 +8,7 @@ GET  /api/hunt/stats - Hunting statistics
 """
 
 from flask import request, jsonify
+from .api_common import check_auth
 
 
 def register(app, core):
@@ -31,6 +32,8 @@ def register(app, core):
         """Start a new hunting campaign.
         Body: {hypothesis, tactic?, since_hours?, use_ai?}
         """
+        _, err, code = check_auth("delete")
+        if err: return err, code
         hunting = get_hunting()
         if not hunting:
             return jsonify({"error": "Hunting engine not available"}), 500
@@ -58,6 +61,8 @@ def register(app, core):
     @app.route("/api/hunt/result/<campaign_id>", methods=["GET"])
     def hunt_result(campaign_id):
         """Get results of a specific hunting campaign."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         hunting = get_hunting()
         if not hunting:
             return jsonify({"error": "Hunting engine not available"}), 500
@@ -70,6 +75,8 @@ def register(app, core):
     @app.route("/api/hunt/campaigns", methods=["GET"])
     def hunt_campaigns():
         """List all hunting campaigns."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         hunting = get_hunting()
         if not hunting:
             return jsonify({"error": "Hunting engine not available"}), 500
@@ -79,6 +86,8 @@ def register(app, core):
     @app.route("/api/hunt/templates", methods=["GET"])
     def hunt_templates():
         """Get available hypothesis templates (tactics)."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         hunting = get_hunting()
         if not hunting:
             return jsonify({"error": "Hunting engine not available"}), 500
@@ -88,6 +97,8 @@ def register(app, core):
     @app.route("/api/hunt/stats", methods=["GET"])
     def hunt_stats():
         """Get hunting engine statistics."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         hunting = get_hunting()
         if not hunting:
             return jsonify({"error": "Hunting engine not available"}), 500

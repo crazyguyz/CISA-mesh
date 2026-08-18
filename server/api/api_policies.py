@@ -8,6 +8,7 @@ REST API for managing per-group security policies:
 import json
 from datetime import datetime
 from flask import request, jsonify
+from .api_common import check_auth
 
 _POLICY_TYPES = ["block_websites", "block_software", "block_usb"]
 
@@ -17,6 +18,8 @@ def register_routes(app, server_core):
     @app.route("/api/policies/add", methods=["POST"])
     def api_policy_add():
         """Add a new policy to a group."""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         data = request.get_json() or {}
         group_id = data.get("group_id")
         policy_type = data.get("policy_type", "")
@@ -42,6 +45,8 @@ def register_routes(app, server_core):
     @app.route("/api/policies/update/<int:policy_id>", methods=["POST"])
     def api_policy_update(policy_id):
         """Update an existing policy (resets to pending)."""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         data = request.get_json() or {}
         policy_name = data.get("policy_name")
         config = data.get("config")
@@ -61,12 +66,16 @@ def register_routes(app, server_core):
     @app.route("/api/policies/delete/<int:policy_id>", methods=["POST"])
     def api_policy_delete(policy_id):
         """Delete a policy."""
+        _, err, code = check_auth("delete")
+        if err: return err, code
         server_core.db.delete_policy(policy_id)
         return jsonify({"success": True, "message": "Policy deleted"})
 
     @app.route("/api/policies/list")
     def api_policy_list():
         """List policies, optionally filtered by group_id."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         group_id = request.args.get("group_id", type=int)
         policies = server_core.db.get_policies(group_id=group_id)
         for p in policies:
@@ -80,6 +89,8 @@ def register_routes(app, server_core):
     @app.route("/api/policies/get/<int:policy_id>")
     def api_policy_get(policy_id):
         """Get a single policy by ID."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         p = server_core.db.get_policy(policy_id)
         if not p:
             return jsonify({"success": False, "error": "Policy not found"}), 404
@@ -93,6 +104,8 @@ def register_routes(app, server_core):
     @app.route("/api/policies/status", methods=["POST"])
     def api_policy_status():
         """Update policy apply status (called by agent after applying)."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         data = request.get_json() or {}
         policy_id = data.get("policy_id")
         status = data.get("status", "applied")
@@ -109,6 +122,8 @@ def register_routes(app, server_core):
     @app.route("/api/policies/pending/<machine_id>")
     def api_policy_pending(machine_id):
         """Get pending policies for a specific machine."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         policies = server_core.db.get_pending_policies_for_machine(machine_id)
         for p in policies:
             try:

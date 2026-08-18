@@ -21,6 +21,20 @@
     "NONE": "#37474f",
   };
 
+  // v4.9 security: escape helpers to prevent stored XSS from untrusted rule/description fields.
+  function esc(s) {
+    if (s === null || s === undefined) return '';
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(String(s)));
+    return d.innerHTML;
+  }
+  function escAttr(s) {
+    return esc(s).replace(/"/g, '&quot;');
+  }
+  function escJs(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
   function loadMITREMatrix(containerId) {
     var container = document.getElementById(containerId || 'mitre-matrix-container');
     if (!container) return;
@@ -143,12 +157,12 @@
                        tech.max_severity === 'MEDIUM' ? 'rgba(255,187,51,0.12)' :
                        'rgba(55,71,79,0.2)';
           html += '<td style="background:' + cellBg + '; border-left:3px solid ' + sevColor + '; padding:4px 6px; cursor:pointer;" ';
-          html += 'onclick="showTechniqueDetail(\'' + tech.technique_id + '\')" ';
-          html += 'title="' + tech.technique_name + '\\nSeverity: ' + tech.max_severity + '\\nCount: ' + tech.count + '">';
-          html += '<div style="font-size:11px; font-weight:600; color:#e0e0e0;">' + tech.technique_name.substring(0, 30) + '</div>';
+          html += 'onclick="showTechniqueDetail(\'' + escJs(tech.technique_id) + '\')" ';
+          html += 'title="' + escAttr(tech.technique_name) + '\\nSeverity: ' + escAttr(tech.max_severity) + '\\nCount: ' + escAttr(tech.count) + '">';
+          html += '<div style="font-size:11px; font-weight:600; color:#e0e0e0;">' + esc(tech.technique_name).substring(0, 30) + '</div>';
           html += '<div style="font-size:10px; margin-top:2px;">';
-          html += '<span style="color:' + sevColor + ';">' + tech.max_severity + '</span>';
-          html += ' <span style="color:#888;">&#215;' + tech.count + '</span>';
+          html += '<span style="color:' + sevColor + ';">' + esc(tech.max_severity) + '</span>';
+          html += ' <span style="color:#888;">&#215;' + esc(tech.count) + '</span>';
           html += '</div>';
           html += '</td>';
         } else {
@@ -160,11 +174,11 @@
           var techO = otherTechs[row];
           var sevColorO = SEV_COLORS[techO.max_severity] || '#999';
           html += '<td style="background:rgba(55,71,79,0.25); border-left:3px solid ' + sevColorO + '; padding:4px 6px; cursor:pointer;" ';
-          html += 'onclick="showTechniqueDetail(\'' + techO.technique_id + '\')" ';
-          html += 'title="' + (techO.technique_name || techO.technique_id || '') + '\\nTactic: ' + (techO.tactic || '') + '\\nSeverity: ' + techO.max_severity + '\\nCount: ' + techO.count + '">';
-          html += '<div style="font-size:11px; font-weight:600; color:#e0e0e0;">' + (techO.technique_name || techO.technique_id || '').substring(0, 30) + '</div>';
+          html += 'onclick="showTechniqueDetail(\'' + escJs(techO.technique_id) + '\')" ';
+          html += 'title="' + escAttr(techO.technique_name || techO.technique_id || '') + '\\nTactic: ' + escAttr(techO.tactic || '') + '\\nSeverity: ' + escAttr(techO.max_severity) + '\\nCount: ' + escAttr(techO.count) + '">';
+          html += '<div style="font-size:11px; font-weight:600; color:#e0e0e0;">' + esc(techO.technique_name || techO.technique_id || '').substring(0, 30) + '</div>';
           html += '<div style="font-size:10px; margin-top:2px;">';
-          html += '<span style="color:' + sevColorO + ';">' + techO.max_severity + '</span> <span style="color:#888;">&#215;' + techO.count + '</span>';
+          html += '<span style="color:' + sevColorO + ';">' + esc(techO.max_severity) + '</span> <span style="color:#888;">&#215;' + esc(techO.count) + '</span>';
           html += '</div></td>';
         } else {
           html += '<td style="background:rgba(30,30,30,0.3); border:1px solid #1a1a2e; min-height:40px;"></td>';
@@ -250,11 +264,11 @@
             for (var i = 0; i < data.alerts.length; i++) {
               var a = data.alerts[i];
               var sevColor = SEV_COLORS[a.severity] || '#999';
-              html += '<tr><td style="font-size:11px;white-space:nowrap;">' + (a.timestamp || '') + '</td>';
-              html += '<td>' + (a.hostname || a.machine_id || '') + '</td>';
-              html += '<td>' + (a.rule_name || '') + '</td>';
-              html += '<td><span style="color:' + sevColor + ';">' + a.severity + '</span></td>';
-              html += '<td style="font-size:11px;">' + (a.description || '').substring(0, 150) + '</td></tr>';
+              html += '<tr><td style="font-size:11px;white-space:nowrap;">' + esc(a.timestamp) + '</td>';
+              html += '<td>' + esc(a.hostname || a.machine_id || '') + '</td>';
+              html += '<td>' + esc(a.rule_name || '') + '</td>';
+              html += '<td><span style="color:' + sevColor + ';">' + esc(a.severity) + '</span></td>';
+              html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td></tr>';
             }
             html += '</tbody></table>';
           } else {

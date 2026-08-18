@@ -5,6 +5,7 @@ GET  /api/cleanup/summary - Get data summary for cleanup UI
 """
 
 from flask import request, jsonify
+from .api_common import check_auth
 
 
 def register(app, core):
@@ -13,6 +14,8 @@ def register(app, core):
     @app.route("/api/cleanup/summary", methods=["GET"])
     def cleanup_summary():
         """Get summary of data sizes for cleanup UI."""
+        _, err, code = check_auth("api")
+        if err: return err, code
         try:
             summary = core.db.get_data_summary()
             return jsonify({"success": True, "data": summary})
@@ -29,6 +32,8 @@ def register(app, core):
             "keep_threats": true
         }
         """
+        _, err, code = check_auth("delete")
+        if err: return err, code
         data = request.get_json(silent=True) or {}
         types = data.get("types", None)  # None = all
         days = int(data.get("days", 30))
