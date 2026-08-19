@@ -1471,7 +1471,28 @@ function formatUptime(seconds) {
 
 function loadStats() {
     fetch('/api/stats').then(r=>r.json()).then(s=>{document.getElementById('statTotalMachines').textContent=s.total_machines||0;document.getElementById('statOnlineMachines').textContent=s.online_machines||0;document.getElementById('statTotalEvents').textContent=s.events||0;document.getElementById('statSyslog').textContent=s.syslog||0;});
-    fetch('/api/event_types').then(r=>r.json()).then(types=>{const el=document.getElementById('eventTypesChart');if(!types.length){el.innerHTML='<div class="text-center text-muted py-3">Chưa có dữ liệu</div>';return;}const total=types.reduce((a,b)=>a+b.cnt,0);el.innerHTML=types.slice(0,8).map(t=>`<div class="d-flex align-items-center mb-1"><span style="width:120px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#d0d8e0;">${t.subtype||'Unknown'}</span><div class="progress flex-grow-1" style="height:16px;background:var(--bg-dark);"><div class="progress-bar" style="width:${(t.cnt/total*100).toFixed(1)}%;background:var(--accent);font-size:10px;">${t.cnt}</div></div></div>`).join('');});
+    fetch('/api/event_types').then(r=>r.json()).then(types=>{
+        const el=document.getElementById('eventTypesChart');
+        if(!types.length){el.innerHTML='<div class="text-center text-muted py-3">Chưa có dữ liệu</div>';return;}
+        const total=types.reduce((a,b)=>a+b.cnt,0);
+        // v4.11 (UI fix): event-type names were squeezed into a fixed 120px span
+        // and truncated ("Microsoft-Windows-PowerShell/Operational" -> "...Po").
+        // Now the name uses the full row width (ellipsis + title tooltip for the
+        // rest), count on the right, progress bar underneath. subtype is
+        // HTML-escaped because it comes from event sources (arbitrary text).
+        el.innerHTML=types.slice(0,8).map(t=>{
+            const name=escapeHtml(t.subtype||'Unknown');
+            return '<div class="mb-1">'+
+                '<div class="d-flex justify-content-between align-items-center" style="font-size:11px;color:#d0d8e0;">'+
+                '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+name+'">'+name+'</span>'+
+                '<span style="margin-left:8px;color:#8892a4;">'+escapeHtml(t.cnt)+'</span>'+
+                '</div>'+
+                '<div class="progress" style="height:8px;background:var(--bg-dark);">'+
+                '<div class="progress-bar" style="width:'+(t.cnt/total*100).toFixed(1)+'%;background:var(--accent);"></div>'+
+                '</div>'+
+                '</div>';
+        }).join('');
+    });
 }
 
 // v4.10: Global unread-messages badge (nav "Tin nhắn") - polls independently of the
