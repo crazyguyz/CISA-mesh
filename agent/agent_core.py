@@ -1572,7 +1572,7 @@ del "%~f0"
                     print(f"[📥] HTTP poll: received {len(pending)} pending command(s)")
                     for cmd in pending:
                         # v4.10 (CRITICAL-2): verify command signature BEFORE executing
-                        # (same fail-closed path as TCP / _poll_pending_commands).
+                        # (same fail-closed path as the TCP command handler).
                         if not self._verify_command_signature(cmd):
                             print(f"[!] Command rejected (signature) via HTTP poll: {cmd.get('action', '?')}")
                             continue
@@ -1622,67 +1622,6 @@ del "%~f0"
             self._report_command_result(exec_id=exec_id, action=action, result=result)
         except Exception as e:
             print(f"[-] Execute polled command failed: {e}")
-
-    def _poll_pending_commands(self):
-        """v3.9.7: HTTP poll server for pending commands (Pull Model).
-        Calls POST /api/agent/heartbeat which combines heartbeat update + command poll.
-        Then POST /api/agent/command-result for each executed command."""
-        import urllib.request as urlreq
-        import urllib.error as urlerr
-
-        server_web_port = 5000
-        url = f"http://{self.server_host}:{server_web_port}/api/agent/heartbeat"
-
-        try:
-            req_data = json.dumps({
-                "machine_id": self.machine_id,
-                "hostname": self.hostname,
-                "psk": self.config.get("psk", ""),
-                "version": AGENT_VERSION,
-            }).encode("utf-8")
-            req = urlreq.Request(url, data=req_data,
-                                  headers={"Content-Type": "application/json"})
-            resp = urlreq.urlopen(req, timeout=15)
-            resp_data = json.loads(resp.read().decode("utf-8"))
-            pending = resp_data.get("pending", [])
-
-            if pending:
-                print(f"[📥] Received {len(pending)} pending command(s) from server")
-                for cmd in pending:
-                    # v4.5.4: verify command signature (same as TCP path)
-                    if not self._verify_command_signature(cmd):
-                        print(f"[!] Command rejected (signature) via HTTP poll: {cmd.get('action', '?')}")
-                        continue
-                    try:
-                        cmd_str = cmd.get("command", "{}")
-                        cmd_data = json.loads(cmd_str) if cmd_str else {}
-                        # command field is just params; action comes from outer cmd
-                        cmd_data["action"] = cmd.get("action", "")
-                    except Exception:
-                        cmd_data = {"action": cmd.get("action", "")}
-
-                    cmd_data["exec_id"] = cmd.get("exec_id", "")
-                    cmd_data["machine_id"] = self.machine_id
-                    cmd_data["hostname"] = self.hostname
-
-                    # v4.10: dedup against TCP delivery (same command may be pushed
-                    # over TCP and re-delivered here while still 'pending')
-                    if self._is_duplicate(cmd.get("exec_id", "")):
-                        print(f"[DEDUP] Skipping already processed: {cmd.get('action', '?')} ({cmd.get('exec_id', '')})")
-                        continue
-
-                    result = self._execute_command_locally(cmd_data)
-
-                    self._report_command_result(
-                        exec_id=cmd.get("exec_id", ""),
-                        action=cmd.get("action", ""),
-                        result=result
-                    )
-        except urlerr.URLError as e:
-            # Server may be unreachable via HTTP, that's OK - TCP still works
-            print(f"[-] HTTP poll failed (server unreachable): {e}")
-        except Exception as e:
-            print(f"[-] HTTP poll error: {e}")
 
     def _execute_command_locally(self, cmd_data):
         """v3.9.7: Execute a command received via HTTP polling.
