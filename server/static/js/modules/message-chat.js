@@ -74,7 +74,7 @@ window.messageChat = (function() {
       var status = m.is_online == 1 ? '[ON]' : '[OFF]';
       var unread = unreadByMachine[m.machine_id] || 0;
       var badge = unread > 0 ? ' 🔴(' + unread + ')' : '';
-      sel.innerHTML += '<option value="' + m.machine_id + '">' + status + ' ' + label + badge + '</option>';
+      sel.innerHTML += '<option value="' + esc(m.machine_id) + '">' + status + ' ' + esc(label) + badge + '</option>';
     });
   }
 
@@ -83,7 +83,7 @@ window.messageChat = (function() {
     if (!sel) return;
     sel.innerHTML = '<option value="">' + t('chat.none') + '</option>';
     allGroups.forEach(function(g) {
-      sel.innerHTML += '<option value="' + g.id + '">' + g.name + ' (' + (g.members ? g.members.length : 0) + ' may)</option>';
+      sel.innerHTML += '<option value="' + esc(g.id) + '">' + esc(g.name) + ' (' + (g.members ? g.members.length : 0) + ' may)</option>';
     });
   }
 

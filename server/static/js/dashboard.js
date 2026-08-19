@@ -106,7 +106,7 @@ function selectMachine(machineId) {
     // Get hostname from selected option
     const option = sel ? sel.options[sel.selectedIndex] : null;
     const hostname = (option && option.dataset.hostname) ? option.dataset.hostname : machineId;
-    document.getElementById('pageTitle').innerHTML = `<i class="bi bi-pc-display"></i> ${hostname}`;
+    document.getElementById('pageTitle').innerHTML = `<i class="bi bi-pc-display"></i> ${escapeHtml(hostname)}`;
     updateSSHTitle(hostname);
     loadMachineDetails(machineId);
     loadMachineEvents(machineId);
@@ -118,10 +118,10 @@ function selectMachine(machineId) {
 
 function updateSSHTitle(hostname) {
     const headerEl = document.querySelector('#tabCommand .card-header');
-    if (headerEl) { headerEl.innerHTML = `<i class="bi bi-terminal"></i> SSH Remote Shell → <strong style="color:#ffcc66;">${hostname}</strong> (gửi lệnh đến máy trạm này)`; }
+    if (headerEl) { headerEl.innerHTML = `<i class="bi bi-terminal"></i> SSH Remote Shell → <strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong> (gửi lệnh đến máy trạm này)`; }
     const outputEl = document.getElementById('cmdOutput');
     if (outputEl && outputEl.innerHTML.indexOf('GIAM-SAT Remote Shell v1.0') === 0) {
-        outputEl.innerHTML = `GIAM-SAT Remote Shell v1.0<br>================================<br>🎯 Máy trạm: <strong style="color:#ffcc66;">${hostname}</strong><br>Gõ lệnh → Enter để gửi đến máy trạm này<br>Kết quả hiển thị sau 2-5 giây<br>================================<br>`;
+        outputEl.innerHTML = `GIAM-SAT Remote Shell v1.0<br>================================<br>🎯 Máy trạm: <strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong><br>Gõ lệnh → Enter để gửi đến máy trạm này<br>Kết quả hiển thị sau 2-5 giây<br>================================<br>`;
     }
 }
 
@@ -331,14 +331,14 @@ function loadAllEvents() {
         el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),'Loại / Kênh','ID',t('dash.source'),'Chi tiết'],
             events.map(e => {
                 const cat = e.event_category || '';
-                const catBadge = cat ? `<span class="badge bg-secondary me-1" style="font-size:9px;">${cat}</span>` : '';
-                const targetUser = e.target_username ? `<span style="color:#3399ff;">👤${e.target_username}</span> ` : '';
-                const srcIp = e.source_ip ? `<span style="color:#ff9966;">🌐${e.source_ip}</span> ` : '';
-                const procName = e.process_name ? `<span style="color:#88ccff;">⚙${e.process_name.split('\\').pop()}</span> ` : '';
-                const cmdLine = e.command_line ? `<span style="color:#ffcc66;font-size:9px;">${(e.command_line||'').substring(0,40)}</span>` : '';
-                var desc = e.description||'';
+                const catBadge = cat ? `<span class="badge bg-secondary me-1" style="font-size:9px;">${escapeHtml(cat)}</span>` : '';
+                const targetUser = e.target_username ? `<span style="color:#3399ff;">👤${escapeHtml(e.target_username)}</span> ` : '';
+                const srcIp = e.source_ip ? `<span style="color:#ff9966;">🌐${escapeHtml(e.source_ip)}</span> ` : '';
+                const procName = e.process_name ? `<span style="color:#88ccff;">⚙${escapeHtml(e.process_name.split('\\').pop())}</span> ` : '';
+                const cmdLine = e.command_line ? `<span style="color:#ffcc66;font-size:9px;">${escapeHtml((e.command_line||'').substring(0,40))}</span>` : '';
+                var desc = escapeHtml(e.description||'');
                 var extraInfo = targetUser + srcIp + procName + cmdLine;
-                return `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${(e.time||'').substring(0,19)}</td><td>${e.hostname||e.machine_id||'-'}</td><td>${catBadge}<span class="log-type event">${(e.subtype||'').split('/').pop()}</span></td><td>${e.event_id||'-'}</td><td>${e.source||'-'}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extraInfo}${desc.substring(0,50)}</td></tr>`;
+                return `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.time||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td>${catBadge}<span class="log-type event">${escapeHtml((e.subtype||'').split('/').pop())}</span></td><td>${escapeHtml(e.event_id||'-')}</td><td>${escapeHtml(e.source||'-')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extraInfo}${desc.substring(0,50)}</td></tr>`;
             }));
         document.getElementById('allEventSearch').oninput = function() { const q = this.value.toLowerCase(); el.querySelectorAll('tbody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'); };
     });
@@ -348,7 +348,7 @@ function loadMachineEvents(machineId) {
     const el = document.getElementById('eventList');
     fetch(`/api/events?machine_id=${machineId}&limit=200`).then(r => r.json()).then(events => {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noEvents') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.type'),'ID',t('dash.source'),t('dash.desc')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${e.time||'-'}</td><td><span class="log-type event">${e.subtype||'?'}</span></td><td>${e.event_id||'-'}</td><td>${e.source||'-'}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(e.description||'').substring(0,80)}</td></tr>`));
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.type'),'ID',t('dash.source'),t('dash.desc')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml(e.time||'-')}</td><td><span class="log-type event">${escapeHtml(e.subtype||'?')}</span></td><td>${escapeHtml(e.event_id||'-')}</td><td>${escapeHtml(e.source||'-')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml((e.description||'').substring(0,80))}</td></tr>`));
         document.getElementById('eventSearch').oninput = function() { const q = this.value.toLowerCase(); el.querySelectorAll('tbody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'); };
     }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
 }
@@ -357,7 +357,7 @@ function loadAllFim() {
     const el = document.getElementById('allFimList');
     fetch('/api/fim?limit=200').then(r => r.json()).then(events => {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noFimEvents') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),t('dash.action'),t('dash.path')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${(e.time||'').substring(0,19)}</td><td>${e.hostname||e.machine_id||'-'}</td><td><span class="log-type fim">${e.action||'?'}</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.path||'-'}</td></tr>`));
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),t('dash.action'),t('dash.path')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.time||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td><span class="log-type fim">${escapeHtml(e.action||'?')}</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.path||'-')}</td></tr>`));
     });
 }
 
@@ -365,7 +365,7 @@ function loadMachineFim(machineId) {
     const el = document.getElementById('fimList');
     fetch(`/api/fim?machine_id=${machineId}&limit=200`).then(r => r.json()).then(events => {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noFimEvents') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.action'),t('dash.path')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${e.time||'-'}</td><td><span class="log-type fim">${e.action||'?'}</span></td><td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.path||'-'}</td></tr>`));
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.action'),t('dash.path')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml(e.time||'-')}</td><td><span class="log-type fim">${escapeHtml(e.action||'?')}</span></td><td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.path||'-')}</td></tr>`));
     }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
 }
 
@@ -373,7 +373,7 @@ function loadMachineResponses(machineId) {
     const el = document.getElementById('responseList');
     fetch(`/api/responses?machine_id=${machineId}&limit=50`).then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noResponseResults') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${(e.timestamp||'').substring(0,19)}</td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${e.status||'?'}</span></td><td style="max-width:500px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${(e.output||e.error||'-').substring(0,200)}</td></tr>`));
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${escapeHtml(e.status||'?')}</span></td><td style="max-width:500px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${escapeHtml((e.output||e.error||'-').substring(0,200))}</td></tr>`));
     }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
 }
 
@@ -396,7 +396,7 @@ function loadSyslog() {
         var total = data.length;
         if (!total) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> ' + t('dash.noSyslog') + (search||facility||severity||sourceIp?'<br><small style="font-size:11px;color:#6a8aaa;">' + t('dash.clearFilter') + '</small>':'<br><small style="font-size:11px;color:#6a8aaa;">' + t('dash.syslogHint') + '</small>') + '</div>'; return; }
         el.innerHTML = '<div class="text-muted mb-1" style="font-size:11px;">' + t('dash.foundRecords', [total]) + (search||facility||severity||sourceIp?t('dash.filtered'):'') + '</div>' +
-            tableWrap([t('dash.time'),t('dash.source'),'Facility',t('dash.severity'),t('dash.content')], data.map(function(e){ return '<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">'+(e.timestamp||'').substring(0,19)+'</td><td>'+(e.hostname||e.source_ip||'-')+'</td><td><span class="badge bg-dark" style="font-size:9px;">'+(e.facility||'?')+'</span></td><td><span class="badge '+(e.severity==='error'||e.severity==='critical'?'bg-danger':e.severity==='warning'?'bg-warning text-dark':'bg-secondary')+'">'+(e.severity||'?')+'</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+(e.message||'').replace(/"/g,'"')+'">'+(e.message||'').substring(0,120)+'</td></tr>'; }));
+            tableWrap([t('dash.time'),t('dash.source'),'Facility',t('dash.severity'),t('dash.content')], data.map(function(e){ return '<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">'+escapeHtml((e.timestamp||'').substring(0,19))+'</td><td>'+escapeHtml(e.hostname||e.source_ip||'-')+'</td><td><span class="badge bg-dark" style="font-size:9px;">'+escapeHtml(e.facility||'?')+'</span></td><td><span class="badge '+(e.severity==='error'||e.severity==='critical'?'bg-danger':e.severity==='warning'?'bg-warning text-dark':'bg-secondary')+'">'+escapeHtml(e.severity||'?')+'</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escapeHtml(e.message||'')+'">'+escapeHtml((e.message||'').substring(0,120))+'</td></tr>'; }));
     }).catch(function(e){
         el.innerHTML='<div class="text-center text-muted py-3">⚠ Lỗi tải syslog: '+e.message+'<br><small style="font-size:11px;color:#6a8aaa;">Kiểm tra Syslog Server đã chạy chưa (port 514/UDP)</small></div>';
     });
@@ -406,7 +406,7 @@ function loadAllResponses() {
     const el = document.getElementById('allResponseList');
     fetch('/api/responses?limit=200').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noResults') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),'Action',t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${(e.timestamp||'').substring(0,19)}</td><td>${e.hostname||e.machine_id||'-'}</td><td><span class="log-type response">${e.action||'?'}</span></td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${e.status||'?'}</span></td><td style="max-width:300px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${(e.output||e.error||'-').substring(0,150)}</td></tr>`));
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),'Action',t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td><span class="log-type response">${escapeHtml(e.action||'?')}</span></td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${escapeHtml(e.status||'?')}</span></td><td style="max-width:300px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${escapeHtml((e.output||e.error||'-').substring(0,150))}</td></tr>`));
     });
 }
 
@@ -437,20 +437,20 @@ function loadNetwork() {
                     if (row.protocol_app === 'DNS') {
                         const dns = row.dns_info || {};
                         const nxdomain = dns.is_nxdomain ? ' ❌' : '';
-                        appBadge = `<span class="badge bg-info" title="${dns.qtype_name||'?'} rcode:${dns.rcode_name||'?'}">🌐 DNS${nxdomain}</span>`;
+                        appBadge = `<span class="badge bg-info" title="${escapeHtml((dns.qtype_name||'?') + ' rcode:' + (dns.rcode_name||'?'))}">🌐 DNS${nxdomain}</span>`;
                     } else if (row.protocol_app === 'HTTP') {
                         const http = row.http_info || {};
-                        appBadge = `<span class="badge bg-warning text-dark" title="${http.method||'GET'} ${http.uri||'/'}">📄 ${http.host||'HTTP'}</span>`;
+                        appBadge = `<span class="badge bg-warning text-dark" title="${escapeHtml((http.method||'GET') + ' ' + (http.uri||'/'))}">📄 ${escapeHtml(http.host||'HTTP')}</span>`;
                     } else {
                         appBadge = '<span class="text-muted" style="font-size:10px;">-</span>';
                     }
-                    return `<tr data-row='${JSON.stringify(row).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${(e.timestamp||'').substring(0,19)}</td><td>${e.hostname||e.machine_id||'-'}</td><td style="font-family:monospace;font-size:10px;">${displaySrc}</td><td style="font-family:monospace;font-size:10px;">${displayDst}</td><td><span class="badge ${e.protocol==='TCP'?'bg-info':e.protocol==='UDP'?'bg-warning text-dark':'bg-secondary'}">${e.protocol||'?'}</span></td><td style="font-family:monospace;font-size:10px;">${displayPort}</td><td>${e.size||0}</td><td>${appBadge}</td></tr>`})
+                    return `<tr data-row='${JSON.stringify(row).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displaySrc)}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayDst)}</td><td><span class="badge ${e.protocol==='TCP'?'bg-info':e.protocol==='UDP'?'bg-warning text-dark':'bg-secondary'}">${escapeHtml(e.protocol||'?')}</span></td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayPort)}</td><td>${escapeHtml(e.size||0)}</td><td>${appBadge}</td></tr>`})
             );
         }
         fetch('/api/inspection?limit=100').then(r2 => r2.json()).then(inspData => {
             if (inspData.length) {
                 html += '<hr style="border-color:#2a3a4a;margin:8px 0;"><h6 class="px-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-search"></i> Deep Packet Inspection (DNS / TLS / HTTP / Beaconing)</h6>';
-                html += inspData.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${e.subtype||'?'}</span> <strong style="color:#d0d8e0;">${e.domain||e.dst_ip||'-'}</strong>${e.subtype==='beaconing'?` (chu kỳ ${e.avg_interval_sec}s)`:''}</span><small class="text-muted">${(e.timestamp||'').substring(0,19)}</small></div></div>`).join('');
+                html += inspData.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong>${e.subtype==='beaconing'?` (chu kỳ ${escapeHtml(e.avg_interval_sec)}s)`:''}</span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
             }
             el.innerHTML = html;
         });
@@ -461,7 +461,7 @@ function loadInspection() {
     const el = document.getElementById('inspectionList');
     fetch('/api/inspection?limit=300').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noDpiData') + '</div>'; return; }
-        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:8px 12px;margin-bottom:4px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${e.subtype||'?'}</span> <strong style="color:#d0d8e0;">${e.domain||e.dst_ip||'-'}</strong></span><small class="text-muted">${(e.timestamp||'').substring(0,19)}</small></div></div>`).join('');
+        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:8px 12px;margin-bottom:4px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong></span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
     });
 }
 
@@ -794,7 +794,7 @@ function loadAgentless() {
     const el = document.getElementById('agentlessList');
     fetch('/api/agentless?limit=200').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noAgentlessData') + '</div>'; return; }
-        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><strong>${e.device_name||e.ip||'?'}</strong> <small class="text-muted">${e.timestamp||''}</small><br><span style="font-size:11px;color:#999;">${(e.data_json||'').substring(0,120)}</span></div>`).join('');
+        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><strong>${escapeHtml(e.device_name||e.ip||'?')}</strong> <small class="text-muted">${escapeHtml(e.timestamp||'')}</small><br><span style="font-size:11px;color:#999;">${escapeHtml((e.data_json||'').substring(0,120))}</span></div>`).join('');
     }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
     // Load management tab lazily
     if (document.getElementById('tabAgManage') && document.getElementById('agentlessDeviceMgmt').innerHTML.indexOf('Đang tải') > -1) {
@@ -1720,7 +1720,7 @@ function sendCommand() {
     const output=document.getElementById('cmdOutput');
     const exec_id='cmd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
     const ts=new Date().toLocaleTimeString();
-    output.innerHTML+=`\n${ts} [${selectedMachine}] $ ${command}\n`;
+    output.innerHTML+=`\n${escapeHtml(ts)} [${escapeHtml(selectedMachine)}] $ ${escapeHtml(command)}\n`;
     output.scrollTop=output.scrollHeight;
     document.getElementById('cmdInput').value='';
     pendingExecs[exec_id]=true;
@@ -1765,7 +1765,7 @@ function pollCommandResult(exec_id,output,attempt){
                 if(found){
                     delete pendingExecs[exec_id];
                     const result = found.output || found.error || '(trống)';
-                    output.innerHTML+=`\n✅ KẾT QUẢ (${found.status||'completed'}):\n${result}\n────────────────────────────────────\n`;
+                    output.innerHTML+=`\n✅ KẾT QUẢ (${escapeHtml(found.status||'completed')}):\n${escapeHtml(result)}\n────────────────────────────────────\n`;
                     output.scrollTop=output.scrollHeight;
                 }else{
                     pollCommandResult(exec_id,output,attempt+1);
@@ -1840,11 +1840,11 @@ function sendToAssistant(contextData){
         document.getElementById('assistResult').style.display='';
         const hEl=document.getElementById('assistHistory'),ts=new Date().toLocaleString();
         assistHistoryList.unshift({ts,provider,model,question:custom_prompt,fullResponse:data.response});
-        hEl.innerHTML=assistHistoryList.map((h,i)=>`<div class="card mb-1" style="background:var(--bg-dark);border-color:var(--border-color);"><div class="card-body py-2 px-3" style="font-size:11px;cursor:pointer;" onclick="showHistoryDetail(${i})"><span class="text-muted">${h.ts}</span> <span class="badge bg-info" style="font-size:9px;">${h.provider}</span> <span style="color:#d0d8e0;"> - ${h.question.substring(0,80)}...</span></div></div>`).join('');
+        hEl.innerHTML=assistHistoryList.map((h,i)=>`<div class="card mb-1" style="background:var(--bg-dark);border-color:var(--border-color);"><div class="card-body py-2 px-3" style="font-size:11px;cursor:pointer;" onclick="showHistoryDetail(${i})"><span class="text-muted">${escapeHtml(h.ts)}</span> <span class="badge bg-info" style="font-size:9px;">${escapeHtml(h.provider)}</span> <span style="color:#d0d8e0;"> - ${escapeHtml(h.question.substring(0,80))}...</span></div></div>`).join('');
         showToast('✅ Phân tích hoàn tất');
     }).catch(err=>{document.getElementById('assistLoading').style.display='none';document.getElementById('assistError').textContent='⚠ Lỗi: '+err.message;document.getElementById('assistError').style.display='';});
 }
-function showHistoryDetail(i){const h=assistHistoryList[i];if(!h)return;showDetailModal('📜 Lịch sử',`<div style="white-space:pre-wrap;color:#d0e8d8;font-size:12px;"><strong>❓</strong> ${h.question}\n\n<strong>🤖</strong> ${h.fullResponse||'(trống)'}</div>`);}
+function showHistoryDetail(i){const h=assistHistoryList[i];if(!h)return;showDetailModal('📜 Lịch sử',`<div style="white-space:pre-wrap;color:#d0e8d8;font-size:12px;"><strong>❓</strong> ${escapeHtml(h.question)}\n\n<strong>🤖</strong> ${escapeHtml(h.fullResponse||'(trống)')}</div>`);}
 
 // ===== DEBOUNCE =====
 let _lastEventRefresh=0,_lastFimRefresh=0;
