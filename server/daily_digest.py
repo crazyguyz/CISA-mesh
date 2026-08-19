@@ -1,14 +1,15 @@
-"""
-GIAM-SAT Daily Alert Digest v4.11
+"""GIAM-SAT Daily Alert Digest v4.11
 MEDIUM-severity alerts (below the HIGH threshold that triggers Telegram) are
 summarized and emailed once per day - so MEDIUM events are still surfaced
 without spamming Telegram. Runs as a background thread on the server.
 Controlled by alerting_config.json -> "digest":
   {
     "enabled": true,
-    "to": ["it@ysnt.com.vn"],   # empty -> falls back to GIAMSAT_SMTP_USER
-    "hour": 8                   # send after this hour of the day (server local)
+    "to": [],                    # empty -> falls back to GIAMSAT_SMTP_USER
+    "hour": 8                    # send after this hour of the day (server local)
   }
+NOTE: no mailbox is hardcoded - recipients always come from the admin's own
+setup_config.ps1 / .env (GIAMSAT_SMTP_USER) or the digest.to list.
 """
 import os
 import json

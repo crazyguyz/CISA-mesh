@@ -11,9 +11,9 @@
     "hour": 8
   },
   "email": {
-    "enabled": false,
+    "enabled": true,
     "smtp_host": "",
-    "smtp_port": 587,
+    "smtp_port": 465,
     "username": "",
     "password": "",
     "from_addr": "",

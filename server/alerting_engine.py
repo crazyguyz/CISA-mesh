@@ -18,7 +18,7 @@ class AlertingEngine:
         self.lock = threading.Lock()
         self.config = {
             "enabled": False,
-            "email": {"enabled": False, "smtp_host": "", "smtp_port": 587, "username": "", "password": "", "from_addr": "", "to_addrs": []},
+            "email": {"enabled": True, "smtp_host": "", "smtp_port": 465, "username": "", "password": "", "from_addr": "", "to_addrs": []},
             "slack": {"enabled": False, "webhook_url": "", "channel": "#alerts"},
             "webhook": {"enabled": False, "url": "", "headers": {}},
             "telegram": {"enabled": False, "bot_token": "", "chat_id": "", "approval_timeout": 300, "min_severity": "HIGH"},
@@ -266,15 +266,32 @@ class AlertingEngine:
         return sent_ok
 
     def _send_email(self, alert_data):
+        """v4.11: Send the alert to the ADMIN mailbox (config email block) AND/OR
+        fall back to the project's GIAMSAT_SMTP_* env vars when the block is
+        empty - so alert emails reuse the same mailbox as the rest of the system
+        without duplicating credentials. Recipients default to the SMTP user."""
         try:
             import smtplib
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
+            import os as _os
 
-            cfg = self.config["email"]
+            cfg = self.config.get("email") or {}
+            smtp_host = (cfg.get("smtp_host") or "").strip() or _os.environ.get("GIAMSAT_SMTP_HOST", "").strip()
+            smtp_port = int(cfg.get("smtp_port") or _os.environ.get("GIAMSAT_SMTP_PORT", "465"))
+            smtp_user = (cfg.get("username") or "").strip() or _os.environ.get("GIAMSAT_SMTP_USER", "").strip()
+            smtp_pass = (cfg.get("password") or "") or _os.environ.get("GIAMSAT_SMTP_PASS", "")
+            from_addr = (cfg.get("from_addr") or "").strip() or smtp_user
+            to_addrs = cfg.get("to_addrs") or []
+            if not to_addrs and smtp_user:
+                to_addrs = [smtp_user]  # default: the admin mailbox itself
+            if not smtp_host or not smtp_user or not smtp_pass or not to_addrs:
+                print("[-] Email alert: SMTP not configured (alerting_config email block / GIAMSAT_SMTP_* env)")
+                return False
+
             msg = MIMEMultipart()
-            msg["From"] = cfg["from_addr"]
-            msg["To"] = ", ".join(cfg["to_addrs"])
+            msg["From"] = from_addr
+            msg["To"] = ", ".join(to_addrs)
             msg["Subject"] = f"[GIAM-SAT] [{alert_data.get('severity','?')}] {alert_data.get('rule_name', alert_data.get('cve', 'Alert'))}"
 
             body = f"""
@@ -291,21 +308,33 @@ Description: {alert_data.get('description', 'N/A')}
 
             ctx = ssl.create_default_context()
             # v4.10 FIX: port 465 = implicit SSL (SMTP_SSL); 587/25 = STARTTLS.
-            if int(cfg.get("smtp_port", 587)) == 465:
-                with smtplib.SMTP_SSL(cfg["smtp_host"], int(cfg.get("smtp_port", 465)), timeout=20, context=ctx) as server:
-                    server.login(cfg["username"], cfg["password"])
-                    server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=20, context=ctx) as server:
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(from_addr, to_addrs, msg.as_string())
             else:
-                with smtplib.SMTP(cfg["smtp_host"], int(cfg.get("smtp_port", 587)), timeout=20) as server:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
                     server.ehlo()
                     server.starttls(context=ctx)
                     server.ehlo()
-                    server.login(cfg["username"], cfg["password"])
-                    server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
-            print(f"[*] Email alert sent to {cfg['to_addrs']}")
+                    server.login(smtp_user, smtp_pass)
+                    server.sendmail(from_addr, to_addrs, msg.as_string())
+            print(f"[*] Email alert sent to {to_addrs}")
+            try:
+                from sent_mail_log import log_email
+                log_email(", ".join(to_addrs), msg["Subject"], body,
+                          source="alerting", status="sent")
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"[-] Email alert failed: {e}")
+            try:
+                from sent_mail_log import log_email
+                log_email(", ".join(to_addrs), msg.get("Subject", ""), body,
+                          source="alerting", status="failed", error=str(e))
+            except Exception:
+                pass
             return False
 
     def _send_slack(self, alert_data):
