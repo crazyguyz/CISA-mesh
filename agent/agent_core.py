@@ -299,6 +299,27 @@ class AgentCore:
             report["machine_id"] = self.machine_id
             report["hostname"] = self.hostname
             self._real_send(report)
+            # v4.11 (CN2): surface baseline deviations as threat alerts so they
+            # reach the server alerting path (Telegram / admin email / digest)
+            # instead of being just a stored baseline_report event.
+            deviations = report.get("deviations") or []
+            if deviations:
+                try:
+                    desc = "; ".join(str(d.get("description", "")) for d in deviations[:3])
+                    sev = "HIGH" if int(report.get("anomaly_score", 0)) >= 60 else "MEDIUM"
+                    alert = {
+                        "type": "threat_alert",
+                        "rule_id": "BASELINE-001",
+                        "rule_name": "Network Baseline Anomaly",
+                        "severity": sev,
+                        "description": f"Baseline anomaly (score {report.get('anomaly_score', 0)}): {desc}",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "machine_id": self.machine_id,
+                        "hostname": self.hostname,
+                    }
+                    self._real_send(alert)
+                except Exception:
+                    pass
 
         self.adaptive_baseline = AdaptiveBaseline(callback=on_baseline_report)
 

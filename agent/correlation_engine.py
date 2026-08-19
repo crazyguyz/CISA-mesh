@@ -211,6 +211,8 @@ class CorrelationEngine:
         self.event_buffers = defaultdict(lambda: deque())
         self.sequence_states = defaultdict(list)
         self.fired_alerts = {}
+        # v4.11 (P2): NOT/filter conditions set an exclusion timestamp per rule
+        self.rule_exclusions = {}
         self.alert_cooldown = 21600
         self.machine_id = ""
         # v3.9.16: Process Tree for injection chain detection
@@ -258,19 +260,40 @@ class CorrelationEngine:
         else:
             return self._evaluate_and(rule, conditions, event_data, now)
 
+    def _is_excluded(self, rule_id, now, window=300):
+        return now - self.rule_exclusions.get(rule_id, 0) <= window
+
     def _evaluate_and(self, rule, conditions, event_data, now):
+        # v4.11 (P2): a NOT/filter match inside the window suppresses the rule
+        if self._is_excluded(rule["id"], now):
+            return None
         for i, cond in enumerate(conditions):
+            if cond.get("NOT"):
+                continue
             if not self._check_condition_threshold(rule["id"], i, cond, now):
                 return None
         return self._fire_alert(rule, event_data, conditions)
 
     def _evaluate_or(self, rule, conditions, event_data, now):
+        if self._is_excluded(rule["id"], now):
+            return None
         for i, cond in enumerate(conditions):
+            if cond.get("NOT"):
+                continue
             if self._check_condition_threshold(rule["id"], i, cond, now):
                 return self._fire_alert(rule, event_data, conditions)
         return None
 
     def _buffer_matching_condition(self, rule_id, cond_index, cond, event_data, now):
+        # v4.11 (P2): NOT (filter) conditions do NOT buffer - a matching event
+        # suppresses the rule for the window instead (the sigma parser emits flat
+        # {..., "NOT": True} filters; threshold=0 would otherwise fire always).
+        if cond.get("NOT"):
+            positive = {k: v for k, v in cond.items()
+                        if k not in ("NOT", "threshold", "within_seconds")}
+            if self._event_matches_condition(event_data, positive):
+                self.rule_exclusions[rule_id] = now
+            return
         if "logic" in cond and "conditions" in cond:
             sub_conditions = cond["conditions"]
             sub_logic = cond.get("logic", "AND").upper()
@@ -563,19 +586,26 @@ class CorrelationEngine:
                     return False
             elif ev_severity != expected_severity.upper():
                 return False
+        def _field_value(field_name):
+            v = event.get(field_name)
+            if v is None:
+                pf = event.get("parsed_fields") or {}
+                v = pf.get(field_name)
+            return "" if v is None else v
+
         field_contains = condition.get("field_contains")
         if field_contains and isinstance(field_contains, dict):
             for field_name, patterns in field_contains.items():
-                field_val = str(event.get(field_name, "")).lower()
+                field_val = str(_field_value(field_name)).lower()
                 if isinstance(patterns, list):
-                    if not any(p.lower() in field_val for p in patterns):
+                    if not any(str(p).lower() in field_val for p in patterns):
                         return False
-                elif patterns.lower() not in field_val:
+                elif str(patterns).lower() not in field_val:
                     return False
         field_equals = condition.get("field_equals")
         if field_equals and isinstance(field_equals, dict):
             for field_name, expected_val in field_equals.items():
-                field_val = str(event.get(field_name, ""))
+                field_val = str(_field_value(field_name))
                 if isinstance(expected_val, list):
                     if field_val not in [str(v) for v in expected_val]:
                         return False
@@ -584,6 +614,6 @@ class CorrelationEngine:
         field_regex = condition.get("field_regex")
         if field_regex and isinstance(field_regex, dict):
             for field_name, pattern in field_regex.items():
-                if not re.search(pattern, str(event.get(field_name, "")), re.IGNORECASE):
+                if not re.search(pattern, str(_field_value(field_name)), re.IGNORECASE):
                     return False
         return True

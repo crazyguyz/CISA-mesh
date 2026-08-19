@@ -310,6 +310,15 @@ class ServerCorrelationEngine:
         if not conditions:
             return None
 
+        # v4.11 (P2): NOT (filter) conditions exclude this event for the rule -
+        # the sigma parser emits flat {..., "NOT": True} filters.
+        for cond in conditions:
+            if cond.get("NOT"):
+                positive = {k: v for k, v in cond.items()
+                            if k not in ("NOT", "threshold", "within_seconds")}
+                if self._event_matches_condition(event_data, positive):
+                    return None
+
         # Check if event matches any condition in the rule
         matched_condition_idx = None
         for idx, cond in enumerate(conditions):
