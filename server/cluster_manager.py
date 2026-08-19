@@ -468,9 +468,14 @@ class ClusterManager:
             pass
 
     def _heartbeat_sender(self):
-        """Periodically send heartbeat to all known nodes."""
+        """Periodically send heartbeat to all known nodes.
+        v4.11 (runtime fix): without GIAMSAT_CLUSTER_SECRET the cluster is
+        disabled (fail-closed) - sending heartbeats would just make this server
+        receive-and-reject its own broadcast every 10s (log spam)."""
         while self.running:
             try:
+                if not self._cluster_secret():
+                    break  # cluster disabled -> stop the sender thread
                 self.send_heartbeat(self.tcp_port, self.web_port)
             except Exception:
                 pass
@@ -492,11 +497,16 @@ class ClusterManager:
 
     def _cluster_verified(self, msg: dict) -> bool:
         """v4.10 (MED-2): verify the HMAC signature of an incoming cluster message.
-        Fail-closed: without GIAMSAT_CLUSTER_SECRET no cluster message is accepted."""
+        Fail-closed: without GIAMSAT_CLUSTER_SECRET no cluster message is accepted.
+        v4.11 (runtime fix): the 'not set' warning is printed ONCE instead of on
+        every message (a single-node server was rejecting its own broadcast)."""
         import json as _json, hmac as _hmac, hashlib as _hl
         secret = self._cluster_secret()
         if not secret:
-            print("[!] Cluster: GIAMSAT_CLUSTER_SECRET not set - rejecting cluster messages (fail-closed)")
+            if not getattr(self, "_secret_warned", False):
+                print("[!] Cluster: GIAMSAT_CLUSTER_SECRET not set - cluster disabled (fail-closed). "
+                      "Set GIAMSAT_CLUSTER_SECRET to enable multi-node clustering.")
+                self._secret_warned = True
             return False
         sig = msg.get("_sig", "")
         check = dict(msg)
@@ -506,7 +516,10 @@ class ClusterManager:
         return bool(sig) and _hmac.compare_digest(sig, expected)
 
     def send_heartbeat(self, tcp_port=6666, web_port=5000):
-        """Send heartbeat broadcast to cluster."""
+        """Send heartbeat broadcast to cluster.
+        v4.11 (runtime fix): no-op when the cluster secret is not configured."""
+        if not self._cluster_secret():
+            return
         msg = self._cluster_sign({
             "type": "heartbeat",
             "node_id": self.node_id,

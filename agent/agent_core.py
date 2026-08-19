@@ -2121,8 +2121,13 @@ del "%~f0"
         """
         v4.0: YARA scanner callback that routes through _enrich_and_queue
         (instead of bypassing to _real_send), enabling auto-quarantine.
+        v4.11 (runtime fix): yara events carried no 'severity' -> the server
+        alerting engine treated them as LOW and NEVER notified (even
+        Ransomware_Note was silent). Default to MEDIUM so they reach the daily
+        digest; HIGH+ rules can still override via their own severity.
         """
         event["type"] = "yara_alert"
+        event.setdefault("severity", "MEDIUM")
         event["machine_id"] = self.machine_id
         event["hostname"] = self.hostname
         self._enrich_and_queue(event)

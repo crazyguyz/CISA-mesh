@@ -87,6 +87,30 @@ def run_digest(core, alerting_cfg):
     try:
         alerts = core.db.get_threat_alerts(limit=200, since_hours=24) or []
         medium = [a for a in alerts if (a.get("severity") or "").upper() == "MEDIUM"]
+        # v4.11 (runtime fix): YARA and MEDIUM vuln alerts were never surfaced
+        # anywhere (Telegram only takes HIGH+; the digest only read threat_alerts).
+        # Include them here. yara_alerts has no severity column -> all are included.
+        yara_fn = getattr(core.db, "get_yara_alerts", None)
+        if yara_fn:
+            try:
+                medium += yara_fn(limit=200, since_hours=24) or []
+            except Exception:
+                pass
+        vuln_fn = getattr(core.db, "get_vuln_alerts", None)
+        if vuln_fn:
+            try:
+                vulns = vuln_fn(limit=200, since_hours=24) or []
+                medium += [a for a in vulns if (a.get("severity") or "").upper() == "MEDIUM"]
+            except Exception:
+                pass
+        # newest first, capped like the old threat-only digest
+        medium.sort(key=lambda a: str(a.get("timestamp") or a.get("received_at") or ""), reverse=True)
+        medium = medium[:100]
+        if not medium:
+            # v4.11 (runtime fix): never send an empty "0 alerts" email - this was
+            # spamming the admin mailbox on every server start during the day.
+            print("[DIGEST] No MEDIUM/YARA alerts in the last 24h - skip (no email sent)")
+            return False
         body = _build_body(medium)
         from email_alerts import send_email_smtp
         ok = send_email_smtp(", ".join(recipients),
