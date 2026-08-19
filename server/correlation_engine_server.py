@@ -408,6 +408,26 @@ class ServerCorrelationEngine:
             if actual_lt != str(logon_type):
                 return False
 
+        # v4.11 (CRITICAL-1 FIX): field_contains - match structured event fields
+        # (parsed_fields first, then top-level event fields). The server silently
+        # ignored this condition before, so rules like THREAT-052 (4688 + command
+        # line contains \Temp\) and THREAT-053 (4625 + 'Logon Type: 10') matched
+        # EVERY event of that type -> false-positive storm. Mirrors the agent-side
+        # engine (agent/correlation_engine.py) but also reads parsed_fields.
+        field_contains = condition.get("field_contains")
+        if field_contains and isinstance(field_contains, dict):
+            parsed = event.get("parsed_fields") or {}
+            for field_name, patterns in field_contains.items():
+                raw = event.get(field_name)
+                if raw is None:
+                    raw = parsed.get(field_name)
+                field_val = str(raw if raw is not None else "").lower()
+                if isinstance(patterns, list):
+                    if not any(str(p).lower() in field_val for p in patterns):
+                        return False
+                elif str(patterns).lower() not in field_val:
+                    return False
+
         return True
 
     def _get_correlation_value(self, event, field):

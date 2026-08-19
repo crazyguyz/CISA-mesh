@@ -42,21 +42,25 @@ LOGSOURCE_MAP = {
 }
 
 # Map Sigma fields to GIAM-SAT filter patterns
+# v4.11 (CRITICAL-2): values now match the structured keys that
+# agent/event_decoder.py actually populates (parsed_fields), so field-level
+# rules match real data instead of formatted description text.
 FIELD_MAP = {
     "EventID": "event_id",
     "CommandLine": "command_line",
-    "Image": "process_path",
-    "ParentImage": "parent_path",
-    "TargetFilename": "file_path",
-    "DestinationIp": "dst_ip",
-    "DestinationPort": "dst_port",
-    "SourceIp": "src_ip",
-    "QueryName": "dns_query",
+    "Image": "process_name",
+    "ParentImage": "parent_process",
+    "TargetFilename": "target_filename",
+    "DestinationIp": "dest_ip",
+    "DestinationPort": "dest_port",
+    "SourceIp": "source_ip",
+    "SourcePort": "source_port",
+    "QueryName": "query_name",
     "TargetObject": "registry_key",
-    "ImageLoaded": "dll_path",
+    "ImageLoaded": "image_loaded",
     "Hashes": "hashes",
-    "User": "user",
-    "ProcessId": "pid",
+    "User": "username",
+    "ProcessId": "process_id",
     "ParentProcessId": "parent_pid",
 }
 
@@ -67,6 +71,20 @@ CONDITION_MODIFIERS = {
     "endswith": "description_contains",
     "re": "description_contains",
     "base64": "description_contains",
+}
+
+# v4.11 (CRITICAL-2): alias map for Sigma field names that are not in FIELD_MAP
+# (lowercased fallback -> decoder key), applied when the parser emits a raw
+# field name instead of a FIELD_MAP value.
+SIGMA_FIELD_MAP = {
+    "servicefilename": "service_file",
+    "commandline": "command_line",
+    "parentprocessid": "parent_pid",
+    "callertprocessname": "caller_process_name",
+    "newprocessname": "process_name",
+    "subjectusername": "username",
+    "targetusername": "username",
+    "user.name": "username",
 }
 
 
@@ -111,6 +129,47 @@ def _parse_selection(selection_dict):
     }
 
 
+def _selection_to_conditions(sel_dict):
+    """v4.11 (CRITICAL-2): split a Sigma selection into ONE condition per field.
+    The old _parse_selection merged every key of a selection into a single
+    condition - e.g. EventID [4688, 4104] + CommandLine ['\\\\Temp\\\\'] became
+    one description_contains with all four values, so rules could never match
+    the fields correctly. EventID is handled separately (promoted to
+    condition['event_id'] in _convert_sigma_to_giamsat)."""
+    out = []
+    if not isinstance(sel_dict, dict):
+        return out
+    for key, val in sel_dict.items():
+        field_name = key
+        modifier = "description_contains"
+        if "|" in key:
+            field_name, mod = key.split("|", 1)
+            modifier = CONDITION_MODIFIERS.get(mod, "description_contains")
+        if field_name == "EventID":
+            continue  # promoted separately
+        values = []
+        if isinstance(val, list):
+            values = [str(v) for v in val]
+        elif isinstance(val, (int, float)):
+            values = [str(val)]
+        else:
+            # Could be a string with wildcards
+            values = [str(val).replace("*", "").replace("\\", "\\\\")]
+        if not values:
+            continue
+        out.append({
+            "type": "windows_event",
+            "subtype": "Sysmon",
+            "event_id": None,
+            "field": FIELD_MAP.get(field_name, field_name.lower()),
+            "modifier": modifier,
+            "values": values,
+            "threshold": 1,
+            "within_seconds": 60,
+        })
+    return out
+
+
 def _parse_condition(condition_str, selections):
     """
     Parse Sigma condition string into GIAM-SAT conditions list.
@@ -131,17 +190,7 @@ def _parse_condition(condition_str, selections):
 
     # Simple case: single selection name
     if cond_lower in selections:
-        sel = _parse_selection(selections[cond_lower])
-        conditions.append({
-            "type": "windows_event",
-            "subtype": "Sysmon",
-            "event_id": None,
-            "field": sel["field"],
-            "modifier": sel["modifier"],
-            "values": sel["values"],
-            "threshold": 1,
-            "within_seconds": 60,
-        })
+        conditions.extend(_selection_to_conditions(selections[cond_lower]))
         return conditions
 
     # AND logic: "selection1 and selection2 and ..."
@@ -150,34 +199,14 @@ def _parse_condition(condition_str, selections):
         for part in parts:
             part = part.strip()
             if part in selections:
-                sel = _parse_selection(selections[part])
-                conditions.append({
-                    "type": "windows_event",
-                    "subtype": "Sysmon",
-                    "event_id": None,
-                    "field": sel["field"],
-                    "modifier": sel["modifier"],
-                    "values": sel["values"],
-                    "threshold": 1,
-                    "within_seconds": 60,
-                })
+                conditions.extend(_selection_to_conditions(selections[part]))
         return conditions
 
     # OR logic: "1 of them", "any of them"
     if " of them" in cond_lower or " of selection" in cond_lower:
         for sel_name, sel_dict in selections.items():
             if sel_name.startswith("selection") and isinstance(sel_dict, dict):
-                sel = _parse_selection(sel_dict)
-                conditions.append({
-                    "type": "windows_event",
-                    "subtype": "Sysmon",
-                    "event_id": None,
-                    "field": sel["field"],
-                    "modifier": sel["modifier"],
-                    "values": sel["values"],
-                    "threshold": 1,
-                    "within_seconds": 60,
-                })
+                conditions.extend(_selection_to_conditions(sel_dict))
         return conditions
 
     # NOT logic: "not X" or "selection and not filter"
@@ -187,31 +216,13 @@ def _parse_condition(condition_str, selections):
         # First add the positive conditions
         remaining = cond_lower.replace(f"not {not_name}", "").replace("and and", "and").strip()
         if remaining in selections:
-            sel = _parse_selection(selections[remaining])
-            conditions.append({
-                "type": "windows_event",
-                "subtype": "Sysmon",
-                "event_id": None,
-                "field": sel["field"],
-                "modifier": sel["modifier"],
-                "values": sel["values"],
-                "threshold": 1,
-                "within_seconds": 60,
-            })
+            conditions.extend(_selection_to_conditions(selections[remaining]))
         # Add NOT filter
         if not_name in selections:
-            not_sel = _parse_selection(selections[not_name])
-            conditions.append({
-                "type": "windows_event",
-                "subtype": "Sysmon",
-                "event_id": None,
-                "field": not_sel["field"],
-                "modifier": not_sel["modifier"],
-                "values": not_sel["values"],
-                "threshold": 0,
-                "within_seconds": 60,
-                "NOT": True,
-            })
+            for c in _selection_to_conditions(selections[not_name]):
+                c["NOT"] = True
+                c["threshold"] = 0
+                conditions.append(c)
         return conditions
 
     return conditions
@@ -339,8 +350,11 @@ class SigmaParser:
             if isinstance(sel_dict, dict):
                 event_id = sel_dict.get("EventID")
                 if event_id:
+                    # v4.11 (CRITICAL-2): keep ALL event IDs - the old code only
+                    # took the first one, silently dropping rules that cover
+                    # multiple IDs (e.g. [4688, 4104] -> only 4688).
                     if isinstance(event_id, list):
-                        event_id_val = str(event_id[0]) if event_id else None
+                        event_id_val = [str(e) for e in event_id if e is not None]
                     else:
                         event_id_val = str(event_id)
                     for cond in conditions:
@@ -395,17 +409,20 @@ class SigmaParser:
                 gi_cond["NOT"] = True
 
             if values:
-                # Map field to correct condition type
+                # Map field to correct condition type.
+                # v4.11 (CRITICAL-2): any real (non-description) field selection
+                # becomes a field_contains condition on the structured field the
+                # decoder populates - the old code flattened everything into
+                # description_contains, which matched formatted text (or nothing).
                 actual_field = cond.get("modifier", "description_contains")
-                if actual_field == "description_contains":
+                sigma_field = str(cond.get("field", "") or "").lower()
+                if sigma_field in ("", "description", "message", "none"):
                     gi_cond["description_contains"] = values
                 elif actual_field == "path_contains":
                     gi_cond["path_contains"] = values
-                elif actual_field == "field_contains":
-                    gi_cond["field_contains"] = {}
-                    gi_cond["field_contains"][field] = values
                 else:
-                    gi_cond["description_contains"] = values
+                    mapped_field = SIGMA_FIELD_MAP.get(sigma_field) or sigma_field
+                    gi_cond["field_contains"] = {mapped_field: values}
 
             giamsat_rule["conditions"].append(gi_cond)
 
