@@ -1107,31 +1107,6 @@ class DatabaseManager:
             self.conn.commit()
         return deleted_total
 
-    def apply_retention_policy(self, event_days=30, fim_days=90, traffic_days=30,
-                                threat_days=180, vuln_days=180, syslog_days=30,
-                                heartbeat_days=7, sca_days=90):
-        """Delete data older than specified days."""
-        policies = {
-            "events": event_days, "fim_events": fim_days,
-            "network_traffic": traffic_days, "threat_alerts": threat_days,
-            "vuln_alerts": vuln_days, "syslog": syslog_days,
-            "heartbeats": heartbeat_days, "sca_events": sca_days,
-        }
-        deleted_total = 0
-        with self.lock:
-            for table, days in policies.items():
-                try:
-                    c = self.conn.execute(
-                        f"DELETE FROM {table} WHERE received_at < datetime('now', '-{days} days')"
-                    )
-                    deleted_total += c.rowcount
-                except Exception:
-                    pass
-            self.conn.commit()
-        if deleted_total > 0:
-            print(f"[*] Retention policy: deleted {deleted_total} old records")
-        return deleted_total
-
     # =========================================================================
     # v2.1.0: AGENT GROUPS - Per-group policy management
     # =========================================================================

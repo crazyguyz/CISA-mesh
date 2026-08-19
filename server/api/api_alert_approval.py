@@ -75,6 +75,14 @@ def process_approval(core, callback_data="", approval_id="", action=""):
             }
             if ainfo.get("params"):
                 cmd["params"] = ainfo["params"]
+            # v4.10 (MED-1): queue as 'pending' first so the agent HTTP poll can
+            # deliver the action if the TCP push is silently lost (unstable links).
+            try:
+                core.db.add_command(ainfo["machine_id"], ainfo["action"],
+                                    json.dumps({"params": ainfo.get("params", {})}, ensure_ascii=False),
+                                    f"approved_{approval_id}")
+            except Exception:
+                pass
             if hasattr(core, 'tcp_server') and core.tcp_server:
                 core.tcp_server.send_command(ainfo["machine_id"], cmd)
                 print(f"[APPROVAL] Executed approved action: {ainfo['action']} on {ainfo['machine_id']}")
@@ -131,6 +139,17 @@ def register(app, core):
             action = data.get("action", "")
 
         result, status = process_approval(core, callback_data, approval_id, action)
+        # v4.10 (MED-1): audit who approved/denied the pending action
+        try:
+            username = u if isinstance(u, str) else (u.get("username") if isinstance(u, dict) else "admin")
+            core.db.insert_audit_log(
+                username or "admin",
+                "alert_approval",
+                f"{action} approval {approval_id or callback_data} -> {status}",
+                request.remote_addr or "",
+            )
+        except Exception:
+            pass
         return jsonify(result), status
 
     @app.route("/api/alert/add-pending", methods=["POST"])

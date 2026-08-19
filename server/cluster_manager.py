@@ -591,7 +591,8 @@ class ClusterManager:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.settimeout(2.0)
 
-        msg = json.dumps({"type": "node_discover"}).encode("utf-8")
+        # v4.10 (MED-2): sign the discovery request - receivers are fail-closed
+        msg = json.dumps(self._cluster_sign({"type": "node_discover"})).encode("utf-8")
         try:
             sock.sendto(msg, (broadcast_ip, self.cluster_port))
         except Exception:
@@ -604,6 +605,10 @@ class ClusterManager:
             try:
                 data, addr = sock.recvfrom(4096)
                 resp = json.loads(data.decode("utf-8"))
+                # v4.10 (MED-2): only accept signed node_info from trusted peers
+                if resp.get("type") == "node_info" and not self._cluster_verified(resp):
+                    print(f"[!] Cluster: unauthenticated node_info from {addr[0]} ignored")
+                    continue
                 responses.append(resp)
             except socket.timeout:
                 break

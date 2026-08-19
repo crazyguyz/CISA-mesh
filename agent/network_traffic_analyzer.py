@@ -199,7 +199,10 @@ class TrafficAnomalyDetector:
 
             # ---- Data Exfiltration Spike Detection (v3.9.16) ----
             if dst_ip and size > 1024:  # Only track packets > 1KB
-                external = _is_public_ip(dst_ip) if "IS_WINDOWS" in dir() else True
+                # v4.10 FIX: was calling bare `_is_public_ip` (NameError) inside a
+                # broken `"IS_WINDOWS" in dir()` guard that never matched - every
+                # private IP was treated as external. Call the method directly.
+                external = self._is_public_ip(dst_ip)
                 if external:
                     tracker = self.exfil_bytes[dst_ip]
                     tracker["bytes"] += size

@@ -18,6 +18,7 @@ import os
 import re
 import json
 import time
+import sqlite3  # v4.10 FIX: used by the fallback path in _load_baseline_ips
 from datetime import datetime, timedelta
 from collections import defaultdict
 

@@ -762,9 +762,10 @@ class TCPServer(threading.Thread):
                         client_sock.close()
                     except Exception:
                         pass
-                    with self.client_lock:
-                        if machine_id in self.clients:
-                            del self.clients[machine_id]
+                    # v4.10 FIX: client_lock is a plain Lock (not RLock) - re-acquiring
+                    # it here deadlocked the whole server on the first dead socket.
+                    if machine_id in self.clients:
+                        del self.clients[machine_id]
                     if self.db:
                         try:
                             self.db.machine_offline(machine_id)

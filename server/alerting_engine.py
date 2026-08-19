@@ -32,7 +32,6 @@ class AlertingEngine:
         self._core = None
 
     def _load_config(self, config_path):
-        import os
         if not config_path:
             config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerting_config.json")
         if os.path.exists(config_path):
@@ -44,7 +43,6 @@ class AlertingEngine:
                 pass
 
     def save_config(self):
-        import os
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerting_config.json")
         with open(config_path, "w") as f:
             f.write(json.dumps(self.config, indent=2))
@@ -52,7 +50,6 @@ class AlertingEngine:
     def start_telegram_callback_poller(self, web_port=5000, core=None):
         """v4.5.4: Poll Telegram getUpdates for callback queries (inline Approve/Deny
         keyboard) and route them to the local approval endpoint."""
-        import os
         bot_token = os.environ.get("TELEGRAM_BOT_TOKEN") or self.config.get("telegram", {}).get("bot_token", "")
         if not bot_token:
             print("[!] Telegram callback poller: no bot token configured, skipping")
