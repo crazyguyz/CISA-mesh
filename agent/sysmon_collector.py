@@ -215,32 +215,38 @@ class SysmonCollector:
         ps_script = f'''
 $start = [datetime]::Parse('{self.last_timestamp}')
 $end = [datetime]::UtcNow
-$filter = @{{
-    LogName = '{SYSMON_CHANNEL}'
-    StartTime = $start
-    EndTime = $end
-}}
-try {{
-    $events = Get-WinEvent -FilterHashtable $filter -MaxEvents 500 -ErrorAction Stop
-    $result = @()
+$all = New-Object System.Collections.ArrayList
+while ($true) {{
+    $filter = @{{
+        LogName = '{SYSMON_CHANNEL}'
+        StartTime = $start
+        EndTime = $end
+    }}
+    try {{
+        $events = Get-WinEvent -FilterHashtable $filter -MaxEvents 500 -ErrorAction Stop
+    }} catch {{
+        break
+    }}
     foreach ($evt in $events) {{
         $xml = [xml]$evt.ToXml()
         $eventData = @{{}}
         foreach ($data in $xml.Event.EventData.Data) {{
             $eventData[$data.Name] = $data.'#text'
         }}
-        $obj = [PSCustomObject]@{{
+        $null = $all.Add([PSCustomObject]{{
             EventID = $evt.Id
             TimeCreated = $evt.TimeCreated.ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
             MachineName = $evt.MachineName
             EventData = $eventData
-        }}
-        $result += $obj
+        }})
     }}
-    ConvertTo-Json -InputObject $result -Depth 5 -Compress
-}} catch {{
-    "[]"
+    if ($events.Count -lt 500) {{ break }}
+    # v4.11 (HIGH-6 FIX): drain loop - a poll can contain >500 events; advance
+    # past the oldest event of this batch (+1ms, StartTime is inclusive) and keep
+    # fetching, so the middle of the burst is never lost silently.
+    $start = $events[-1].TimeCreated.AddMilliseconds(1)
 }}
+ConvertTo-Json -InputObject $all -Depth 5 -Compress
 '''
         try:
             r = _run_hidden(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script], timeout=30)

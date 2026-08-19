@@ -121,9 +121,10 @@ class PGCompatCursor:
         pass
 
     def __getitem__(self, key):
-        if isinstance(key, int):
-            return list(self.values())[key]
-        return super().__getitem__(key)
+        """v4.11 (MED): index access returns the result row(s) like sqlite3 cursor.
+        Previously this called self.values() which PGCompatCursor does not have
+        (AttributeError / dead code)."""
+        return self._results[key]
 
 
 class PostgresDatabase:

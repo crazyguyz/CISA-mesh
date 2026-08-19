@@ -50,38 +50,13 @@ if os.name == "nt":
 
 
 def _dpapi_protect(data_bytes):
-    """Encrypt data with Windows DPAPI (bound to current user). Returns bytes or None.
-    v4.0: Tries DPAPI-NG (NCrypt) with TPM binding first, falls back to classic CryptProtectData."""
+    """Encrypt data with Windows DPAPI (bound to the current USER - per-user scope).
+    v4.11 (HIGH-4 FIX): removed the 'LocalMachine' DPAPI-NG branch entirely -
+    machine-scope encryption is decryptable by EVERY local user (the old comment
+    claimed 'TPM binding', which is wrong for ProtectedData). Per-user
+    CryptProtectData is now the only Windows protection path."""
     if not HAS_DPAPI:
         return None
-    # v4.0: Try DPAPI-NG with TPM first (machine-level + TPM binding)
-    try:
-        import subprocess
-        import tempfile
-        tmp_in = os.path.join(tempfile.gettempdir(), f"giamsat_dpaping_{os.getpid()}.bin")
-        tmp_out = os.path.join(tempfile.gettempdir(), f"giamsat_dpaping_out_{os.getpid()}.bin")
-        with open(tmp_in, "wb") as f:
-            f.write(data_bytes)
-        # DPAPI-NG: LOCAL=machine, TPM=hardware binding
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-Command",
-             f"$in=[IO.File]::ReadAllBytes('{tmp_in}'); "
-             f"$out=[Security.Cryptography.ProtectedData]::Protect($in,$null,'LocalMachine'); "
-             f"[IO.File]::WriteAllBytes('{tmp_out}',$out)"],
-            capture_output=True, timeout=15,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        )
-        if r.returncode == 0 and os.path.exists(tmp_out):
-            with open(tmp_out, "rb") as f:
-                result = f.read()
-            os.remove(tmp_in)
-            os.remove(tmp_out)
-            if result and len(result) > 0:
-                return result
-    except Exception:
-        pass
-    
-    # Fallback: classic CryptProtectData (per-user DPAPI)
     try:
         data_in = (ctypes.c_byte * len(data_bytes))()
         for i, b in enumerate(data_bytes):
@@ -183,19 +158,33 @@ class EncryptedCache:
                 self._last_db_stat = None
 
     def _load_or_create_key(self):
-        """v3.6: Load key from DPAPI-protected blob, or create new one."""
+        """v3.6: Load key from DPAPI-protected blob, or create new one.
+        v4.11 (HIGH-4 FIX): the key is NEVER written in plaintext - if DPAPI is
+        unavailable the cache simply runs unencrypted instead of leaking a
+        plaintext key file right next to the data it is supposed to protect
+        (fail-closed)."""
         key_path = _get_key_path()
         if os.path.exists(key_path):
             try:
                 with open(key_path, "rb") as f:
                     blob = f.read()
-                # Try DPAPI decrypt first
+                # DPAPI-protected blob (per-user) first
                 if HAS_DPAPI:
                     decrypted = _dpapi_unprotect(blob)
                     if decrypted and len(decrypted) == 32:
                         return decrypted
-                # Fallback: plain key (old format)
+                # Legacy plaintext key (old format) - accepted ONLY to migrate it:
+                # re-protect with DPAPI immediately so it is never left in clear.
                 if len(blob) == 32:
+                    if HAS_DPAPI:
+                        protected = _dpapi_protect(blob)
+                        if protected:
+                            try:
+                                with open(key_path, "wb") as f:
+                                    f.write(protected)
+                                print("[*] Cache key migrated from plaintext to DPAPI")
+                            except Exception:
+                                pass
                     return blob
             except Exception:
                 pass
@@ -203,22 +192,21 @@ class EncryptedCache:
         # Create new key
         if ENCRYPTION_ENABLED:
             key = AESGCM.generate_key(bit_length=256)
-            try:
-                os.makedirs(os.path.dirname(key_path), exist_ok=True)
-                if HAS_DPAPI:
+            if HAS_DPAPI:
+                try:
                     protected = _dpapi_protect(key)
                     if protected:
+                        os.makedirs(os.path.dirname(key_path), exist_ok=True)
                         with open(key_path, "wb") as f:
                             f.write(protected)
-                        print("[*] Cache key protected with Windows DPAPI")
+                        print("[*] Cache key protected with Windows DPAPI (per-user)")
                         return key
-                # Fallback: plain key file (less secure but works)
-                with open(key_path, "wb") as f:
-                    f.write(key)
-                print("[!] Cache key stored in plaintext (DPAPI unavailable)")
-            except Exception:
-                pass
-            return key
+                except Exception:
+                    pass
+            # v4.11 (HIGH-4): no plaintext key fallback (fail-closed)
+            print("[!] Cache key cannot be protected (DPAPI unavailable) - cache stays "
+                  "UNENCRYPTED (no plaintext key written)")
+            return None
         return None
 
     def _get_last_hash(self):

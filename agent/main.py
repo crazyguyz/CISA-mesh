@@ -255,7 +255,8 @@ def _save_config(host, port, user_name="", employee_id="", email="", psk="", com
         try:
             os.replace(ut, up)
         except PermissionError:
-            pass
+            _log("_save_config FAIL: PermissionError")
+            return False
         return True
     except Exception as e:
         _log(f"_save_config FAIL: {e}")

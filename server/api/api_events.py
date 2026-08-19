@@ -158,46 +158,9 @@ def register(app, core):
             event_type="memory_scan_event"
         ))
 
-    # v4.10 (HIGH-4): /api/hunt/start is registered ONLY in api_hunt.py (authz
-    # "delete"). The duplicate route here used weaker "api" and Flask kept the
-    # first registration, silently downgrading the permission - removed.
-    @app.route("/api/hunt/result/<campaign_id>")
-    def api_hunt_result(campaign_id):
-        _, err, code = check_auth("api")
-        if err: return err, code
-
-        from hunting_engine import HuntingEngine
-        if not hasattr(core, "_hunting_engine"):
-            return jsonify({"error": "No hunting engine initialized"}), 404
-
-        result = core._hunting_engine.get_campaign(campaign_id)
-        if not result:
-            return jsonify({"error": "Campaign not found"}), 404
-        return jsonify(result)
-
-    @app.route("/api/hunt/campaigns")
-    def api_hunt_campaigns():
-        _, err, code = check_auth("api")
-        if err: return err, code
-
-        from hunting_engine import HuntingEngine
-        if not hasattr(core, "_hunting_engine"):
-            return jsonify([])
-
-        campaigns = core._hunting_engine.list_campaigns()
-        return jsonify(campaigns)
-
-    @app.route("/api/hunt/templates")
-    def api_hunt_templates():
-        _, err, code = check_auth("api")
-        if err: return err, code
-
-        from hunting_engine import HuntingEngine
-        if not hasattr(core, "_hunting_engine"):
-            core._hunting_engine = HuntingEngine(core.db)
-
-        return jsonify(core._hunting_engine.get_templates())
-
+    # v4.11 (MED): /api/hunt/result, /api/hunt/campaigns, /api/hunt/templates are
+    # registered ONLY in api_hunt.py - the duplicates that used to live here
+    # shadowed them (dead code) and have been removed.
     # v3.2: IOC Sweep
     @app.route("/api/ioc/sweep", methods=["POST"])
     def api_ioc_sweep():

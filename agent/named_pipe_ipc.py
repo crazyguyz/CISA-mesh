@@ -32,6 +32,8 @@ try:
     import win32file
     import win32event
     import win32security
+    import win32api
+    import win32con
     import ntsecuritycon as con
     _HAS_WIN32_PIPE = True
     _HAS_WIN32_SECURITY = True
@@ -81,19 +83,16 @@ class NamedPipeServer:
         """
         v3.9.17: Create a named pipe instance with STRICT ACL.
         Only SYSTEM + current user SID can connect.
-        Falls back to default security if win32security not available.
+        v4.11 (HIGH-5 FIX): FAIL-CLOSED - without win32security the server refuses
+        to create the pipe instead of falling back to default (open) security,
+        which any local process could connect to.
         """
-        if _HAS_WIN32_SECURITY:
-            return self._create_pipe_with_acl()
-        # Fallback: default security (still better than nothing)
-        pipe_handle = win32pipe.CreateNamedPipe(
-            PIPE_NAME,
-            win32pipe.PIPE_ACCESS_DUPLEX,
-            win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_READMODE_MESSAGE | win32pipe.PIPE_WAIT,
-            win32pipe.PIPE_UNLIMITED_INSTANCES,
-            4096, 4096, 0, None
-        )
-        return pipe_handle
+        if not _HAS_WIN32_SECURITY:
+            raise RuntimeError(
+                "win32security not available - refusing to create an unprotected "
+                "named pipe (fail-closed). Install pywin32."
+            )
+        return self._create_pipe_with_acl()
 
     def _create_pipe_with_acl(self):
         """Create pipe with strict ACL: only SYSTEM + current user SID."""
@@ -143,9 +142,10 @@ class NamedPipeServer:
                 sa
             )
             return pipe_handle
-        except Exception:
-            # Fallback: no ACL (still better than open HTTP port)
-            return self._create_pipe()
+        except Exception as e:
+            # v4.11 (HIGH-5 FIX): fail-closed - ACL build failure must never
+            # produce an unprotected pipe.
+            raise RuntimeError(f"Failed to build strict pipe ACL (fail-closed): {e}")
 
     def _process_connection(self, pipe_handle):
         """Handle one client connection on the pipe."""
@@ -269,6 +269,39 @@ class NamedPipeClient:
                     0,
                     None
                 )
+
+                # v4.11 (HIGH-5): verify the pipe SERVER's identity BEFORE sending
+                # anything - a malicious same-user process could squat the
+                # well-known pipe name (pipe squatting) and intercept/steal the
+                # update / reset-user / msg commands.
+                try:
+                    server_pid = win32pipe.GetNamedPipeServerProcessId(handle)
+                    h_proc = win32api.OpenProcess(
+                        win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, server_pid)
+                    h_token = win32security.OpenProcessToken(h_proc, win32security.TOKEN_QUERY)
+                    server_sid = win32security.GetTokenInformation(h_token, win32security.TokenUser)[0]
+                    win32api.CloseHandle(h_proc)
+                    server_sid_str = win32security.ConvertSidToStringSid(server_sid)
+                except Exception:
+                    try:
+                        win32file.CloseHandle(handle)
+                    except Exception:
+                        pass
+                    raise RuntimeError("Could not verify pipe server identity (GetNamedPipeServerProcessId failed)")
+                # Allowed server: current user or SYSTEM
+                my_token = win32security.OpenProcessToken(
+                    win32security.GetCurrentProcess(), win32security.TOKEN_QUERY)
+                my_sid = win32security.GetTokenInformation(my_token, win32security.TokenUser)[0]
+                my_sid_str = win32security.ConvertSidToStringSid(my_sid)
+                system_sid_str = win32security.ConvertSidToStringSid(
+                    win32security.CreateWellKnownSid(win32security.WinLocalSystemSid))
+                if server_sid_str not in (my_sid_str, system_sid_str):
+                    try:
+                        win32file.CloseHandle(handle)
+                    except Exception:
+                        pass
+                    raise RuntimeError(
+                        f"Untrusted pipe server (SID {server_sid_str}) - refusing to send command")
 
                 # Send command
                 body = json.dumps(command).encode("utf-8")
