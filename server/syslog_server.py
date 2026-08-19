@@ -10,6 +10,15 @@ import re
 from datetime import datetime
 
 
+def _safe_print(msg):
+    """v4.11: emoji prints crash on cp1252 consoles (UnicodeEncodeError) and
+    would abort the syslog processing thread - never let logging kill parsing."""
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+
 class SyslogServer(threading.Thread):
     def __init__(self, host="0.0.0.0", port=514, db_manager=None, message_callback=None):
         super().__init__(daemon=True)
@@ -41,6 +50,19 @@ class SyslogServer(threading.Thread):
         }
         # Track blocked IPs to detect port scans
         self._blocked_ips = {}
+
+        # v4.11 (CN1): generic network-device detection (routers, switches, APs,
+        # printers - DrayTek Vigor, TP-Link, Ricoh/HP) on top of the firewall
+        # deep parse: login failures (brute force from WAN), config changes,
+        # interface flaps.
+        self._device_patterns = [
+            ("NW-LOGIN-001", "Network Device Login Failure",
+             r"failed password|authentication failure|login failed|login incorrect|invalid login|unable to login|brute force|too many.*(fail|attempt)|invalid username", "MEDIUM"),
+            ("NW-CONFIG-001", "Network Device Config Change",
+             r"configuration changed|configuration (file )?saved|running-config|config.*modified|apply.*config|saved configuration|write mem|copy running-config", "HIGH"),
+            ("NW-IFACE-001", "Network Interface Flap",
+             r"link down|line protocol.*down|interface.*(down|reset)|link up|status changed", "LOW"),
+        ]
 
     def run(self):
         """Start UDP syslog server."""
@@ -143,6 +165,10 @@ class SyslogServer(threading.Thread):
                 # v2.5.0: Firewall Deep Parse - detect blocked traffic and scans
                 self._parse_firewall_log(source_ip, hostname, message, timestamp_str)
 
+                # v4.11 (CN1): generic device detection - login fail / config
+                # change / interface flap from routers, switches, APs, printers
+                self._parse_device_alert(source_ip, hostname, message, timestamp_str)
+
                 print(f"[S] Syslog from {hostname} ({source_ip}): {severity_name}/{facility_name}")
 
             else:
@@ -158,6 +184,30 @@ class SyslogServer(threading.Thread):
 
         except Exception as e:
             print(f"[-] Syslog parse error: {e}")
+
+    def _parse_device_alert(self, source_ip, hostname, message, timestamp_str):
+        """v4.11 (CN1): detect login failures, config changes and interface flaps
+        from network devices (routers/switches/APs/printers) and surface them as
+        threat alerts (they also reach the daily MEDIUM digest automatically)."""
+        if not message:
+            return
+        for rule_id, rule_name, pattern, severity in self._device_patterns:
+            if re.search(pattern, message, re.IGNORECASE):
+                if self.db:
+                    try:
+                        self.db.insert_threat_alert({
+                            "machine_id": f"NW:{hostname}",
+                            "hostname": f"{hostname} ({source_ip})",
+                            "rule_id": rule_id,
+                            "rule_name": rule_name,
+                            "severity": severity,
+                            "description": f"[{rule_name}] {message[:250]}",
+                            "timestamp": timestamp_str,
+                        })
+                    except Exception:
+                        pass
+                _safe_print(f"[🛡] DEVICE ALERT [{rule_id}] {rule_name} on {hostname} ({source_ip})")
+                break  # first match only
 
     def _parse_firewall_log(self, source_ip, hostname, message, timestamp_str):
         """Parse firewall syslog to detect blocked traffic and port scans."""
@@ -214,7 +264,7 @@ class SyslogServer(threading.Thread):
                         "description": f"Traffic blocked: {src_ip} → {dst_ip} [{fw_type}]",
                         "timestamp": timestamp_str,
                     })
-                print(f"[🛡] FIREWALL BLOCK [{fw_type}]: {src_ip} → {dst_ip}")
+                _safe_print(f"[🛡] FIREWALL BLOCK [{fw_type}]: {src_ip} → {dst_ip}")
                 break  # Only match first pattern
 
         # Periodic cleanup of old entries
