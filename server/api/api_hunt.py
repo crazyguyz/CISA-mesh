@@ -32,7 +32,7 @@ def register(app, core):
         """Start a new hunting campaign.
         Body: {hypothesis, tactic?, since_hours?, use_ai?}
         """
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         hunting = get_hunting()
         if not hunting:
@@ -54,6 +54,9 @@ def register(app, core):
                 since_hours=since_hours,
                 use_ai=use_ai,
             )
+            core.db.insert_audit_log(username, "hunt_start",
+                f"Chạy chiến dịch hunting: '{hypothesis[:120]}' (since={since_hours}h, AI={use_ai})",
+                request.remote_addr)
             return jsonify(result)
         except Exception as e:
             return jsonify({"error": f"Failed to start campaign: {str(e)}"}), 500

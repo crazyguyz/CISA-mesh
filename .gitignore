@@ -19,6 +19,9 @@ users.json.enc
 *.sqlite
 *.sqlite3
 
+# Runtime data (sent-mail log, alert dedup, digest state)
+server/data/
+
 # Installer binaries
 server/setup/*.exe
 

@@ -167,6 +167,31 @@ Muốn thêm dropdown mới (VD "Phòng ban"), chỉ cần thêm một đối t�
 
 > **Lưu ý:** Có thể thêm API keys bất cứ lúc nào — chỉ cần sửa `.env` và restart server.
 
+## 🔐 Bảo mật vận hành (TLS / bắt buộc cho production)
+
+**1. Kênh TCP Agent ↔ Server (cổng 6666):**
+- Đặt `GIAMSAT_TLS_ENABLED=true` trong `.env` để bật mTLS (tự sinh self-signed CA).
+- ⚠️ Từ v4.11: nếu bật mà không dựng được TLS, server **từ chối khởi động** (fail-closed) — không bao giờ âm thầm quay về plaintext.
+
+**2. Web/API (cổng 5000) — hiện là HTTP trần:** agent PSK, heartbeat và lệnh điều khiển đi qua đây, **bắt buộc** đặt sau TLS reverse proxy khi triển khai thật:
+```nginx
+# nginx stream (file có sẵn: server/nginx_tcp_stream.conf)
+stream {
+    server {
+        listen 5000 ssl;
+        ssl_certificate     /etc/nginx/certs/giamsat.crt;
+        ssl_certificate_key /etc/nginx/certs/giamsat.key;
+        proxy_pass 127.0.0.1:5000;   # waitress (http) ở phía sau
+    }
+}
+```
+Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 }`.
+
+**3. `GIAMSAT_COMMAND_KEY` là BẮT BUỘC cho auto-update agent** (từ v4.11):
+- Server **từ chối** phục vụ file update nếu chưa cấu hình key này.
+- Agent **từ chối** file update nếu thiếu chữ ký `X-File-Sig` hoặc thiếu `command_key` — kẻ đứng giữa mạng không thể thay EXE (HMAC-SHA256, fail-closed).
+- Agent phải có `command_key` giống server (cấp lúc enroll / trong config agent).
+
 ---
 
 ## 📸 Tính năng chính

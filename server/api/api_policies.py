@@ -18,7 +18,7 @@ def register_routes(app, server_core):
     @app.route("/api/policies/add", methods=["POST"])
     def api_policy_add():
         """Add a new policy to a group."""
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         data = request.get_json() or {}
         group_id = data.get("group_id")
@@ -38,6 +38,9 @@ def register_routes(app, server_core):
                 policy_name=policy_name or f"{policy_type} - {datetime.now().strftime('%H:%M')}",
                 config_json=json.dumps(config, ensure_ascii=False)
             )
+            server_core.db.insert_audit_log(username, "policy_add",
+                f"Tạo policy '{policy_name or policy_type}' cho group {group_id} (id={policy_id})",
+                request.remote_addr)
             return jsonify({"success": True, "policy_id": policy_id, "message": "Policy created"})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)}), 500
@@ -45,7 +48,7 @@ def register_routes(app, server_core):
     @app.route("/api/policies/update/<int:policy_id>", methods=["POST"])
     def api_policy_update(policy_id):
         """Update an existing policy (resets to pending)."""
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         data = request.get_json() or {}
         policy_name = data.get("policy_name")
@@ -61,14 +64,19 @@ def register_routes(app, server_core):
         )
         if not ok:
             return jsonify({"success": False, "error": "Policy not found"}), 404
+        server_core.db.insert_audit_log(username, "policy_update",
+            f"Cập nhật policy id={policy_id} (name='{policy_name}', enabled={enabled})",
+            request.remote_addr)
         return jsonify({"success": True, "message": "Policy updated, status reset to pending"})
 
     @app.route("/api/policies/delete/<int:policy_id>", methods=["POST"])
     def api_policy_delete(policy_id):
         """Delete a policy."""
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         server_core.db.delete_policy(policy_id)
+        server_core.db.insert_audit_log(username, "policy_delete",
+            f"Xóa policy id={policy_id}", request.remote_addr)
         return jsonify({"success": True, "message": "Policy deleted"})
 
     @app.route("/api/policies/list")

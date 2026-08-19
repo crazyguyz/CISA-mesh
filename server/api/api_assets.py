@@ -63,7 +63,7 @@ def init_assets_api(app, db):
 
     @app.route("/api/assets/inventory", methods=["POST"])
     def api_assets_inventory_add():
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         m = _inv_method("upsert_inventory_asset")
         if not m:
@@ -73,11 +73,14 @@ def init_assets_api(app, db):
             return jsonify({"error": "Thiếu category"}), 400
         data["source"] = data.get("source") or "manual"
         result = m(data)
+        core.db.insert_audit_log(username, "asset_add",
+            f"Thêm tài sản category='{data.get('category')}' name='{data.get('name') or ''}'",
+            request.remote_addr)
         return jsonify({"success": bool(result), **result}), 201 if result else 500
 
     @app.route("/api/assets/inventory/<asset_id>", methods=["PUT"])
     def api_assets_inventory_update(asset_id):
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         m = _inv_method("upsert_inventory_asset")
         if not m:
@@ -86,28 +89,36 @@ def init_assets_api(app, db):
         data["asset_id"] = asset_id
         data["source"] = data.get("source") or "manual"
         result = m(data)
+        core.db.insert_audit_log(username, "asset_update",
+            f"Cập nhật tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": bool(result), **result})
 
     @app.route("/api/assets/inventory/<asset_id>", methods=["DELETE"])
     def api_assets_inventory_delete(asset_id):
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         m = _inv_method("delete_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
         ok = m(asset_id)
+        if ok:
+            core.db.insert_audit_log(username, "asset_delete",
+                f"Xóa tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": ok})
 
     @app.route("/api/assets/inventory/<asset_id>/adopt", methods=["POST"])
     def api_assets_inventory_adopt(asset_id):
         """Chuyển tài sản auto->manual: gán owner/location/mã TS."""
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         m = _inv_method("adopt_inventory_asset")
         if not m:
             return jsonify({"error": "DB method unavailable"}), 500
         data = request.json or {}
         ok = m(asset_id, data)
+        if ok:
+            core.db.insert_audit_log(username, "asset_adopt",
+                f"Adopt tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": ok})
 
     @app.route("/api/assets/users/sync", methods=["POST"])

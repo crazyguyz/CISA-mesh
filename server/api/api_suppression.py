@@ -21,7 +21,7 @@ def register(app, core):
     @app.route("/api/suppression/add", methods=["POST"])
     def api_suppression_add():
         # v4.10 (LOW-1): see list endpoint - "admin" permission does not exist
-        _, err, code = check_auth("settings")
+        username, err, code = check_auth("settings")
         if err: return err, code
         data = request.json or {}
         rule_id = data.get("rule_id", "").strip()
@@ -35,12 +35,17 @@ def register(app, core):
             reason=data.get("reason", ""),
             created_by=data.get("created_by", "admin")
         )
+        core.db.insert_audit_log(username, "suppression_add",
+            f"Thêm luật suppression rule='{rule_id}' machine='{data.get('machine_id') or ''}' (id={sid})",
+            request.remote_addr)
         return jsonify({"success": True, "id": sid})
 
     @app.route("/api/suppression/remove/<int:suppression_id>", methods=["POST"])
     def api_suppression_remove(suppression_id):
         # v4.10 (LOW-1): see list endpoint - "admin" permission does not exist
-        _, err, code = check_auth("settings")
+        username, err, code = check_auth("settings")
         if err: return err, code
         core.db.remove_suppression(suppression_id)
+        core.db.insert_audit_log(username, "suppression_remove",
+            f"Xóa luật suppression id={suppression_id}", request.remote_addr)
         return jsonify({"success": True})
