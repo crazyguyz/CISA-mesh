@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "min_severity": "MEDIUM",
-  "cooldown_seconds": 300,
+  "min_severity": "HIGH",
+  "cooldown_seconds": 86400,
   "email": {
     "enabled": false,
     "smtp_host": "",
@@ -26,7 +26,8 @@
     "enabled": true,
     "bot_token": "",
     "chat_id": "",
-    "approval_timeout": 300
+    "approval_timeout": 300,
+    "min_severity": "HIGH"
   },
   "auto_response": {
     "mode": "off",

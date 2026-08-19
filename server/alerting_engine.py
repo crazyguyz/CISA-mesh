@@ -21,13 +21,16 @@ class AlertingEngine:
             "email": {"enabled": False, "smtp_host": "", "smtp_port": 587, "username": "", "password": "", "from_addr": "", "to_addrs": []},
             "slack": {"enabled": False, "webhook_url": "", "channel": "#alerts"},
             "webhook": {"enabled": False, "url": "", "headers": {}},
-            "telegram": {"enabled": False, "bot_token": "", "chat_id": "", "approval_timeout": 300},
+            "telegram": {"enabled": False, "bot_token": "", "chat_id": "", "approval_timeout": 300, "min_severity": "HIGH"},
             "auto_response": {"mode": "off", "require_confidence": 90, "safe_users": ["admin", "administrator"], "safe_machines": []},
             "min_severity": "HIGH",
-            "cooldown_seconds": 300,
+            "cooldown_seconds": 86400,
         }
+        # v4.10: persisted dedup map (survives server restart).
+        # key = "<rule_id>|<machine_id>", value = unix ts of last send.
         self._last_alerts = {}
         self._load_config(config_path)
+        self._load_dedup()
         self._running = True
         self._core = None
 
@@ -46,6 +49,29 @@ class AlertingEngine:
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "alerting_config.json")
         with open(config_path, "w") as f:
             f.write(json.dumps(self.config, indent=2))
+
+    def _load_dedup(self):
+        """v4.10: Load persisted last-sent timestamps (alert dedup across restarts)."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "alert_dedup.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    self._last_alerts = {str(k): float(v) for k, v in data.items() if isinstance(v, (int, float))}
+        except Exception:
+            self._last_alerts = {}
+
+    def _save_dedup(self):
+        """v4.10: Persist dedup map; prune entries older than 2 days."""
+        try:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "alert_dedup.json")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            cutoff = time.time() - 86400 * 2
+            pruned = {k: v for k, v in self._last_alerts.items() if v >= cutoff}
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(pruned, f)
+        except Exception:
+            pass
 
     def start_telegram_callback_poller(self, web_port=5000, core=None):
         """v4.5.4: Poll Telegram getUpdates for callback queries (inline Approve/Deny
@@ -110,30 +136,39 @@ class AlertingEngine:
         threading.Thread(target=_poller, daemon=True).start()
         print("[*] Telegram callback poller started")
 
-    def _should_send(self, severity, rule_id):
-        """Check cooldown and severity threshold.
-        Vuln alerts (CVE-*) get 1h cooldown to avoid spam on each agent scan."""
+    def _should_send(self, alert_data):
+        """v4.10: Gate alert notifications.
+        - Severity below min_severity -> skip.
+        - Duplicate alert (same rule_id AND same source machine_id) is only
+          sent again after cooldown_seconds (24h default). Alerts of a
+          different rule or from a different machine send immediately.
+        Dedup map is persisted, so a server restart cannot re-send duplicates."""
         severity_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
         min_sev = severity_order.get(self.config.get("min_severity", "HIGH"), 2)
-        event_sev = severity_order.get(severity, 0)
+        event_sev = severity_order.get(alert_data.get("severity", "LOW"), 0)
         if event_sev < min_sev:
             return False
+        rule_id = (alert_data.get("rule_id")
+                   or alert_data.get("cve")
+                   or alert_data.get("rule_name")
+                   or "unknown")
+        machine_id = alert_data.get("machine_id", "")  # source of the alert
+        key = f"{rule_id}|{machine_id}"
+        cooldown = int(self.config.get("cooldown_seconds", 86400))
         now = time.time()
-        key = rule_id
-        cooldown = 3600 if key and key.startswith("CVE-") else self.config.get("cooldown_seconds", 300)
-        if key in self._last_alerts:
-            if now - self._last_alerts[key] < cooldown:
+        with self.lock:
+            last_ts = self._last_alerts.get(key, 0)
+            if now - last_ts < cooldown:
                 return False
-        self._last_alerts[key] = now
+            self._last_alerts[key] = now
+        self._save_dedup()
         return True
 
     def send_alert(self, alert_data):
         """Send alert through all enabled channels. Runs in thread."""
         if not self.config.get("enabled", False):
             return
-        severity = alert_data.get("severity", "LOW")
-        rule_id = alert_data.get("rule_id", alert_data.get("cve", alert_data.get("rule_name", "unknown")))
-        if not self._should_send(severity, rule_id):
+        if not self._should_send(alert_data):
             return
         t = threading.Thread(target=self._send_all_channels, args=(alert_data,), daemon=True)
         t.start()
@@ -145,8 +180,13 @@ class AlertingEngine:
             self._send_slack(alert_data)
         if self.config.get("webhook", {}).get("enabled"):
             self._send_webhook(alert_data)
-        if self.config.get("telegram", {}).get("enabled"):
-            self._send_telegram(alert_data)
+        # v4.10: Telegram only for severe alerts (telegram.min_severity, default HIGH)
+        t_cfg = self.config.get("telegram", {})
+        if t_cfg.get("enabled"):
+            sev_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+            t_min = sev_order.get(t_cfg.get("min_severity", "HIGH"), 2)
+            if sev_order.get(alert_data.get("severity", "LOW"), 0) >= t_min:
+                self._send_telegram(alert_data)
 
     def _send_email(self, alert_data):
         try:
