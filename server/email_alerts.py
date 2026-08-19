@@ -161,8 +161,10 @@ EMAIL_TEMPLATES = {
 # SMTP SEND
 # ============================================================
 
-def send_email_smtp(to_email, subject, body):
-    """Send email via SMTP. Supports SSL (465) and STARTTLS (587)."""
+def send_email_smtp(to_email, subject, body, machine_id="", template_id="", source=""):
+    """Send email via SMTP. Supports SSL (465) and STARTTLS (587).
+    v4.10: every attempt is recorded in the local sent-mail log
+    (server/data/sent_emails.json) with status 'sent' or 'failed'."""
     smtp_server = os.environ.get("GIAMSAT_SMTP_HOST", "smtp-mail.outlook.com")
     smtp_port = int(os.environ.get("GIAMSAT_SMTP_PORT", "587"))
     smtp_user = os.environ.get("GIAMSAT_SMTP_USER", "it@example.com")
@@ -186,10 +188,29 @@ def send_email_smtp(to_email, subject, body):
         server.login(smtp_user, smtp_pass)
         server.sendmail(from_email, [to_email], msg.as_string())
         server.quit()
-        print(f"[📧] Email sent to {to_email}: {subject}")
+        # v4.10: record the send in the local sent-mail log (must never fail the send)
+        try:
+            from sent_mail_log import log_email
+            log_email(to_email, subject, body, machine_id=machine_id,
+                      template_id=template_id, source=source, status="sent")
+        except Exception:
+            pass
+        try:
+            print(f"[📧] Email sent to {to_email}: {subject}")
+        except Exception:
+            pass
         return True
     except Exception as e:
-        print(f"[-] Email send failed: {e}")
+        try:
+            print(f"[-] Email send failed: {e}")
+        except Exception:
+            pass
+        try:
+            from sent_mail_log import log_email
+            log_email(to_email, subject, body, machine_id=machine_id,
+                      template_id=template_id, source=source, status="failed", error=str(e))
+        except Exception:
+            pass
         return False
 
 
@@ -248,7 +269,8 @@ def send_email_alert(db_manager, machine_id, template_id=None, subject="", body=
 
     # Send email in background thread
     def _send_thread():
-        send_email_smtp(recipient, subject, body)
+        send_email_smtp(recipient, subject, body, machine_id=machine_id,
+                        template_id=template_id or "custom", source="dashboard")
 
     threading.Thread(target=_send_thread, daemon=True).start()
 

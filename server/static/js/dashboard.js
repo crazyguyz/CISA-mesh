@@ -2851,6 +2851,7 @@ function loadEmailView(){
             document.querySelectorAll('.tab-em-content').forEach(t=>t.style.display='none');
             if(this.dataset.tabEm==='compose') document.getElementById('tabEmCompose').style.display='';
             if(this.dataset.tabEm==='config'){ document.getElementById('tabEmConfig').style.display=''; loadEmailConfig(); }
+            if(this.dataset.tabEm==='log'){ document.getElementById('tabEmLog').style.display=''; loadEmailLog(); }
         });
     });
 }
@@ -2944,6 +2945,54 @@ function testEmailConfig(){
             if(d.success) document.getElementById('emailTestResult').innerHTML = '<span style="color:#88dd99;">✅ '+d.message+'</span>';
             else document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ '+d.error+'</span>';
         }).catch(e=>{ document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ Lỗi kết nối</span>'; });
+}
+
+// ===== v4.10: MAIL ĐÃ GỬI (local sent-mail log on the GIAM-SAT server) =====
+function loadEmailLog(){
+    fetch('/api/email/sent?limit=200').then(r=>r.json()).then(d=>{
+        const list = d.emails || [];
+        const tb = document.getElementById('sentEmailList');
+        if(!list.length){
+            tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Chưa có email nào được ghi nhận.</td></tr>';
+            return;
+        }
+        tb.innerHTML = list.map(function(m){
+            const st = m.status==='sent'
+                ? '<span class="badge bg-success">Đã gửi</span>'
+                : '<span class="badge bg-danger" title="'+escapeHtml(m.error||'')+'">Lỗi</span>';
+            return '<tr>' +
+                '<td class="text-muted" style="white-space:nowrap;">'+escapeHtml(m.time)+'</td>' +
+                '<td>'+escapeHtml(m.to)+'</td>' +
+                '<td>'+escapeHtml(m.subject)+'</td>' +
+                '<td>'+st+'</td>' +
+                '<td><button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:1px 6px;" onclick="toggleSentBody(\''+m.id+'\')" title="Xem nội dung">👁</button></td>' +
+                '<td><button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 6px;" onclick="deleteSentEmail(\''+m.id+'\')" title="Xóa bản ghi">🗑</button></td>' +
+                '</tr>' +
+                '<tr id="sentBody_'+m.id+'" style="display:none;"><td colspan="6" style="background:#0a0f14;border-top:none;white-space:pre-wrap;font-size:11px;color:#a8b4c0;">'+escapeHtml(m.body||'')+'</td></tr>';
+        }).join('');
+    }).catch(function(){
+        document.getElementById('sentEmailList').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Lỗi tải danh sách mail đã gửi.</td></tr>';
+    });
+}
+function toggleSentBody(id){
+    const el = document.getElementById('sentBody_'+id);
+    if(el) el.style.display = (el.style.display==='none') ? '' : 'none';
+}
+function deleteSentEmail(id){
+    if(!confirm('Xóa bản ghi mail đã gửi này?')) return;
+    fetch('/api/email/sent/'+encodeURIComponent(id), {method:'DELETE'})
+        .then(r=>r.json()).then(d=>{
+            if(d.success){ showToast('🗑 Đã xóa bản ghi'); loadEmailLog(); }
+            else showToast('❌ '+(d.error||'Lỗi xóa'));
+        }).catch(function(){ showToast('❌ Lỗi kết nối'); });
+}
+function clearSentEmails(){
+    if(!confirm('Xóa TOÀN BỘ log mail đã gửi?')) return;
+    fetch('/api/email/sent/clear', {method:'POST'})
+        .then(r=>r.json()).then(d=>{
+            if(d.success){ showToast('🗑 Đã xóa '+(d.deleted||0)+' bản ghi'); loadEmailLog(); }
+            else showToast('❌ '+(d.error||'Lỗi xóa'));
+        }).catch(function(){ showToast('❌ Lỗi kết nối'); });
 }
 
 

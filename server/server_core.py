@@ -513,10 +513,27 @@ class ServerCore:
                 server.sendmail(from_email, [to_email], msg.as_string())
                 server.quit()
                 server = None
-                print(f"[📧] Email sent to {to_email}: {subject}")
+                # v4.10: record the send in the local sent-mail log (must never
+                # fail the send or trigger the retry below -> duplicate emails)
+                try:
+                    from sent_mail_log import log_email
+                    log_email(to_email, subject, body, source="alert", status="sent")
+                except Exception:
+                    pass
+                try:
+                    print(f"[📧] Email sent to {to_email}: {subject}")
+                except Exception:
+                    pass
                 return
             except Exception as e:
                 last_err = e
+                # v4.10: record the failed attempt too
+                try:
+                    from sent_mail_log import log_email
+                    log_email(to_email, subject, body, source="alert",
+                              status="failed", error=str(e))
+                except Exception:
+                    pass
                 if server:
                     try:
                         server.close()

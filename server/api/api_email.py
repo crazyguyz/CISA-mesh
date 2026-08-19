@@ -47,6 +47,41 @@ def register(app, core):
         if err: return err, code
         return jsonify(get_smtp_config())
 
+    @app.route("/api/email/sent", methods=["GET"])
+    def api_email_sent_list():
+        """v4.10: List emails GIAM-SAT has sent (local sent-mail log)."""
+        _, err, code = check_auth("settings")
+        if err: return err, code
+        from sent_mail_log import list_emails
+        try:
+            limit = min(max(int(request.args.get("limit", 200)), 1), 1000)
+        except Exception:
+            limit = 200
+        return jsonify({"emails": list_emails(limit)})
+
+    @app.route("/api/email/sent/<email_id>", methods=["DELETE"])
+    def api_email_sent_delete(email_id):
+        """v4.10: Delete one sent-email record (admin cleanup)."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        from sent_mail_log import delete_email
+        if delete_email(email_id):
+            core.db.insert_audit_log(username, "delete_sent_email",
+                f"Xóa bản ghi mail đã gửi: {email_id}", request.remote_addr)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Không tìm thấy bản ghi"}), 404
+
+    @app.route("/api/email/sent/clear", methods=["POST"])
+    def api_email_sent_clear():
+        """v4.10: Delete all sent-email records (admin cleanup)."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        from sent_mail_log import clear_emails
+        n = clear_emails()
+        core.db.insert_audit_log(username, "clear_sent_emails",
+            f"Xóa toàn bộ log mail đã gửi ({n} bản ghi)", request.remote_addr)
+        return jsonify({"success": True, "deleted": n})
+
     @app.route("/api/email/test", methods=["POST"])
     def api_email_test():
         _, err, code = check_auth("settings")
