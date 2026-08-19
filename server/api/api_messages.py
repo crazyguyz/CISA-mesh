@@ -90,36 +90,45 @@ def register(app, core):
 
     @app.route("/api/message/delete/<msg_id>", methods=["DELETE"])
     def message_delete(msg_id):
-        """Delete a specific message by msg_id."""
-        _, err, code = check_auth("api")
+        """Delete a specific message by msg_id.
+        v4.11 (HIGH-3): viewer (read-only) must NOT be able to delete data ->
+        raised to 'settings' (admin) + audit logged."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
         try:
             core.db.conn.execute("DELETE FROM messages WHERE msg_id=?", (msg_id,))
             core.db.conn.commit()
+            core.db.insert_audit_log(username, "delete_message",
+                f"Xóa tin nhắn msg_id={msg_id}", request.remote_addr)
             return jsonify({"status": "deleted", "msg_id": msg_id})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/message/clear/<machine_id>", methods=["DELETE"])
     def message_clear_machine(machine_id):
-        """Delete ALL messages for a specific machine."""
-        _, err, code = check_auth("api")
+        """Delete ALL messages for a specific machine.
+        v4.11 (HIGH-3): raised to 'settings' (admin) + audit logged."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
         try:
             c = core.db.conn.execute("DELETE FROM messages WHERE machine_id=?", (machine_id,))
             core.db.conn.commit()
+            core.db.insert_audit_log(username, "clear_message_machine",
+                f"Xóa toàn bộ tin nhắn máy {machine_id} ({c.rowcount} bản ghi)",
+                request.remote_addr)
             return jsonify({"status": "deleted", "count": c.rowcount})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
     @app.route("/api/message/clear-group/<group_id>", methods=["DELETE"])
     def message_clear_group(group_id):
-        """Delete ALL messages for all machines in a group."""
-        _, err, code = check_auth("api")
+        """Delete ALL messages for all machines in a group.
+        v4.11 (HIGH-3): raised to 'settings' (admin) + audit logged."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
@@ -138,6 +147,9 @@ def register(app, core):
                 f"DELETE FROM messages WHERE machine_id IN ({placeholders})",
                 member_ids)
             core.db.conn.commit()
+            core.db.insert_audit_log(username, "clear_message_group",
+                f"Xóa toàn bộ tin nhắn nhóm {group_id} ({c.rowcount} bản ghi)",
+                request.remote_addr)
             return jsonify({"status": "deleted", "count": c.rowcount})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

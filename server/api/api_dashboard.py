@@ -95,8 +95,9 @@ def register(app, core):
 
     @app.route("/api/dashboard/delete", methods=["POST"])
     def dashboard_delete():
-        """Delete a dashboard template by name."""
-        username, err, code = check_auth("api")
+        """Delete a dashboard template by name.
+        v4.11 (HIGH-3): viewer must not delete dashboards -> 'settings' (admin)."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
@@ -113,6 +114,8 @@ def register(app, core):
         try:
             os.remove(tpl.filepath)
             engine._load_all_templates()
+            core.db.insert_audit_log(username, "delete_dashboard",
+                f"Xóa dashboard template '{name}'", request.remote_addr)
             return jsonify({"status": "deleted", "name": name})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

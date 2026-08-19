@@ -2,6 +2,14 @@
   "enabled": true,
   "min_severity": "HIGH",
   "cooldown_seconds": 86400,
+  "dedup_fingerprint_fields": ["description", "rule_name", "source_ip", "user", "cve", "event_id"],
+  "cooldown_by_severity": {"CRITICAL": 3600, "HIGH": 21600, "MEDIUM": 43200, "LOW": 86400},
+  "attempt_retry_seconds": 300,
+  "digest": {
+    "enabled": true,
+    "to": [],
+    "hour": 8
+  },
   "email": {
     "enabled": false,
     "smtp_host": "",

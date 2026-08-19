@@ -1341,13 +1341,18 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             except Exception:
                 pass
 
-            download_url = f"http://{server_host}:{server_web_port}/api/agent/download?token=auto&machine_id={self.machine_id}"
-            print(f"[📥] Downloading agent update from {download_url}...")
+            # v4.11 (LOW): machine_id moved out of the URL (it leaked into
+            # proxy/access logs); sent via X-Machine-ID header instead.
+            download_url = f"http://{server_host}:{server_web_port}/api/agent/download?token=auto"
+            print(f"[📥] Downloading agent update from {server_host}:{server_web_port}/api/agent/download...")
 
             new_exe_path = os.path.join(temp_dir, f"GiamSatAgent_{server_version}.exe")
 
             # v4.10 (CRITICAL-4): PSK via header, NOT query string (avoids leaking psk in URL/logs)
-            req = urlreq.Request(download_url, headers={"X-Agent-PSK": self.config.get('psk', '')})
+            req = urlreq.Request(download_url, headers={
+                "X-Agent-PSK": self.config.get('psk', ''),
+                "X-Machine-ID": str(self.machine_id or ""),
+            })
             resp = urlreq.urlopen(req, timeout=120)
             total_size = int(resp.headers.get("Content-Length", 0))
             expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
@@ -1387,26 +1392,38 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                     "output": f"Download size: {downloaded} bytes"
                 }
 
-            # v4.10 (CRITICAL-1): SHA-256 is MANDATORY and (when provided) signed by
-            # the server with HMAC-SHA256(command_key) - a MITM can no longer forge
-            # the hash header on the plaintext download.
+            # v4.10 (CRITICAL-1): SHA-256 is MANDATORY and signed by the server
+            # with HMAC-SHA256(command_key). v4.11 FIX: the signature itself is
+            # also mandatory (fail-closed) - a MITM stripping X-File-Sig must not
+            # turn the download into an unsigned one that would be accepted.
             if not expected_sha:
                 try:
                     os.remove(new_exe_path)
                 except Exception:
                     pass
                 return {"status": "error", "error": "Server did not provide X-File-SHA256 - update rejected (fail-closed)", "output": ""}
-            if expected_sig:
-                signing_key = os.environ.get("GIAMSAT_COMMAND_KEY", "") or self.config.get("command_key", "")
-                import hmac as _hmac
-                import hashlib as _hashlib
-                calc_sig = _hmac.new(str(signing_key).encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
-                if not _hmac.compare_digest(calc_sig, expected_sig):
-                    try:
-                        os.remove(new_exe_path)
-                    except Exception:
-                        pass
-                    return {"status": "error", "error": "Update file signature invalid (possible tampering)", "output": ""}
+            if not expected_sig:
+                try:
+                    os.remove(new_exe_path)
+                except Exception:
+                    pass
+                return {"status": "error", "error": "Server did not provide X-File-Sig - update rejected (fail-closed)", "output": ""}
+            signing_key = os.environ.get("GIAMSAT_COMMAND_KEY", "") or self.config.get("command_key", "")
+            if not signing_key:
+                try:
+                    os.remove(new_exe_path)
+                except Exception:
+                    pass
+                return {"status": "error", "error": "No command_key configured - cannot verify update signature (fail-closed)", "output": ""}
+            import hmac as _hmac
+            import hashlib as _hashlib
+            calc_sig = _hmac.new(str(signing_key).encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
+            if not _hmac.compare_digest(calc_sig, expected_sig):
+                try:
+                    os.remove(new_exe_path)
+                except Exception:
+                    pass
+                return {"status": "error", "error": "Update file signature invalid (possible tampering)", "output": ""}
             import hashlib as _hashlib
             _h = _hashlib.sha256()
             with open(new_exe_path, "rb") as _f:

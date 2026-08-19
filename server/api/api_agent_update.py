@@ -55,7 +55,7 @@ def register(app, core):
                         break
         if not exe_path or not os.path.exists(exe_path):
             return jsonify({"error": "Agent executable not found on server"}), 404
-        machine_id = request.args.get("machine_id", "unknown")
+        machine_id = request.headers.get("X-Machine-ID", "") or request.args.get("machine_id", "unknown")
         core.db.insert_agent_update_log(
             machine_id, "", "",
             core.db.get_server_agent_version(), "downloading",
@@ -68,14 +68,18 @@ def register(app, core):
                 _sha.update(_chunk)
         # v4.10 (CRITICAL-1): sign the file hash with command_key so the agent can
         # reject a MITM that forges X-File-SHA256 on the plaintext download.
+        # v4.11 (CRITICAL-1 FIX): the signature is MANDATORY - fail-closed, never
+        # serve an unsigned EXE (a MITM could otherwise strip the sig header and
+        # ship a forged hash+EXE pair that would pass agent verification).
         import hmac as _hmac, os as _os
-        _cmd_key = _os.environ.get("GIAMSAT_COMMAND_KEY", "")
+        _cmd_key = _os.environ.get("GIAMSAT_COMMAND_KEY", "").strip()
+        if not _cmd_key:
+            return jsonify({"error": "GIAMSAT_COMMAND_KEY not configured - unsigned downloads rejected (fail-closed)"}), 503
         resp = send_file(exe_path, as_attachment=True, download_name=exe_name)
         resp.headers["X-File-SHA256"] = _sha.hexdigest()
-        if _cmd_key:
-            resp.headers["X-File-Sig"] = _hmac.new(
-                _cmd_key.encode("utf-8"), _sha.hexdigest().encode("utf-8"), _hashlib.sha256
-            ).hexdigest()
+        resp.headers["X-File-Sig"] = _hmac.new(
+            _cmd_key.encode("utf-8"), _sha.hexdigest().encode("utf-8"), _hashlib.sha256
+        ).hexdigest()
         return resp
 
     @app.route("/api/agent/update-log", methods=["GET"])

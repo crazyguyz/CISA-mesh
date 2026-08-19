@@ -1230,7 +1230,9 @@ Write-Output ($results -join "; ")
 
         ps_script = f'''Add-Type -AssemblyName System.Windows.Forms,System.Drawing
 $f=New-Object System.Windows.Forms.Form
-$f.Text="GIAM-SAT - {ps_title}"
+# v4.11 (CRITICAL-3 FIX): user input is embedded in SINGLE-quoted PS literals
+# ('' escapes a quote) - double quotes would allow $(...) / $var expansion -> RCE.
+$f.Text='GIAM-SAT - {ps_title}'
 $f.Size=New-Object System.Drawing.Size(480,{form_height})
 $f.StartPosition="CenterScreen"
 $f.FormBorderStyle="FixedDialog"
@@ -1239,14 +1241,14 @@ $f.BackColor=[System.Drawing.Color]::FromArgb(15,25,35)
 $f.ForeColor=[System.Drawing.Color]::White
 
 $lblSender=New-Object System.Windows.Forms.Label
-$lblSender.Text="Nguoi gui: {ps_sender}"
+$lblSender.Text='Nguoi gui: {ps_sender}'
 $lblSender.Font=New-Object System.Drawing.Font("Segoe UI",9,[System.Drawing.FontStyle]::Bold)
 $lblSender.ForeColor=[System.Drawing.Color]::FromArgb(0,212,170)
 $lblSender.AutoSize=$true;$lblSender.Location=New-Object System.Drawing.Point(20,15)
 $f.Controls.Add($lblSender)
 
 $lblMsg=New-Object System.Windows.Forms.Label
-$lblMsg.Text="{ps_message}"
+$lblMsg.Text='{ps_message}'
 $lblMsg.Font=New-Object System.Drawing.Font("Segoe UI",10)
 $lblMsg.ForeColor=[System.Drawing.Color]::FromArgb(238,244,248)
 $lblMsg.Location=New-Object System.Drawing.Point(20,40)

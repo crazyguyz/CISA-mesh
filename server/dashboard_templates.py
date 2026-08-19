@@ -389,7 +389,12 @@ class TemplateEngine:
 <script>
 (function() {{
     // Pre-fetched panel data (server-side)
-    var DASH_DATA = {json.dumps(data_map_json, default=str, ensure_ascii=False)};
+    // v4.11 (CRITICAL-2 FIX): JSON embedded inside <script> must escape <, >, &
+    // and U+2028/2029 - json.dumps does NOT escape '<', so a live event field
+    // like "</script><script>alert(1)</script>" could break out (stored XSS).
+    var DASH_DATA = {{json.dumps(data_map_json, default=str, ensure_ascii=False)
+        .replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+        .replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')}};
     var chartInstances = {{}};
 
     // v4.10 (HIGH-3): HTML-escape helper for all innerHTML interpolation

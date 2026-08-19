@@ -239,17 +239,33 @@ def download_exe(version, host=None, port=None):
                 pass
             return None
         import hashlib as _hashlib
-        if expected_sig:
-            import hmac as _hmac
-            signing_key = (_cfg("command_key") or "").strip()
-            calc_sig = _hmac.new(signing_key.encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
-            if not _hmac.compare_digest(calc_sig, expected_sig):
-                _log("ERROR: EXE signature invalid (possible tampering) - update aborted")
-                try:
-                    os.remove(new_path)
-                except Exception:
-                    pass
-                return None
+        # v4.11 (CRITICAL-1 FIX): signature is MANDATORY - fail-closed. A MITM on
+        # the plaintext channel can strip X-File-Sig and send its own (hash, exe)
+        # pair; without this check the forged pair would pass verification.
+        if not expected_sig:
+            _log("ERROR: Server did not provide X-File-Sig - update rejected (fail-closed)")
+            try:
+                os.remove(new_path)
+            except Exception:
+                pass
+            return None
+        import hmac as _hmac
+        signing_key = (_cfg("command_key") or "").strip()
+        if not signing_key:
+            _log("ERROR: No command_key configured to verify update signature - update rejected (fail-closed)")
+            try:
+                os.remove(new_path)
+            except Exception:
+                pass
+            return None
+        calc_sig = _hmac.new(signing_key.encode("utf-8"), expected_sha.encode("utf-8"), _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(calc_sig, expected_sig):
+            _log("ERROR: EXE signature invalid (possible tampering) - update aborted")
+            try:
+                os.remove(new_path)
+            except Exception:
+                pass
+            return None
         _h = _hashlib.sha256()
         with open(new_path, "rb") as _f:
             for _chunk in iter(lambda: _f.read(65536), b""):

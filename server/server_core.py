@@ -163,8 +163,12 @@ class ServerCore:
                 tls_context = create_server_ssl_context(certfile, keyfile, cafile)
                 print("[*] TLS enabled for TCP:6666 (mTLS)")
             except Exception as e:
-                print(f"[!] TLS setup failed: {e}, falling back to non-TLS")
-                tls_enabled = False
+                # v4.11 (HIGH-7 FIX): fail-closed - "TLS bật" mà không dựng được
+                # context KHÔNG được âm thầm fallback về plaintext (PSK, heartbeat
+                # và lệnh điều khiển sẽ đi trần trong khi admin tin rằng có TLS).
+                print(f"[!] FATAL: GIAMSAT_TLS_ENABLED=true but TLS setup failed: {e}")
+                print("[!] Fix the TLS configuration, or set GIAMSAT_TLS_ENABLED=false to run WITHOUT TLS.")
+                sys.exit(1)
 
         self.tcp_server = TCPServer(
             host="0.0.0.0", port=6666,
@@ -246,9 +250,12 @@ class ServerCore:
         print("[*] Background servers started (TCP:6666, Syslog:514)")
         # v4.5.5 SECURITY: agent HTTP endpoints (pending-commands/heartbeat/command-result/download)
         # transmit the agent PSK in plaintext over HTTP. Warn admins to use a TLS reverse proxy.
+        # v4.11 (HIGH-7): banner made prominent - this is a real exposure, not a suggestion.
         if os.environ.get("GIAMSAT_AGENT_PSK", "").strip():
-            print("[!] SECURITY: Agent HTTP endpoints (port 5000) are plaintext - the agent PSK is sent unencrypted. "
-                  "Put the web server behind a TLS reverse proxy (Nginx/Caddy) for production.")
+            print("[!] ⚠ SECURITY: Web/API port 5000 is PLAINTEXT HTTP - the agent PSK, heartbeat and")
+            print("[!]   commands travel unencrypted on the network. For production put the web server")
+            print("[!]   behind a TLS reverse proxy (see README 'TLS' section / server/nginx_tcp_stream.conf)")
+            print("[!]   or disable agent HTTP by blocking inbound :5000 from untrusted networks.")
 
         # v3.0: Start event worker pool
         self.event_worker_pool.start()
@@ -256,6 +263,14 @@ class ServerCore:
         # v3.2: Start Sigma Auto-Updater
         if self.sigma_updater:
             self.sigma_updater.start()
+
+        # v4.11 (P3): daily MEDIUM alert digest email (below Telegram threshold)
+        try:
+            from daily_digest import start_digest_thread
+            start_digest_thread(self, self.alerting.config)
+            print("[*] Daily MEDIUM digest thread started (alerting_config.json -> digest)")
+        except Exception as e:
+            print(f"[!] Digest thread start failed: {e}")
 
         # v3.0: Setup materialized views (PostgreSQL only) + periodic refresh
         try:

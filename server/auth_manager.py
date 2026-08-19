@@ -158,23 +158,34 @@ class AuthManager:
         return pw_hash.hex(), salt.hex()
 
     def _verify_password(self, password, stored_hash, salt=None):
-        """v2.5.2: Verify password. Supports PBKDF2 (new), old salted SHA256, and legacy."""
+        """v2.5.2: Verify password. Supports PBKDF2 (new), old salted SHA256, and legacy.
+        v4.11 (HIGH-2): 32-char hex salt + SHA256 (format produced during the old
+        buggy migration window) is now detected and verified, so those users are
+        no longer locked out forever; they are re-hashed to PBKDF2 on login."""
         if salt:
-            # PBKDF2 format: salt is 64+ char hex string (32 bytes)
-            if len(salt) >= 32:
-                try:
-                    salt_bytes = bytes.fromhex(salt) if len(salt) >= 64 else salt.encode("utf-8")[:32]
-                except Exception:
-                    salt_bytes = salt.encode("utf-8")[:32]
-                pw_hash = hashlib.pbkdf2_hmac(
-                    _PBKDF2_HASH_NAME,
-                    password.encode("utf-8"),
-                    salt_bytes,
-                    _PBKDF2_ITERATIONS
-                )
-                if pw_hash.hex() == stored_hash:
+            # PBKDF2 format: salt is a hex string (32 bytes = 64 hex chars).
+            # v4.11 FIX: decode ANY hex salt with bytes.fromhex - previously a
+            # 32-hex salt was treated as raw chars (latent mismatch with
+            # _hash_password, which uses bytes.fromhex).
+            try:
+                salt_bytes = bytes.fromhex(salt)
+            except Exception:
+                salt_bytes = salt.encode("utf-8")[:32]
+            pw_hash = hashlib.pbkdf2_hmac(
+                _PBKDF2_HASH_NAME,
+                password.encode("utf-8"),
+                salt_bytes,
+                _PBKDF2_ITERATIONS
+            )
+            if pw_hash.hex() == stored_hash:
+                return True
+            # Legacy format from the buggy migration window: salt = token_hex(16)
+            # -> exactly 32 hex chars, hash = SHA256(salt + password). The PBKDF2
+            # branch above fails for these; check the legacy scheme explicitly.
+            if len(salt) == 32 and all(ch in "0123456789abcdefABCDEF" for ch in salt):
+                if hashlib.sha256((salt + password).encode()).hexdigest() == stored_hash:
                     return True
-            # Old salted SHA256 fallback (16 char hex salt)
+            # Old salted SHA256 fallback (16 char hex salt, i.e. < 32 chars)
             if len(salt) < 32:
                 salted = salt + password
                 if hashlib.sha256(salted.encode()).hexdigest() == stored_hash:
@@ -383,11 +394,17 @@ class AuthManager:
         # Success - clear brute-force
         self._clear_brute_force(username, ip)
 
-        # v2.5.3: Auto-migrate legacy unsalted password on successful login
+        # v2.5.3: Auto-migrate legacy password on successful login.
         # v4.10 FIX (HIGH-1): use PBKDF2 _hash_password (64-hex salt). The old
         # token_hex(16) salt is exactly 32 chars, which _verify_password treats as
         # the PBKDF2 branch -> the migrated user could never log in again.
-        if "salt" not in user or not user.get("salt"):
+        # v4.11 (HIGH-2): users with the legacy 32-hex salt + SHA256 format (from
+        # the old buggy migration window) are now migrated to PBKDF2 as well.
+        salt_hex = user.get("salt") or ""
+        is_legacy = ("salt" not in user or not salt_hex) or (
+            len(salt_hex) == 32 and all(c in "0123456789abcdefABCDEF" for c in salt_hex)
+        )
+        if is_legacy:
             new_hash, new_salt = self._hash_password(password)
             with self.lock:
                 self.users[username]["password"] = new_hash

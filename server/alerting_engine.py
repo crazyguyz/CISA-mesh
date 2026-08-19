@@ -25,10 +25,17 @@ class AlertingEngine:
             "auto_response": {"mode": "off", "require_confidence": 90, "safe_users": ["admin", "administrator"], "safe_machines": []},
             "min_severity": "HIGH",
             "cooldown_seconds": 86400,
+            # v4.11 (P3): smart dedup - fingerprint + per-severity cooldowns
+            "dedup_fingerprint_fields": ["description", "rule_name", "source_ip", "user", "cve", "event_id"],
+            "cooldown_by_severity": {"CRITICAL": 3600, "HIGH": 21600, "MEDIUM": 43200, "LOW": 86400},
+            "attempt_retry_seconds": 300,
+            "digest": {"enabled": True, "to": [], "hour": 8},
         }
         # v4.10: persisted dedup map (survives server restart).
-        # key = "<rule_id>|<machine_id>", value = unix ts of last send.
+        # v4.11: key = "<rule_id>|<machine_id>|<event_fingerprint>", value = unix
+        # ts of the last SUCCESSFUL send (recorded after a channel actually sent).
         self._last_alerts = {}
+        self._last_attempts = {}
         self._load_config(config_path)
         self._load_dedup()
         self._running = True
@@ -62,14 +69,17 @@ class AlertingEngine:
             self._last_alerts = {}
 
     def _save_dedup(self):
-        """v4.10: Persist dedup map; prune entries older than 2 days."""
+        """v4.11 (MED): persist dedup map atomically (tmp + os.replace so a crash
+        mid-write cannot corrupt the file -> dedup reset -> old alerts re-sent)."""
         try:
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "alert_dedup.json")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             cutoff = time.time() - 86400 * 2
             pruned = {k: v for k, v in self._last_alerts.items() if v >= cutoff}
-            with open(path, "w", encoding="utf-8") as f:
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(pruned, f)
+            os.replace(tmp, path)
         except Exception:
             pass
 
@@ -136,57 +146,121 @@ class AlertingEngine:
         threading.Thread(target=_poller, daemon=True).start()
         print("[*] Telegram callback poller started")
 
-    def _should_send(self, alert_data):
-        """v4.10: Gate alert notifications.
-        - Severity below min_severity -> skip.
-        - Duplicate alert (same rule_id AND same source machine_id) is only
-          sent again after cooldown_seconds (24h default). Alerts of a
-          different rule or from a different machine send immediately.
-        Dedup map is persisted, so a server restart cannot re-send duplicates."""
-        severity_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
-        min_sev = severity_order.get(self.config.get("min_severity", "HIGH"), 2)
-        event_sev = severity_order.get(alert_data.get("severity", "LOW"), 0)
-        if event_sev < min_sev:
-            return False
+    def _dedup_key(self, alert_data):
+        """v4.11 (P3): key = rule + machine + event fingerprint, so two scans of
+        the SAME rule on the SAME machine are NOT collapsed when the underlying
+        event differs (fix: '2 lần quét trùng rule trong 24h bị nuốt nhau')."""
         rule_id = (alert_data.get("rule_id")
                    or alert_data.get("cve")
                    or alert_data.get("rule_name")
                    or "unknown")
         machine_id = alert_data.get("machine_id", "")  # source of the alert
-        key = f"{rule_id}|{machine_id}"
-        cooldown = int(self.config.get("cooldown_seconds", 86400))
+        fields = self.config.get("dedup_fingerprint_fields") or []
+        if fields:
+            import hashlib as _h
+            parts = []
+            for f in fields:
+                v = alert_data.get(f)
+                if v is None:
+                    parts.append(f"{f}=")
+                else:
+                    parts.append(f"{f}={json.dumps(v, default=str, sort_keys=True, ensure_ascii=False)}")
+            fp = _h.sha256("|".join(parts).encode("utf-8", "replace")).hexdigest()[:16]
+            return f"{rule_id}|{machine_id}|{fp}"
+        return f"{rule_id}|{machine_id}"
+
+    def _cooldown_for(self, severity):
+        cmap = self.config.get("cooldown_by_severity") or {}
+        sev = (severity or "LOW").upper()
+        if sev in cmap:
+            return max(int(cmap[sev]), 1)
+        return max(int(self.config.get("cooldown_seconds", 86400)), 1)
+
+    def _should_send(self, alert_data):
+        """v4.11 (P3 + HIGH-1): gate WITHOUT recording success.
+        - Severity below min_severity -> skip.
+        - Identical alert (same rule + machine + event fingerprint) is only
+          re-sent after the per-severity cooldown (CRITICAL 1h / HIGH 6h /
+          MEDIUM 12h / LOW 24h). Different events of the same rule, or alerts
+          from a different machine, send immediately.
+        - attempt_retry_seconds stops an immediate resend storm when the previous
+          attempt failed; the success timestamp is NOT advanced on failure, so a
+          down channel can never swallow an alert for 24h (HIGH-1)."""
+        severity_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
+        min_sev = severity_order.get(self.config.get("min_severity", "HIGH"), 2)
+        event_sev = severity_order.get(alert_data.get("severity", "LOW"), 0)
+        if event_sev < min_sev:
+            return False
+        key = self._dedup_key(alert_data)
         now = time.time()
         with self.lock:
-            last_ts = self._last_alerts.get(key, 0)
-            if now - last_ts < cooldown:
+            if now - self._last_alerts.get(key, 0) < self._cooldown_for(alert_data.get("severity")):
                 return False
-            self._last_alerts[key] = now
-        self._save_dedup()
+            if now - self._last_attempts.get(key, 0) < int(self.config.get("attempt_retry_seconds", 300)):
+                return False
+            self._last_attempts[key] = now
         return True
 
+    def _mark_sent(self, alert_data):
+        """v4.11 (HIGH-1 FIX): advance the dedup timestamp only after at least one
+        channel has actually sent successfully."""
+        key = self._dedup_key(alert_data)
+        with self.lock:
+            self._last_alerts[key] = time.time()
+            self._last_attempts.pop(key, None)
+        self._save_dedup()
+
     def send_alert(self, alert_data):
-        """Send alert through all enabled channels. Runs in thread."""
+        """Send alert through all enabled channels. Runs in thread.
+        v4.11 (HIGH-1): dedup is marked only on successful send."""
         if not self.config.get("enabled", False):
             return
         if not self._should_send(alert_data):
             return
-        t = threading.Thread(target=self._send_all_channels, args=(alert_data,), daemon=True)
-        t.start()
+
+        def _runner():
+            try:
+                if self._send_all_channels(alert_data):
+                    self._mark_sent(alert_data)
+            except Exception:
+                pass
+
+        threading.Thread(target=_runner, daemon=True).start()
 
     def _send_all_channels(self, alert_data):
+        """v4.11: returns True if at least one enabled channel sent successfully.
+        If no channel is enabled/attempted the alert is NOT marked as sent."""
+        sent_ok = False
         if self.config.get("email", {}).get("enabled"):
-            self._send_email(alert_data)
+            try:
+                if self._send_email(alert_data):
+                    sent_ok = True
+            except Exception:
+                pass
         if self.config.get("slack", {}).get("enabled"):
-            self._send_slack(alert_data)
+            try:
+                if self._send_slack(alert_data):
+                    sent_ok = True
+            except Exception:
+                pass
         if self.config.get("webhook", {}).get("enabled"):
-            self._send_webhook(alert_data)
+            try:
+                if self._send_webhook(alert_data):
+                    sent_ok = True
+            except Exception:
+                pass
         # v4.10: Telegram only for severe alerts (telegram.min_severity, default HIGH)
         t_cfg = self.config.get("telegram", {})
         if t_cfg.get("enabled"):
             sev_order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
             t_min = sev_order.get(t_cfg.get("min_severity", "HIGH"), 2)
             if sev_order.get(alert_data.get("severity", "LOW"), 0) >= t_min:
-                self._send_telegram(alert_data)
+                try:
+                    if self._send_telegram(alert_data):
+                        sent_ok = True
+                except Exception:
+                    pass
+        return sent_ok
 
     def _send_email(self, alert_data):
         try:
@@ -226,8 +300,10 @@ Description: {alert_data.get('description', 'N/A')}
                     server.login(cfg["username"], cfg["password"])
                     server.sendmail(cfg["from_addr"], cfg["to_addrs"], msg.as_string())
             print(f"[*] Email alert sent to {cfg['to_addrs']}")
+            return True
         except Exception as e:
             print(f"[-] Email alert failed: {e}")
+            return False
 
     def _send_slack(self, alert_data):
         try:
@@ -254,8 +330,10 @@ Description: {alert_data.get('description', 'N/A')}
             req = urllib.request.Request(cfg["webhook_url"], data=data, headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req, timeout=10)
             print(f"[*] Slack alert sent")
+            return True
         except Exception as e:
             print(f"[-] Slack alert failed: {e}")
+            return False
 
     def _send_telegram(self, alert_data):
         """
@@ -269,7 +347,7 @@ Description: {alert_data.get('description', 'N/A')}
             bot_token = _os.environ.get("TELEGRAM_BOT_TOKEN") or cfg.get("bot_token", "")
             chat_id = _os.environ.get("TELEGRAM_CHAT_ID") or cfg.get("chat_id", "")
             if not bot_token or not chat_id:
-                return
+                return False
 
             sev = alert_data.get("severity", "LOW")
             sev_emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(sev, "⚪")
@@ -344,8 +422,10 @@ Description: {alert_data.get('description', 'N/A')}
             req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
             urllib.request.urlopen(req, timeout=10)
             print(f"[*] Telegram alert sent to {chat_id}")
+            return True
         except Exception as e:
             print(f"[-] Telegram alert failed: {e}")
+            return False
 
     def _send_webhook(self, alert_data):
         try:
@@ -358,8 +438,10 @@ Description: {alert_data.get('description', 'N/A')}
             req = urllib.request.Request(cfg["url"], data=data, headers=headers)
             urllib.request.urlopen(req, timeout=10)
             print(f"[*] Webhook alert sent")
+            return True
         except Exception as e:
             print(f"[-] Webhook alert failed: {e}")
+            return False
 
     def set_config(self, key, value):
         keys = key.split(".")
