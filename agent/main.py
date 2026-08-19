@@ -778,6 +778,15 @@ if __name__ == "__main__":
         # v2.6.0: Auto-install Sysmon if not present
         _ensure_sysmon_installed()
 
+        # v4.11 (HIGH-1): enable the audit/logging sources the detection rules
+        # need (auditpol subcategories, 4688 command line, PS ScriptBlockLogging).
+        # Runs once per install; requires admin/SYSTEM (agent service context).
+        try:
+            from baseline_hardening import run_baseline_hardening
+            run_baseline_hardening(marker_dir=dd)
+        except Exception:
+            pass
+
         from agent_core import AgentCore
         agent = AgentCore(user_name=user_name, employee_id=employee_id, email=email, branch=branch)
         agent.user_extra = user_extra or {}
