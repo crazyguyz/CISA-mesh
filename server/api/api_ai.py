@@ -21,7 +21,9 @@ def register(app, core):
     def api_float_ai_chat():
         if os.environ.get("GIAMSAT_DISABLE_AI", "0") == "1" or getattr(core, "_ai_disabled", False):
             return jsonify({"success": False, "error": "AI Assistant đã bị vô hiệu hóa bởi quản trị viên."}), 403
-        _, err, code = check_auth("api")
+        # v4.11 (authz): AI calls consume paid API credits - viewer must not be
+        # able to trigger them freely -> 'command' (operator+)
+        _, err, code = check_auth("command")
         if err: return err, code
 
         if not DEEPSEEK_API_KEY:

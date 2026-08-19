@@ -34,8 +34,10 @@ def register(app, core):
 
     @app.route("/api/custom-dashboard/save", methods=["POST"])
     def custom_dashboard_save():
-        """Save or update a custom dashboard layout."""
-        username, err, code = check_auth("api")
+        """Save or update a custom dashboard layout.
+        v4.11 (authz): dashboards are SHARED (name-keyed) - viewer must not be
+        able to overwrite them -> 'settings' (admin) + audit."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
@@ -67,6 +69,8 @@ def register(app, core):
                     (name, description, layout_json, widgets_json, username or "admin")
                 )
             core.db.conn.commit()
+            core.db.insert_audit_log(username, "custom_dashboard_save",
+                f"Lưu dashboard '{name}'", request.remote_addr)
             return jsonify({"status": "saved", "name": name})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -127,8 +131,9 @@ def register(app, core):
 
     @app.route("/api/custom-dashboard/delete", methods=["POST"])
     def custom_dashboard_delete():
-        """Delete a dashboard by name."""
-        username, err, code = check_auth("api")
+        """Delete a dashboard by name.
+        v4.11 (authz): shared dashboards - viewer must not delete -> 'settings'."""
+        username, err, code = check_auth("settings")
         if err:
             return err, code
 
@@ -140,6 +145,8 @@ def register(app, core):
         try:
             core.db.conn.execute("DELETE FROM custom_dashboards WHERE name=?", (name,))
             core.db.conn.commit()
+            core.db.insert_audit_log(username, "custom_dashboard_delete",
+                f"Xóa dashboard '{name}'", request.remote_addr)
             return jsonify({"status": "deleted", "name": name})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

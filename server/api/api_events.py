@@ -164,7 +164,9 @@ def register(app, core):
     # v3.2: IOC Sweep
     @app.route("/api/ioc/sweep", methods=["POST"])
     def api_ioc_sweep():
-        _, err, code = check_auth("api")
+        """v4.11 (authz): fleet-wide IOC sweep is expensive - viewer must not be
+        able to trigger it -> 'command' (operator+) + audit."""
+        username, err, code = check_auth("command")
         if err: return err, code
 
         from ioc_sweeper import IOCSweeper
@@ -179,13 +181,17 @@ def register(app, core):
             fmt = "csv" if uploaded_file.filename.endswith(".csv") else "json"
             content = uploaded_file.read().decode("utf-8")
             results = sweeper.sweep_from_file(content, file_format=fmt)
+            src_desc = f"file={uploaded_file.filename}"
         elif body_json.get("iocs"):
             iocs = body_json["iocs"]
             tables = body_json.get("tables", None)
             results = sweeper.sweep(iocs, tables=tables)
+            src_desc = f"iocs={len(iocs)}"
         else:
             return jsonify({"error": "No IOC file or JSON body provided"}), 400
 
+        core.db.insert_audit_log(username, "ioc_sweep",
+            f"{src_desc} -> {len(results)} matches", request.remote_addr)
         return jsonify({
             "status": "ok",
             "matches": len(results),

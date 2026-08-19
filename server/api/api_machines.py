@@ -93,11 +93,15 @@ def register(app, core):
 
     @app.route("/api/machine/<machine_id>/rename", methods=["POST"])
     def api_machine_rename(machine_id):
-        _, err, code = check_auth("api")
+        """v4.11 (authz): renaming a machine mutates fleet identity - viewer
+        (read-only) must not be able to do it -> 'command' (operator+) + audit."""
+        username, err, code = check_auth("command")
         if err: return err, code
         data = request.json
         if data.get("name"):
             core.db.update_machine_hostname(machine_id, data["name"])
+            core.db.insert_audit_log(username, "rename_machine",
+                f"Machine: {machine_id} -> {data['name']}", request.remote_addr)
             return jsonify({"success": True})
         return jsonify({"success": False}), 400
 
@@ -190,7 +194,8 @@ def register(app, core):
 
     @app.route("/api/machine/<machine_id>/notes", methods=["POST"])
     def api_machine_notes(machine_id):
-        username, err, code = check_auth("api")
+        # v4.11 (authz): writing machine notes is not a read-only action -> 'command'
+        username, err, code = check_auth("command")
         if err: return err, code
         data = request.get_json(force=True, silent=True) or {}
         notes = (data.get("notes") or "")[:500]
