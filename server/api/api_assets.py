@@ -73,7 +73,7 @@ def init_assets_api(app, db):
             return jsonify({"error": "Thiếu category"}), 400
         data["source"] = data.get("source") or "manual"
         result = m(data)
-        core.db.insert_audit_log(username, "asset_add",
+        db.insert_audit_log(username, "asset_add",
             f"Thêm tài sản category='{data.get('category')}' name='{data.get('name') or ''}'",
             request.remote_addr)
         return jsonify({"success": bool(result), **result}), 201 if result else 500
@@ -89,7 +89,7 @@ def init_assets_api(app, db):
         data["asset_id"] = asset_id
         data["source"] = data.get("source") or "manual"
         result = m(data)
-        core.db.insert_audit_log(username, "asset_update",
+        db.insert_audit_log(username, "asset_update",
             f"Cập nhật tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": bool(result), **result})
 
@@ -102,7 +102,7 @@ def init_assets_api(app, db):
             return jsonify({"error": "DB method unavailable"}), 500
         ok = m(asset_id)
         if ok:
-            core.db.insert_audit_log(username, "asset_delete",
+            db.insert_audit_log(username, "asset_delete",
                 f"Xóa tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": ok})
 
@@ -117,7 +117,7 @@ def init_assets_api(app, db):
         data = request.json or {}
         ok = m(asset_id, data)
         if ok:
-            core.db.insert_audit_log(username, "asset_adopt",
+            db.insert_audit_log(username, "asset_adopt",
                 f"Adopt tài sản asset_id='{asset_id}'", request.remote_addr)
         return jsonify({"success": ok})
 

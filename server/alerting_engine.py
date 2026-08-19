@@ -70,12 +70,15 @@ class AlertingEngine:
 
     def _save_dedup(self):
         """v4.11 (MED): persist dedup map atomically (tmp + os.replace so a crash
-        mid-write cannot corrupt the file -> dedup reset -> old alerts re-sent)."""
+        mid-write cannot corrupt the file -> dedup reset -> old alerts re-sent).
+        The snapshot is taken under self.lock - _mark_sent() can add keys from
+        concurrent worker threads (dict changed-size race otherwise)."""
         try:
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "alert_dedup.json")
+            with self.lock:
+                cutoff = time.time() - 86400 * 2
+                pruned = {k: v for k, v in self._last_alerts.items() if v >= cutoff}
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            cutoff = time.time() - 86400 * 2
-            pruned = {k: v for k, v in self._last_alerts.items() if v >= cutoff}
             tmp = path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(pruned, f)

@@ -12,6 +12,17 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 
+def _json_script_safe(obj) -> str:
+    """v4.11 (CRITICAL-2 FIX): serialize JSON safely for embedding inside a
+    <script> block. json.dumps does NOT escape '<', so an attacker-controlled
+    event field like '</script><script>...' could break out (stored XSS).
+    Escapes <, >, & and U+2028/U+2029 (OWASP rule for JSON-in-script)."""
+    return (json.dumps(obj, default=str, ensure_ascii=False)
+            .replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("&", "\\u0026").replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029"))
+
+
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "dashboard")
 
 
@@ -392,9 +403,7 @@ class TemplateEngine:
     // v4.11 (CRITICAL-2 FIX): JSON embedded inside <script> must escape <, >, &
     // and U+2028/2029 - json.dumps does NOT escape '<', so a live event field
     // like "</script><script>alert(1)</script>" could break out (stored XSS).
-    var DASH_DATA = {{json.dumps(data_map_json, default=str, ensure_ascii=False)
-        .replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
-        .replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')}};
+    var DASH_DATA = {_json_script_safe(data_map_json)};
     var chartInstances = {{}};
 
     // v4.10 (HIGH-3): HTML-escape helper for all innerHTML interpolation
