@@ -38,6 +38,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             groups: { el: 'viewGroups', container: 'groupsContent', load: function() { loadGroups(); } },
             fimbaseline: { el: 'viewFimBaseline', container: 'fimBaselineMachineList', load: function() { loadFimBaselineMachines(); } },
             rules: { el: 'viewRules', container: 'rulesList', load: function() { loadRules(); } },
+            suppression: { el: 'viewSuppression', container: 'supList', load: function() { loadSuppressions(); populateSuppressionForm(); } },
             agentupdate: { el: 'viewAgentUpdate', container: 'agentUpdateGroups', load: function() { loadAgentUpdateView(); } },
             messages: { el: 'viewMessages', container: null, load: function() { if (window.messageChat) messageChat.init(); } },
             email: { el: 'viewEmail', container: null, load: function() { loadEmailView(); } },
@@ -2484,6 +2485,56 @@ function testRule(){
                 resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.errPrefix') + (d.error || t('ui.errGeneric')) + '</div>';
             }
         }).catch(() => { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.connErrShort')+'</div>'; });
+}
+
+// ===== ALERT SUPPRESSION (Global Whitelist for False Positive Tuning) =====
+function loadSuppressions() {
+    const el = document.getElementById('supList');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
+    fetch('/api/suppression/list').then(r => r.json()).then(data => {
+        const items = data.suppressions || [];
+        const cnt = document.getElementById('supCount');
+        if (cnt) cnt.textContent = items.length + ' suppression(s)';
+        if (!items.length) { el.innerHTML = '<div class="text-center text-muted py-3">'+t('supp.none')+'</div>'; return; }
+        el.innerHTML = '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>ID</th><th>'+t('supp.ruleId')+'</th><th>'+t('supp.machine')+'</th><th>'+t('supp.pathHash')+'</th><th>'+t('supp.reason')+'</th><th>'+t('supp.createdBy')+'</th><th>'+t('supp.createdAt')+'</th><th></th></tr></thead><tbody>'
+            + items.map(function(s) {
+                return '<tr><td>'+escapeHtml(s.id)+'</td><td><strong style="color:#ffcc66;">'+escapeHtml(s.rule_id||'-')+'</strong></td><td>'+escapeHtml(s.machine_id||t('supp.allMachines'))+'</td><td style="color:#8892a4;">'+escapeHtml((s.field_path||'')+(s.field_hash?' | '+s.field_hash:''))+'</td><td>'+escapeHtml(s.reason||'')+'</td><td>'+escapeHtml(s.created_by||'')+'</td><td style="white-space:nowrap;">'+escapeHtml(s.created_at||'')+'</td><td><button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:0 6px;" onclick="deleteSuppression('+s.id+')">'+t('btn.delete')+'</button></td></tr>';
+            }).join('') + '</tbody></table>';
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
+}
+
+function populateSuppressionForm() {
+    fetch('/api/machines').then(r => r.json()).then(ms => {
+        const sel = document.getElementById('supMachine');
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">'+t('supp.allMachines')+'</option>' + ms.map(m => '<option value="'+escapeHtml(m.machine_id)+'">'+escapeHtml(m.hostname||m.machine_id)+'</option>').join('');
+        sel.value = cur;
+    }).catch(function(){});
+    fetch('/api/rules').then(r => r.json()).then(data => {
+        const dl = document.getElementById('supRuleList');
+        if (dl && data.rules) { dl.innerHTML = data.rules.map(function(r){ return '<option value="'+escapeHtml(r.id)+'"></option>'; }).join(''); }
+    }).catch(function(){});
+}
+
+function addSuppression() {
+    const rule_id = document.getElementById('supRuleId').value.trim();
+    if (!rule_id) { showToast('⚠ ' + t('supp.enterRuleId')); return; }
+    const machine_id = document.getElementById('supMachine').value || null;
+    const reason = document.getElementById('supReason').value.trim();
+    fetch('/api/suppression/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rule_id: rule_id, machine_id: machine_id, reason: reason})})
+        .then(r => r.json()).then(d => {
+            if (d.success) { showToast('✅ '+t('supp.added')); document.getElementById('supReason').value=''; loadSuppressions(); }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(() => { showToast('❌ '+t('ui.connErrShort')); });
+}
+
+function deleteSuppression(id) {
+    if (!confirm(t('supp.confirmDel'))) return;
+    fetch('/api/suppression/remove/' + id, {method:'POST'}).then(r => r.json()).then(d => {
+        if (d.success) { showToast('✅ '+t('supp.deleted')); loadSuppressions(); }
+    }).catch(() => { showToast('❌ '+t('ui.connErrShort')); });
 }
 
 // ===== TABLE SORT (Excel-style: date, number, text; persistent per-table per-column state) =====

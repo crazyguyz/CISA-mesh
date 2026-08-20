@@ -152,6 +152,7 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <a class="nav-link" href="#" data-view="agentupdate"><i class="bi bi-cloud-download"></i> <span data-i18n="nav.agentupdate">Cập nhật Agent</span></a>
                 <a class="nav-link" href="#" data-view="fimbaseline"><i class="bi bi-shield-check"></i> <span data-i18n="nav.fimbaseline">FIM Baseline</span></a>
                 <a class="nav-link" href="#" data-view="rules"><i class="bi bi-file-earmark-code"></i> <span data-i18n="nav.rules">Quản lý Rules</span></a>
+                <a class="nav-link" href="#" data-view="suppression"><i class="bi bi-funnel"></i> <span data-i18n="nav.suppression">Chặn cảnh báo giả</span></a>
                 <a class="nav-link" href="#" data-view="email"><i class="bi bi-envelope"></i> <span data-i18n="nav.email">Cảnh báo Email</span></a>
                 <a class="nav-link" href="#" data-view="assets"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="nav.assets">Tài sản</span> <span id="assetsBadge" class="badge bg-danger ms-1" style="font-size:9px;display:none;">0</span></a>
                 <hr style="border-color:var(--border-color);margin:4px 8px;">
@@ -378,6 +379,23 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <div class="row g-2 mb-3">
                 <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-pencil-square"></i> <span data-i18n="rules.editRule">Tạo/Sửa Rule</span></div><div class="card-body"><textarea class="search-box" id="editRuleJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder="Dán JSON rule vào đây..." data-i18n-placeholder="ph.pasteRuleJson"></textarea><div class="mt-2"><button class="btn btn-success btn-sm me-1" onclick="saveRule()"><i class="bi bi-check-lg"></i> <span data-i18n="rules.save">Lưu Rule</span></button><button class="btn btn-sm btn-outline-info me-1" onclick="newRuleTemplate()">📋 Template</button><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('editRuleJson').value=''">Clear</button><span class="text-muted ms-2" style="font-size:10px;" data-i18n="rules.clickToLoad">Click rule bên trên để load vào editor</span></div></div></div></div>
                 <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-flask"></i> Test Rule</div><div class="card-body"><div class="row g-2"><div class="col-6"><label class="text-muted" style="font-size:11px;">Rule JSON</label><textarea class="search-box" id="testRuleJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"id":"TEST-001","name":"Test Rule","severity":"HIGH","conditions":[{"type":"windows_event","event_id":"4625","threshold":5,"within_seconds":60}]}'></textarea></div><div class="col-6"><label class="text-muted" style="font-size:11px;" data-i18n="rules.sampleEventJson">Event JSON mẫu</label><textarea class="search-box" id="testEventJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"type":"windows_event","event_id":"4625","description":"Failed logon","timestamp":"2026-01-01 12:00:00"}'></textarea></div></div><button class="btn btn-success btn-sm mt-2" onclick="testRule()"><i class="bi bi-play-fill"></i> Test Rule</button><div id="testRuleResult" class="mt-2" style="font-size:12px;"></div></div></div></div>
+            </div>
+        </div>
+
+        <div id="viewSuppression" style="display:none;">
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-funnel"></i> <span data-i18n="supp.title">Chặn cảnh báo giả (False Positive)</span></span><button class="btn btn-sm export-btn" onclick="loadSuppressions()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
+                <div class="card-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="supp.ruleId">Rule ID</span></label><input class="search-box" id="supRuleId" list="supRuleList" placeholder="THREAT-001 / SIGMA-*" style="width:100%;font-size:11px;"><datalist id="supRuleList"></datalist></div>
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="supp.machine">Máy trạm</span></label><select class="form-select form-select-sm" id="supMachine" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="" data-i18n="supp.allMachines">(Tất cả máy)</option></select></div>
+                        <div class="col-md-4"><label class="text-muted" style="font-size:11px;"><span data-i18n="supp.reason">Lý do</span></label><input class="search-box" id="supReason" style="width:100%;font-size:11px;"></div>
+                        <div class="col-md-2 d-flex align-items-end"><button class="btn btn-success btn-sm" onclick="addSuppression()"><i class="bi bi-plus-circle"></i> <span data-i18n="supp.add">Thêm suppression</span></button></div>
+                    </div>
+                    <div class="text-muted" style="font-size:10px;"><span data-i18n="supp.help">Bỏ trống máy trạm = áp dụng cho mọi máy. Rule suppressed sẽ không tạo cảnh báo mới.</span></div>
+                </div>
+            </div>
+            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> <span data-i18n="supp.list">Danh sách suppression</span></span><span id="supCount" class="text-muted" style="font-size:10px;"></span></div>
+                <div class="card-body p-0" id="supList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
             </div>
         </div>
 
