@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GIAM-SAT Server v2.0.0 - Giám sát bảo mật tập trung</title>
+<title data-i18n="app.title">GIAM-SAT Server v2.0.0 - Giám sát bảo mật tập trung</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#00d4aa">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -115,15 +115,15 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <small class="text-muted">Server v2.0.0</small>
         </div>
         <div class="p-2">
-            <div class="mb-2"><small class="text-muted px-2">MÁY TRẠM</small></div>
+            <div class="mb-2"><small class="text-muted px-2" data-i18n="lbl.machines">MÁY TRẠM</small></div>
             <select id="machineSelect" class="form-select form-select-sm mb-3" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:12px;" onchange="onMachineDropdownChange()">
-                <option value="">-- Chọn máy trạm --</option>
+                <option value="" data-i18n="opt.selectMachine">-- Chọn máy trạm --</option>
             </select>
             <hr style="border-color:var(--border-color);">
             <nav class="nav flex-column">
                 <small class="text-muted px-2" data-i18n="group.monitoring">GIÁM SÁT</small>
                 <a class="nav-link active" href="#" data-view="overview"><i class="bi bi-speedometer2"></i> <span data-i18n="nav.overview">Tổng quan</span></a>
-                <a class="nav-link" href="#" data-view="dashboards"><i class="bi bi-grid-1x2"></i> <span data-i18n="nav.dashboard">Bảng điều khiển</span> <span class="badge bg-success ms-1" style="font-size:9px;" data-i18n="common.new">MỚI</span><span id="pendingBadge" class="badge bg-danger ms-1 pulse-badge" style="font-size:9px;display:none;" onclick="event.stopPropagation();event.preventDefault();showPendingList()" title="Nhấn để xem danh sách chờ duyệt">0</span></a>
+                <a class="nav-link" href="#" data-view="dashboards"><i class="bi bi-grid-1x2"></i> <span data-i18n="nav.dashboard">Bảng điều khiển</span> <span class="badge bg-success ms-1" style="font-size:9px;" data-i18n="common.new">MỚI</span><span id="pendingBadge" class="badge bg-danger ms-1 pulse-badge" style="font-size:9px;display:none;" onclick="event.stopPropagation();event.preventDefault();showPendingList()" title="Nhấn để xem danh sách chờ duyệt" data-i18n-title="tt.pendingApprovals">0</span></a>
                 <a class="nav-link" href="#" data-view="events"><i class="bi bi-list-ul"></i> <span data-i18n="nav.events">Nhật ký sự kiện</span></a>
                 <a class="nav-link" href="#" data-view="fim"><i class="bi bi-folder2-open"></i> <span data-i18n="nav.fim">FIM</span></a>
                 <a class="nav-link" href="#" data-view="syslog"><i class="bi bi-router"></i> <span data-i18n="nav.syslog">Syslog</span></a>
@@ -189,41 +189,41 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <div class="col-md-6">
                     <div class="card" style="min-height:420px;">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-grid-3x3-gap"></i> Bảng điều khiển toàn cảnh - Server Health & Security</span>
+                            <span><i class="bi bi-grid-3x3-gap"></i> <span data-i18n="overview.panorama">Bảng điều khiển toàn cảnh - Server Health & Security</span></span>
                             <small id="panoramaRefreshBadge" class="text-muted" style="font-size:10px;"> Auto 15s</small>
                         </div>
                         <div class="card-body p-0" id="overviewPanoramaContent" style="max-height:800px;overflow-y:auto;">
-                            <div class="text-center text-muted py-5"><i class="bi bi-hourglass-split"></i> Đang tải...</div>
+                            <div class="text-center text-muted py-5"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="card mb-2">
                         <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer;" onclick="toggleMachineTable()" id="machineTableToggle">
-                            <span><i class="bi bi-pc-display"></i> Máy trạm đã đăng ký <span id="machineCountBadge" class="badge bg-secondary ms-1">0</span></span>
+                            <span><i class="bi bi-pc-display"></i> <span data-i18n="lbl.registeredMachines">Máy trạm đã đăng ký</span> <span id="machineCountBadge" class="badge bg-secondary ms-1">0</span></span>
                             <span id="machineTableArrow" style="transition:transform 0.3s;">▼</span>
                         </div>
                         <div class="card-body p-0" id="machineTableCollapse" style="display:none;max-height:350px;overflow-y:auto;">
-                            <div id="machineTableContainer"><div class="text-center text-muted py-3">Đang tải...</div></div>
+                            <div id="machineTableContainer"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div>
                             <div class="p-2 text-end" style="border-top:1px solid var(--border-color);">
-                                <button class="btn btn-sm btn-warning me-1" onclick="cleanupOldLogs()"><i class="bi bi-eraser"></i> Dọn log cũ</button>
-                                <button class="btn btn-sm btn-danger" onclick="deleteOfflineMachines()"><i class="bi bi-trash"></i> Xóa offline</button>
+                                <button class="btn btn-sm btn-warning me-1" onclick="cleanupOldLogs()"><i class="bi bi-eraser"></i> <span data-i18n="btn.cleanupOldLogs">Dọn log cũ</span></button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteOfflineMachines()"><i class="bi bi-trash"></i> <span data-i18n="btn.deleteOffline">Xóa offline</span></button>
                             </div>
                         </div>
                     </div>
                     <div class="card">
-                        <div class="card-header">Phân loại sự kiện</div>
-                        <div class="card-body p-2" id="eventTypesChart" style="max-height:250px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div>
+                        <div class="card-header" data-i18n="overview.eventTypes">Phân loại sự kiện</div>
+                        <div class="card-body p-2" id="eventTypesChart" style="max-height:250px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div>
                     </div>
                     <div class="card mt-2">
-                        <div class="card-header">📊 Báo cáo</div>
+                        <div class="card-header" data-i18n="ui.reportsCard">📊 Báo cáo</div>
                         <div class="card-body p-2">
                             <div class="input-group input-group-sm">
                                 <select class="form-select form-select-sm" id="reportFormat" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
                                     <option value="xlsx">📗 Excel (.xlsx)</option>
                                     <option value="html">🌐 HTML (.html)</option>
                                 </select>
-                                <button class="btn btn-sm btn-success" onclick="showReportModal()"><i class="bi bi-download"></i> Xuất báo cáo</button>
+                                <button class="btn btn-sm btn-success" onclick="showReportModal()"><i class="bi bi-download"></i> <span data-i18n="btn.exportReport">Xuất báo cáo</span></button>
                             </div>
                         </div>
                     </div>
@@ -236,102 +236,102 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <div id="dashboardBuilderContainer">
                 <div class="text-center text-muted py-5">
                     <i class="bi bi-grid-1x2" style="font-size:64px;"></i>
-                    <p class="mt-2">Đang tải Dashboard Builder...</p>
+                    <p class="mt-2" data-i18n="ui.loadingBuilder">Đang tải Dashboard Builder...</p>
                 </div>
             </div>
         </div>
 
         <div id="viewMachine" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display"></i> <span id="detailMachineName">-</span><button class="btn btn-sm btn-outline-info py-0 px-1 ms-2" onclick="editMachineNotes()" title="Ghi chú"><i class="bi bi-pencil-square"></i></button></span><div><span class="online-dot online" id="detailOnlineDot"></span> <span id="detailMachineStatus" class="text-muted" style="font-size:12px;">Đang kết nối</span><button class="btn btn-stop btn-sm ms-2" onclick="stopMachine()"><i class="bi bi-stop-circle"></i> Dừng</button><button class="btn btn-warning btn-sm ms-1" onclick="isolateMachine()" title="Chặn toàn bộ kết nối ra ngoài"><i class="bi bi-shield-lock"></i> Cô lập</button><button class="btn btn-success btn-sm ms-1" onclick="unisolateMachine()" title="Gỡ cô lập, khôi phục mạng" style="display:none;" id="btnUnisolate"><i class="bi bi-shield-check"></i> Bỏ cô lập</button><button class="btn btn-del btn-sm ms-1" onclick="deleteMachine()"><i class="bi bi-trash3"></i> Xóa</button></div></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display"></i> <span id="detailMachineName">-</span><button class="btn btn-sm btn-outline-info py-0 px-1 ms-2" onclick="editMachineNotes()" title="Ghi chú" data-i18n-title="tt.notes"><i class="bi bi-pencil-square"></i></button></span><div><span class="online-dot online" id="detailOnlineDot"></span> <span id="detailMachineStatus" class="text-muted" style="font-size:12px;" data-i18n="ui.connecting">Đang kết nối</span><button class="btn btn-stop btn-sm ms-2" onclick="stopMachine()"><i class="bi bi-stop-circle"></i> <span data-i18n="btn.stop">Dừng</span></button><button class="btn btn-warning btn-sm ms-1" onclick="isolateMachine()" title="Chặn toàn bộ kết nối ra ngoài" data-i18n-title="tt.isolate"><i class="bi bi-shield-lock"></i> <span data-i18n="btn.isolate">Cô lập</span></button><button class="btn btn-success btn-sm ms-1" onclick="unisolateMachine()" title="Gỡ cô lập, khôi phục mạng" data-i18n-title="tt.unisolate" style="display:none;" id="btnUnisolate"><i class="bi bi-shield-check"></i> <span data-i18n="btn.unisolate">Bỏ cô lập</span></button><button class="btn btn-del btn-sm ms-1" onclick="deleteMachine()"><i class="bi bi-trash3"></i> <span data-i18n="btn.delete">Xóa</span></button></div></div>
                 <div class="card-body p-2">
-                    <div class="row text-center mb-2"><div class="col-3"><small class="text-muted">Sự kiện</small><br><strong id="detailStatEvents">0</strong></div><div class="col-3"><small class="text-muted">FIM</small><br><strong id="detailStatFim">0</strong></div><div class="col-3"><small class="text-muted">Phản hồi</small><br><strong id="detailStatResponses">0</strong></div><div class="col-3"><small class="text-muted">IP</small><br><strong id="detailMachineIP">-</strong></div></div>
+                    <div class="row text-center mb-2"><div class="col-3"><small class="text-muted" data-i18n="overview.events">Sự kiện</small><br><strong id="detailStatEvents">0</strong></div><div class="col-3"><small class="text-muted">FIM</small><br><strong id="detailStatFim">0</strong></div><div class="col-3"><small class="text-muted" data-i18n="nav.response">Phản hồi</small><br><strong id="detailStatResponses">0</strong></div><div class="col-3"><small class="text-muted">IP</small><br><strong id="detailMachineIP">-</strong></div></div>
                     <div id="detailUserInfo" class="text-center" style="display:none;background:rgba(0,212,170,0.08);border-radius:6px;padding:6px;margin-top:4px;"><span style="font-size:11px;">👤 <strong id="detailUserName" style="color:#00d4aa;">-</strong></span><span style="font-size:10px;color:#8892a4;margin-left:8px;">🪪 <span id="detailUserEmpId">-</span></span><span style="font-size:10px;color:#8892a4;margin-left:8px;">📧 <span id="detailUserEmail">-</span></span></div>
                     <div id="detailNotes" style="margin-top:4px;font-size:11px;color:#8892a4;display:none;"><i class="bi bi-journal-text"></i> <span id="detailNotesText"></span></div>
-                    <div id="detailNotesEdit" style="display:none;margin-top:4px;"><textarea class="search-box" id="detailNotesInput" style="width:100%;height:40px;font-size:11px;" placeholder="Nhap ghi chu..."></textarea><button class="btn btn-sm btn-success py-0 px-1 mt-1" onclick="saveMachineNotes()">Luu</button><button class="btn btn-sm btn-outline-secondary py-0 px-1 mt-1 ms-1" onclick="cancelEditNotes()">Huy</button></div>
+                    <div id="detailNotesEdit" style="display:none;margin-top:4px;"><textarea class="search-box" id="detailNotesInput" style="width:100%;height:40px;font-size:11px;" placeholder="Nhập ghi chú..." data-i18n-placeholder="ph.notes"></textarea><button class="btn btn-sm btn-success py-0 px-1 mt-1" onclick="saveMachineNotes()"><span data-i18n="btn.save">Lưu</span></button><button class="btn btn-sm btn-outline-secondary py-0 px-1 mt-1 ms-1" onclick="cancelEditNotes()"><span data-i18n="btn.cancel">Hủy</span></button></div>
                 </div>
             </div>
-            <div class="mb-2"><span class="panel-tab active" data-tab="events">Nhật ký sự kiện</span><span class="panel-tab" data-tab="fim">FIM</span><span class="panel-tab" data-tab="response">Phản hồi</span><span class="panel-tab" data-tab="config"><i class="bi bi-pc-display-horizontal"></i> Cấu hình</span><span class="panel-tab" data-tab="control"><i class="bi bi-sliders"></i> Kiểm soát</span><span class="panel-tab" data-tab="command"><i class="bi bi-terminal"></i> SSH từ xa</span></div>
-            <div class="tab-content" id="tabEvents"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> Nhật ký sự kiện Windows</span><div><input class="search-box" id="eventSearch" placeholder="Tìm kiếm..." style="width:200px;"></div></div><div class="card-body p-0" id="eventList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-            <div class="tab-content" id="tabFim" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-folder2-open"></i> File Integrity Monitoring</span><button class="btn btn-sm export-btn" onclick="exportToJSON('fim',selectedMachine,'danh_sach_fim')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="fimList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-            <div class="tab-content" id="tabResponse" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-arrow-return-right"></i> Kết quả Active Response</div><div class="card-body p-0" id="responseList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3">Chưa có kết quả</div></div></div></div>
-            <div class="tab-content" id="tabConfig" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-pc-display-horizontal"></i> Cấu hình phần cứng máy trạm</div><div class="card-body" id="configContent"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải cấu hình...</div></div></div></div>
+            <div class="mb-2"><span class="panel-tab active" data-tab="events" data-i18n="nav.events">Nhật ký sự kiện</span><span class="panel-tab" data-tab="fim">FIM</span><span class="panel-tab" data-tab="response" data-i18n="nav.response">Phản hồi</span><span class="panel-tab" data-tab="config"><i class="bi bi-pc-display-horizontal"></i> Cấu hình</span><span class="panel-tab" data-tab="control"><i class="bi bi-sliders"></i> Kiểm soát</span><span class="panel-tab" data-tab="command"><i class="bi bi-terminal"></i> SSH từ xa</span></div>
+            <div class="tab-content" id="tabEvents"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> <span data-i18n="ui.windowsEventLog">Nhật ký sự kiện Windows</span></span><div><input class="search-box" id="eventSearch" placeholder="Tìm kiếm..." data-i18n-placeholder="ph.search" style="width:200px;"></div></div><div class="card-body p-0" id="eventList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+            <div class="tab-content" id="tabFim" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-folder2-open"></i> File Integrity Monitoring</span><button class="btn btn-sm export-btn" onclick="exportToJSON('fim',selectedMachine,'danh_sach_fim')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="fimList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+            <div class="tab-content" id="tabResponse" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-arrow-return-right"></i> <span data-i18n="ui.activeResponseResults">Kết quả Active Response</span></div><div class="card-body p-0" id="responseList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.noResults">Chưa có kết quả</div></div></div></div>
+            <div class="tab-content" id="tabConfig" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="ui.machineHwConfig">Cấu hình phần cứng máy trạm</span></div><div class="card-body" id="configContent"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loadingConfig">Đang tải cấu hình...</span></div></div></div></div>
             
 
 
-<div class="tab-content" id="tabCommand" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-terminal"></i> SSH Remote Shell (gửi lệnh đến Agent)</div><div class="card-body"><div class="row g-2 mb-2"><div class="col-md-3"><select class="form-select form-select-sm" id="cmdAction" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="ps">PowerShell</option><option value="cmd">CMD</option><option value="script">Script (.ps1)</option><option value="kill_process">Kill Process</option><option value="service">Service Control</option></select></div><div class="col-md-9"><input class="search-box" id="cmdInput" placeholder="Nhập lệnh và nhấn Enter..." style="width:100%;font-family:'Consolas',monospace;" onkeydown="if(event.key==='Enter')sendCommand()"></div></div><div class="terminal-box" id="cmdOutput">GIAM-SAT Remote Shell v1.0<br>================================<br>Chọn máy trạm bên trái → gõ lệnh → Enter<br>Kết quả sẽ hiển thị bên dưới sau 2-5 giây<br>================================<br></div></div></div></div>
+<div class="tab-content" id="tabCommand" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-terminal"></i> <span data-i18n="ui.sshRemoteShell">SSH Remote Shell (gửi lệnh đến Agent)</span></div><div class="card-body"><div class="row g-2 mb-2"><div class="col-md-3"><select class="form-select form-select-sm" id="cmdAction" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="ps">PowerShell</option><option value="cmd">CMD</option><option value="script">Script (.ps1)</option><option value="kill_process">Kill Process</option><option value="service">Service Control</option></select></div><div class="col-md-9"><input class="search-box" id="cmdInput" placeholder="Nhập lệnh và nhấn Enter..." data-i18n-placeholder="ph.enterCommand" style="width:100%;font-family:'Consolas',monospace;" onkeydown="if(event.key==='Enter')sendCommand()"></div></div><div class="terminal-box" id="cmdOutput">GIAM-SAT Remote Shell v1.0<br>================================<br>Chọn máy trạm bên trái → gõ lệnh → Enter<br>Kết quả sẽ hiển thị bên dưới sau 2-5 giây<br>================================<br></div></div></div></div>
         </div>
 
-        <div id="viewEvents" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> Tất cả sự kiện</span><div><button class="btn btn-sm export-btn me-1" onclick="exportToJSON('events','all','danh_sach_su_kien')"><i class="bi bi-download"></i> JSON</button><input class="search-box" id="allEventSearch" placeholder="Tìm kiếm..." style="width:200px;"></div></div><div class="card-body p-0" id="allEventList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewFim" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-folder2-open"></i> File Integrity Monitoring</span><button class="btn btn-sm export-btn" onclick="exportToJSON('fim','all','danh_sach_fim')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="allFimList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewSyslog" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-router"></i> Syslog từ Router/Thiết bị mạng</span><button class="btn btn-sm export-btn" onclick="exportToJSON('syslog','all','danh_sach_syslog')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0"><div class="row g-2 p-2" style="background:#0a0f14;border-bottom:1px solid var(--border-color);"><div class="col-md-2"><select class="form-select form-select-sm" id="syslogFacility" onchange="loadSyslog()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">All Facilities</option><option value="kern">kern</option><option value="user">user</option><option value="mail">mail</option><option value="daemon">daemon</option><option value="auth">auth</option><option value="syslog">syslog</option><option value="lpr">lpr</option><option value="news">news</option><option value="uucp">uucp</option><option value="cron">cron</option><option value="authpriv">authpriv</option><option value="ftp">ftp</option><option value="local0">local0</option><option value="local1">local1</option><option value="local2">local2</option><option value="local3">local3</option><option value="local4">local4</option><option value="local5">local5</option><option value="local6">local6</option><option value="local7">local7</option></select></div><div class="col-md-2"><select class="form-select form-select-sm" id="syslogSeverity" onchange="loadSyslog()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">All Severities</option><option value="emergency">emergency</option><option value="alert">alert</option><option value="critical">critical</option><option value="error">error</option><option value="warning">warning</option><option value="notice">notice</option><option value="info">info</option><option value="debug">debug</option></select></div><div class="col-md-3"><input class="search-box" id="syslogSourceIp" placeholder="Source IP..." onkeyup="loadSyslog()" style="width:100%;font-size:11px;"></div><div class="col-md-3"><input class="search-box" id="syslogSearch" placeholder="Tìm kiếm nội dung..." onkeyup="loadSyslog()" style="width:100%;font-size:11px;"></div><div class="col-md-2"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('syslogFacility').value='';document.getElementById('syslogSeverity').value='';document.getElementById('syslogSourceIp').value='';document.getElementById('syslogSearch').value='';loadSyslog();" style="font-size:10px;width:100%;">🔄 Xóa lọc</button></div></div><div id="syslogList" style="max-height:550px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div></div>
-        <div id="viewResponse" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-arrow-return-right"></i> Active Response Results</span><button class="btn btn-sm export-btn" onclick="exportToJSON('responses','all','danh_sach_response')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="allResponseList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
+        <div id="viewEvents" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> <span data-i18n="syslog.allEvents">Tất cả sự kiện</span></span><div><button class="btn btn-sm export-btn me-1" onclick="exportToJSON('events','all','danh_sach_su_kien')"><i class="bi bi-download"></i> JSON</button><input class="search-box" id="allEventSearch" placeholder="Tìm kiếm..." data-i18n-placeholder="ph.search" style="width:200px;"></div></div><div class="card-body p-0" id="allEventList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewFim" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-folder2-open"></i> File Integrity Monitoring</span><button class="btn btn-sm export-btn" onclick="exportToJSON('fim','all','danh_sach_fim')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="allFimList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewSyslog" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-router"></i> <span data-i18n="syslog.title">Syslog từ Router/Thiết bị mạng</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('syslog','all','danh_sach_syslog')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0"><div class="row g-2 p-2" style="background:#0a0f14;border-bottom:1px solid var(--border-color);"><div class="col-md-2"><select class="form-select form-select-sm" id="syslogFacility" onchange="loadSyslog()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">All Facilities</option><option value="kern">kern</option><option value="user">user</option><option value="mail">mail</option><option value="daemon">daemon</option><option value="auth">auth</option><option value="syslog">syslog</option><option value="lpr">lpr</option><option value="news">news</option><option value="uucp">uucp</option><option value="cron">cron</option><option value="authpriv">authpriv</option><option value="ftp">ftp</option><option value="local0">local0</option><option value="local1">local1</option><option value="local2">local2</option><option value="local3">local3</option><option value="local4">local4</option><option value="local5">local5</option><option value="local6">local6</option><option value="local7">local7</option></select></div><div class="col-md-2"><select class="form-select form-select-sm" id="syslogSeverity" onchange="loadSyslog()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">All Severities</option><option value="emergency">emergency</option><option value="alert">alert</option><option value="critical">critical</option><option value="error">error</option><option value="warning">warning</option><option value="notice">notice</option><option value="info">info</option><option value="debug">debug</option></select></div><div class="col-md-3"><input class="search-box" id="syslogSourceIp" placeholder="Source IP..." onkeyup="loadSyslog()" style="width:100%;font-size:11px;"></div><div class="col-md-3"><input class="search-box" id="syslogSearch" placeholder="Tìm kiếm nội dung..." data-i18n-placeholder="ph.searchContent" onkeyup="loadSyslog()" style="width:100%;font-size:11px;"></div><div class="col-md-2"><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('syslogFacility').value='';document.getElementById('syslogSeverity').value='';document.getElementById('syslogSourceIp').value='';document.getElementById('syslogSearch').value='';loadSyslog();" style="font-size:10px;width:100%;" data-i18n="ui.clearFilter">🔄 Xóa lọc</button></div></div><div id="syslogList" style="max-height:550px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div></div>
+        <div id="viewResponse" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-arrow-return-right"></i> <span data-i18n="ui.activeResponseResults">Active Response Results</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('responses','all','danh_sach_response')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="allResponseList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
 
-        <div id="viewNetwork" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-diagram-3"></i> Network Traffic - Lưu lượng mạng</span><button class="btn btn-sm export-btn" onclick="exportToJSON('network','all','danh_sach_network')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="networkList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewInspection" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-search"></i> Deep Packet Inspection</span><button class="btn btn-sm export-btn" onclick="exportToJSON('inspection','all','danh_sach_dpi')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="inspectionList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewThreats" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-shield-exclamation"></i> Cảnh báo nguy hiểm</span><button class="btn btn-sm export-btn" onclick="exportToJSON('threats','all','danh_sach_threats')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="threatList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewVulns" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-bug"></i> Lỗ hổng bảo mật (CVE)</span><button class="btn btn-sm export-btn" onclick="exportToJSON('vulns','all','danh_sach_vulns')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="vulnList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-        <div id="viewSca" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-clipboard-check"></i> SCA - Đánh giá cấu hình bảo mật (CIS)</span><button class="btn btn-sm export-btn" onclick="exportToJSON('sca','all','danh_sach_sca')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="scaList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
+        <div id="viewNetwork" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-diagram-3"></i> <span data-i18n="network.title">Network Traffic - Lưu lượng mạng</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('network','all','danh_sach_network')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="networkList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewInspection" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-search"></i> Deep Packet Inspection</span><button class="btn btn-sm export-btn" onclick="exportToJSON('inspection','all','danh_sach_dpi')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="inspectionList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewThreats" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-shield-exclamation"></i> <span data-i18n="threats.title">Cảnh báo nguy hiểm</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('threats','all','danh_sach_threats')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="threatList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewVulns" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-bug"></i> <span data-i18n="vulns.title">Lỗ hổng bảo mật (CVE)</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('vulns','all','danh_sach_vulns')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="vulnList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+        <div id="viewSca" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-clipboard-check"></i> <span data-i18n="sca.title">SCA - Đánh giá cấu hình bảo mật (CIS)</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('sca','all','danh_sach_sca')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="scaList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
         <div id="viewAgentless" style="display:none;">
-            <div class="mb-2"><span class="panel-tab active" data-tab-ag="monitor">Kết quả giám sát</span><span class="panel-tab" data-tab-ag="manage">Quản lý thiết bị</span></div>
-            <div class="tab-ag-content" id="tabAgMonitor"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-wifi"></i> Giám sát không cài agent (Ping/SNMP/SSH)</span><div><button class="btn btn-sm btn-warning me-1" onclick="clearAgentlessLogs()"><i class="bi bi-eraser"></i> Xóa</button><button class="btn btn-sm export-btn" onclick="exportToJSON('agentless','all','danh_sach_agentless')"><i class="bi bi-download"></i> JSON</button></div></div><div class="card-body p-0" id="agentlessList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
-            <div class="tab-ag-content" id="tabAgManage" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-gear"></i> Quản lý thiết bị Agentless</div><div class="card-body p-0" id="agentlessDeviceMgmt" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
+            <div class="mb-2"><span class="panel-tab active" data-tab-ag="monitor" data-i18n="agentless.monitorResults">Kết quả giám sát</span><span class="panel-tab" data-tab-ag="manage" data-i18n="agentless.manageDevices">Quản lý thiết bị</span></div>
+            <div class="tab-ag-content" id="tabAgMonitor"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-wifi"></i> <span data-i18n="agentless.title">Giám sát không cài agent (Ping/SNMP/SSH)</span></span><div><button class="btn btn-sm btn-warning me-1" onclick="clearAgentlessLogs()"><i class="bi bi-eraser"></i> Xóa</button><button class="btn btn-sm export-btn" onclick="exportToJSON('agentless','all','danh_sach_agentless')"><i class="bi bi-download"></i> JSON</button></div></div><div class="card-body p-0" id="agentlessList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
+            <div class="tab-ag-content" id="tabAgManage" style="display:none;"><div class="card"><div class="card-header"><i class="bi bi-gear"></i> <span data-i18n="agentless.manageTitle">Quản lý thiết bị Agentless</span></div><div class="card-body p-0" id="agentlessDeviceMgmt" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
         </div>
-        <div id="viewYara" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-virus"></i> Quét YARA/Pattern - Phát hiện mã độc</span><button class="btn btn-sm export-btn" onclick="exportToJSON('yara','all','danh_sach_yara')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="yaraList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
+        <div id="viewYara" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-virus"></i> <span data-i18n="yara.title">Quét YARA/Pattern - Phát hiện mã độc</span></span><button class="btn btn-sm export-btn" onclick="exportToJSON('yara','all','danh_sach_yara')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="yaraList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
 
                 <div id="viewMessages" style="display:none;">
             <div class="row">
                 <div class="col-md-5" style="border-right:1px solid var(--border-color);">
                     <div class="card mb-2">
-                        <div class="card-header"><span><i class="bi bi-search"></i> Tìm kiếm máy trạm</span></div>
+                        <div class="card-header"><span><i class="bi bi-search"></i> <span data-i18n="msg.searchMachine">Tìm kiếm máy trạm</span></span></div>
                         <div class="card-body p-1" style="position:relative;">
-                            <input class="search-box" id="msgSearchInput" placeholder="Gõ hostname, IP, người dùng, email để tìm..." style="width:100%;" oninput="messageChat.filterMachines()" onfocus="messageChat.filterMachines()" autocomplete="off">
+                            <input class="search-box" id="msgSearchInput" placeholder="Gõ hostname, IP, người dùng, email để tìm..." data-i18n-placeholder="ph.searchMachine" style="width:100%;" oninput="messageChat.filterMachines()" onfocus="messageChat.filterMachines()" autocomplete="off">
                             <div id="msgSearchSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:1000;background:#1a2a3a;border:1px solid var(--accent);border-top:none;max-height:350px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.6);"></div>
                         </div>
                     </div>
                     <div class="card mb-2">
-                        <div class="card-header"><span><i class="bi bi-people"></i> Chọn nhóm (Nhóm agent)</span></div>
+                        <div class="card-header"><span><i class="bi bi-people"></i> <span data-i18n="msg.selectGroup">Chọn nhóm (Nhóm agent)</span></span></div>
                         <div class="card-body p-2">
                             <select class="form-select form-select-sm" id="msgGroupSelect" onchange="messageChat.onGroupChange()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
-                                <option value="">-- Không --</option>
+                                <option value="" data-i18n="opt.none">-- Không --</option>
                             </select>
                         </div>
                     </div>
                     <div class="card mb-2">
-                        <div class="card-header"><span><i class="bi bi-pc-display"></i> Chọn máy trạm</span></div>
+                        <div class="card-header"><span><i class="bi bi-pc-display"></i> <span data-i18n="msg.selectMachine">Chọn máy trạm</span></span></div>
                         <div class="card-body p-1">
                             <select class="form-select form-select-sm" id="msgMachineSelect" onchange="messageChat.onMachineSelect()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
-                                <option value="">-- Chọn máy trạm --</option>
+                                <option value="" data-i18n="opt.selectMachine">-- Chọn máy trạm --</option>
                             </select>
                         </div>
                     </div>
                     <div class="card mb-2">
-                        <div class="card-header"><span><i class="bi bi-check-circle"></i> Máy đã chọn</span></div>
+                        <div class="card-header"><span><i class="bi bi-check-circle"></i> <span data-i18n="msg.selectedMachines">Máy đã chọn</span></span></div>
                         <div class="card-body p-2" id="msgSelectedMachine" style="min-height:40px;">
-                            <span class="text-muted">Chưa chọn máy trạm nào</span>
+                            <span class="text-muted" data-i18n="msg.noMachineSelected">Chưa chọn máy trạm nào</span>
                         </div>
                     </div>
                     <div id="chat-machines-tags" class="px-2 mb-2" style="font-size:11px;color:#888;min-height:20px;">
-                        <span class="text-muted">Chọn máy trạm hoặc nhóm bên trên</span>
+                        <span class="text-muted" data-i18n="msg.selectMachineOrGroup">Chọn máy trạm hoặc nhóm bên trên</span>
                     </div>
                 </div>
                 <div class="col-md-7">
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <div class="d-flex justify-content-between align-items-center" style="width:100%;">
-                                <span><i class="bi bi-chat-dots"></i> Tin nhắn <span id="msgChatTarget" class="text-muted" style="font-size:11px;"></span></span>
+                                <span><i class="bi bi-chat-dots"></i> <span data-i18n="nav.messages">Tin nhắn</span> <span id="msgChatTarget" class="text-muted" style="font-size:11px;"></span></span>
                                 <div>
                                     <span id="msgChatStatus" class="text-muted me-2" style="font-size:10px;"></span>
-                                    <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="messageChat.clearCurrentChat()" title="Xóa toàn bộ cuộc trò chuyện" style="font-size:10px;">🗑 Xóa hết</button>
+                                    <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="messageChat.clearCurrentChat()" title="Xóa toàn bộ cuộc trò chuyện" data-i18n-title="tt.clearConversation" style="font-size:10px;">🗑 Xóa hết</button>
                                 </div>
                             </div>
                         </div>
                         <div class="card-body" style="max-height:550px;">
                             <div id="chat-messages" style="max-height:350px;overflow-y:auto;" class="mb-2">
-                                <div class="text-center text-muted py-3">Chọn máy trạm hoặc nhóm bên trái để xem lịch sử</div>
+                                <div class="text-center text-muted py-3" data-i18n="msg.selectLeftToViewHistory">Chọn máy trạm hoặc nhóm bên trái để xem lịch sử</div>
                             </div>
                             <div class="input-group input-group-sm">
-                                <input class="search-box" id="chat-input" placeholder="Nhập tin nhắn và nhấn Enter..." style="flex:1;" onkeydown="if(event.key==='Enter')messageChat.sendMessage()">
-                                <button class="btn btn-success btn-sm" onclick="messageChat.sendMessage()"><i class="bi bi-send-fill"></i> Gui</button>
+                                <input class="search-box" id="chat-input" placeholder="Nhập tin nhắn và nhấn Enter..." data-i18n-placeholder="ph.typeMessage" style="flex:1;" onkeydown="if(event.key==='Enter')messageChat.sendMessage()">
+                                <button class="btn btn-success btn-sm" onclick="messageChat.sendMessage()"><i class="bi bi-send-fill"></i> <span data-i18n="btn.send">Gửi</span></button>
                             </div>
                         </div>
                     </div>
@@ -339,65 +339,65 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             </div>
         </div>
 
-<div id="viewGroups" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-people"></i> Quản lý nhóm máy trạm</span><button class="btn btn-sm export-btn" onclick="loadGroups()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button></div><div class="card-body p-0" id="groupsContent" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div></div>
+<div id="viewGroups" style="display:none;"><div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-people"></i> <span data-i18n="groups.manage">Quản lý nhóm máy trạm</span></span><button class="btn btn-sm export-btn" onclick="loadGroups()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div><div class="card-body p-0" id="groupsContent" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div></div>
 
         <div id="viewAgentUpdate" style="display:none;">
-            <div class="mb-2"><span class="panel-tab active" data-tab-au="status">📋 Trạng thái Agent</span><span class="panel-tab" data-tab-au="log">📜 Nhật ký Update</span></div>
+            <div class="mb-2"><span class="panel-tab active" data-tab-au="status" data-i18n="au.statusTab">📋 Trạng thái Agent</span><span class="panel-tab" data-tab-au="log" data-i18n="au.logTab">📜 Nhật ký Update</span></div>
             <div class="tab-au-content" id="tabAuStatus">
                 <div class="row g-2 mb-3">
                     <div class="col-md-12">
-                        <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-info-circle"></i> Phiên bản Agent hiện tại trên Server</span><div><span id="serverAgentVersion" style="color:var(--accent);font-weight:bold;font-size:16px;">...</span><button class="btn btn-sm export-btn ms-2" onclick="loadAgentUpdateView()"><i class="bi bi-arrow-clockwise"></i></button></div></div></div>
+                        <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-info-circle"></i> <span data-i18n="au.serverVersion">Phiên bản Agent hiện tại trên Server</span></span><div><span id="serverAgentVersion" style="color:var(--accent);font-weight:bold;font-size:16px;">...</span><button class="btn btn-sm export-btn ms-2" onclick="loadAgentUpdateView()"><i class="bi bi-arrow-clockwise"></i></button></div></div></div>
                     </div>
                 </div>
-                <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display"></i> Máy trạm theo nhóm</span><div><button class="btn btn-sm btn-danger me-1" onclick="resetUserInfoAll()" title="Xoa thong tin nguoi dung, agent se hien lai bang nhap thong tin"><i class="bi bi-person-x"></i> Reset User Info All</button><button class="btn btn-sm btn-warning me-1" onclick="pushUpdateToAll()"><i class="bi bi-cloud-upload"></i> Push Update Tất Cả</button></div></div>
-                    <div class="card-body p-0" id="agentUpdateGroups" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div>
+                <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display"></i> <span data-i18n="au.machinesByGroup">Máy trạm theo nhóm</span></span><div><button class="btn btn-sm btn-danger me-1" onclick="resetUserInfoAll()" title="Xóa thông tin người dùng, agent sẽ hiện lại bằng nhập thông tin" data-i18n-title="tt.resetUserInfo"><i class="bi bi-person-x"></i> Reset User Info All</button><button class="btn btn-sm btn-warning me-1" onclick="pushUpdateToAll()"><i class="bi bi-cloud-upload"></i> <span data-i18n="au.pushAll">Push Update Tất cả</span></button></div></div>
+                    <div class="card-body p-0" id="agentUpdateGroups" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
                 </div>
             </div>
             <div class="tab-au-content" id="tabAuLog" style="display:none;">
-                <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-journal-text"></i> Nhật ký hoạt động cập nhật Agent</span><button class="btn btn-sm export-btn" onclick="loadAgentUpdateLogs()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button></div>
-                    <div class="card-body p-0" id="agentUpdateLogList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div>
+                <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-journal-text"></i> <span data-i18n="au.logTitle">Nhật ký hoạt động cập nhật Agent</span></span><button class="btn btn-sm export-btn" onclick="loadAgentUpdateLogs()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
+                    <div class="card-body p-0" id="agentUpdateLogList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
                 </div>
             </div>
         </div>
 
         <!-- v2.5.1: FIM Baseline Redesign - Machine list with risk counts, expandable detail table -->
         <div id="viewFimBaseline" style="display:none;">
-            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-shield-check"></i> FIM Baseline - File Integrity Monitoring</span><button class="btn btn-sm export-btn" onclick="loadFimBaselineMachines()"><i class="bi bi-arrow-clockwise"></i> Làm mới</button></div></div>
+            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-shield-check"></i> <span data-i18n="fimbaseline.title">FIM Baseline - File Integrity Monitoring</span></span><button class="btn btn-sm export-btn" onclick="loadFimBaselineMachines()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.refresh">Làm mới</span></button></div></div>
             <!-- Machine Summary Rows -->
             <div class="card mb-2" id="fimBaselineMachineList" style="max-height:400px;overflow-y:auto;">
-                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải danh sách máy trạm...</div>
+                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loadingMachineList">Đang tải danh sách máy trạm...</span></div>
             </div>
             <!-- Expanded Detail Panel (hidden until click) -->
             <div id="fimBaselineDetailPanel" style="display:none;">
-                <div class="card"><div class="card-header d-flex justify-content-between align-items-center" style="background:#1a2a3a;"><span id="fimBaselineDetailTitle"><i class="bi bi-zoom-in"></i> Chi tiết FIM</span><button class="btn btn-sm export-btn" onclick="document.getElementById('fimBaselineDetailPanel').style.display='none';"><i class="bi bi-x-lg"></i> Đóng</button></div><div class="card-body p-0" id="fimBaselineContent" style="max-height:500px;overflow-y:auto;"></div></div>
+                <div class="card"><div class="card-header d-flex justify-content-between align-items-center" style="background:#1a2a3a;"><span id="fimBaselineDetailTitle"><i class="bi bi-zoom-in"></i> <span data-i18n="ui.fimDetail">Chi tiết FIM</span></span><button class="btn btn-sm export-btn" onclick="document.getElementById('fimBaselineDetailPanel').style.display='none';"><i class="bi bi-x-lg"></i> <span data-i18n="btn.close">Đóng</span></button></div><div class="card-body p-0" id="fimBaselineContent" style="max-height:500px;overflow-y:auto;"></div></div>
             </div>
         </div>
 
         <div id="viewRules" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-file-earmark-code"></i> Quản lý Correlation Rules</span><div><button class="btn btn-sm btn-success me-1" onclick="deployRules()"><i class="bi bi-cloud-upload"></i> Deploy to Agents</button><button class="btn btn-sm btn-warning me-1" onclick="reloadRules()"><i class="bi bi-arrow-repeat"></i> Hot-reload</button><button class="btn btn-sm export-btn" onclick="loadRules()"><i class="bi bi-arrow-clockwise"></i></button></div></div><div class="card-body p-0" id="rulesList" style="max-height:400px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div></div></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-file-earmark-code"></i> <span data-i18n="rules.manage">Quản lý Correlation Rules</span></span><div><button class="btn btn-sm btn-success me-1" onclick="deployRules()"><i class="bi bi-cloud-upload"></i> Deploy to Agents</button><button class="btn btn-sm btn-warning me-1" onclick="reloadRules()"><i class="bi bi-arrow-repeat"></i> Hot-reload</button><button class="btn btn-sm export-btn" onclick="loadRules()"><i class="bi bi-arrow-clockwise"></i></button></div></div><div class="card-body p-0" id="rulesList" style="max-height:400px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div>
             <div class="row g-2 mb-3">
-                <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-pencil-square"></i> Tạo/Sửa Rule</div><div class="card-body"><textarea class="search-box" id="editRuleJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder="Dán JSON rule vào đây..."></textarea><div class="mt-2"><button class="btn btn-success btn-sm me-1" onclick="saveRule()"><i class="bi bi-check-lg"></i> Lưu Rule</button><button class="btn btn-sm btn-outline-info me-1" onclick="newRuleTemplate()">📋 Template</button><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('editRuleJson').value=''">Clear</button><span class="text-muted ms-2" style="font-size:10px;">Click rule bên trên để load vào editor</span></div></div></div></div>
-                <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-flask"></i> Test Rule</div><div class="card-body"><div class="row g-2"><div class="col-6"><label class="text-muted" style="font-size:11px;">Rule JSON</label><textarea class="search-box" id="testRuleJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"id":"TEST-001","name":"Test Rule","severity":"HIGH","conditions":[{"type":"windows_event","event_id":"4625","threshold":5,"within_seconds":60}]}'></textarea></div><div class="col-6"><label class="text-muted" style="font-size:11px;">Event JSON mẫu</label><textarea class="search-box" id="testEventJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"type":"windows_event","event_id":"4625","description":"Failed logon","timestamp":"2026-01-01 12:00:00"}'></textarea></div></div><button class="btn btn-success btn-sm mt-2" onclick="testRule()"><i class="bi bi-play-fill"></i> Test Rule</button><div id="testRuleResult" class="mt-2" style="font-size:12px;"></div></div></div></div>
+                <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-pencil-square"></i> <span data-i18n="rules.editRule">Tạo/Sửa Rule</span></div><div class="card-body"><textarea class="search-box" id="editRuleJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder="Dán JSON rule vào đây..." data-i18n-placeholder="ph.pasteRuleJson"></textarea><div class="mt-2"><button class="btn btn-success btn-sm me-1" onclick="saveRule()"><i class="bi bi-check-lg"></i> <span data-i18n="rules.save">Lưu Rule</span></button><button class="btn btn-sm btn-outline-info me-1" onclick="newRuleTemplate()">📋 Template</button><button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('editRuleJson').value=''">Clear</button><span class="text-muted ms-2" style="font-size:10px;" data-i18n="rules.clickToLoad">Click rule bên trên để load vào editor</span></div></div></div></div>
+                <div class="col-md-6"><div class="card"><div class="card-header"><i class="bi bi-flask"></i> Test Rule</div><div class="card-body"><div class="row g-2"><div class="col-6"><label class="text-muted" style="font-size:11px;">Rule JSON</label><textarea class="search-box" id="testRuleJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"id":"TEST-001","name":"Test Rule","severity":"HIGH","conditions":[{"type":"windows_event","event_id":"4625","threshold":5,"within_seconds":60}]}'></textarea></div><div class="col-6"><label class="text-muted" style="font-size:11px;" data-i18n="rules.sampleEventJson">Event JSON mẫu</label><textarea class="search-box" id="testEventJson" style="width:100%;height:150px;font-family:monospace;font-size:11px;" placeholder='{"type":"windows_event","event_id":"4625","description":"Failed logon","timestamp":"2026-01-01 12:00:00"}'></textarea></div></div><button class="btn btn-success btn-sm mt-2" onclick="testRule()"><i class="bi bi-play-fill"></i> Test Rule</button><div id="testRuleResult" class="mt-2" style="font-size:12px;"></div></div></div></div>
             </div>
         </div>
 
         <div id="viewAssistant" style="display:none;">
-            <div class="card mb-3"><div class="card-header"><i class="bi bi-robot"></i> Agent Assistant - Trợ lý AI bảo mật</div>
+            <div class="card mb-3"><div class="card-header"><i class="bi bi-robot"></i> <span data-i18n="assist.title">Agent Assistant - Trợ lý AI bảo mật</span></div>
                 <div class="card-body">
                     <div class="row g-2 mb-3">
                         <div class="col-md-3">
-                            <label class="text-muted" style="font-size:11px;">Hãng API</label>
+                            <label class="text-muted" style="font-size:11px;" data-i18n="assist.provider">Hãng API</label>
                             <select class="form-select form-select-sm" id="assistProvider" onchange="updateAssistModel()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
                                 <option value="deepseek">DeepSeek</option><option value="openai">OpenAI (ChatGPT)</option><option value="gemini">Google Gemini</option><option value="groq">Groq (Llama/Mixtral)</option><option value="xai">xAI (Grok)</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="text-muted" style="font-size:11px;">Mô hình</label>
+                            <label class="text-muted" style="font-size:11px;" data-i18n="assist.model">Mô hình</label>
                             <select class="form-select form-select-sm" id="assistModel" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"></select>
                         </div>
                         <div class="col-md-3">
-                            <label class="text-muted" style="font-size:11px;">Prompt / Yêu cầu</label>
-                            <input class="search-box" id="assistCustomPrompt" placeholder="VD: Phân tích toàn bộ log, tìm dấu hiệu bất thường..." style="width:100%;">
+                            <label class="text-muted" style="font-size:11px;" data-i18n="assist.prompt">Prompt / Yêu cầu</label>
+                            <input class="search-box" id="assistCustomPrompt" placeholder="VD: Phân tích toàn bộ log, tìm dấu hiệu bất thường..." data-i18n-placeholder="ph.assistPrompt" style="width:100%;">
                         </div>
                         <div class="col-md-3">
                             <label class="text-muted" style="font-size:11px;">API Key</label>
@@ -407,9 +407,9 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
 
                     <div class="row g-2 mb-3">
                         <div class="col-md-3">
-                            <label class="text-muted" style="font-size:11px;"><i class="bi bi-funnel"></i> Chọn loại log muốn phân tích</label>
+                            <label class="text-muted" style="font-size:11px;"><i class="bi bi-funnel"></i> <span data-i18n="assist.logTypes">Chọn loại log muốn phân tích</span></label>
                             <div style="background:var(--bg-dark);border:1px solid var(--border-color);border-radius:6px;padding:8px;max-height:120px;overflow-y:auto;">
-                                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="assistLogType_all" checked onchange="toggleAllLogTypes(this)"><label class="form-check-label text-muted" style="font-size:11px;">Tất cả</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" id="assistLogType_all" checked onchange="toggleAllLogTypes(this)"><label class="form-check-label text-muted" style="font-size:11px;" data-i18n="assist.all">Tất cả</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="events" checked><label class="form-check-label text-muted" style="font-size:11px;">Events</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="fim" checked><label class="form-check-label text-muted" style="font-size:11px;">FIM</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="network"><label class="form-check-label text-muted" style="font-size:11px;">Network</label></div>
@@ -420,91 +420,91 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="inspection"><label class="form-check-label text-muted" style="font-size:11px;">DPI</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="agentless"><label class="form-check-label text-muted" style="font-size:11px;">Agentless</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="fimbaseline"><label class="form-check-label text-muted" style="font-size:11px;">FIM Baseline</label></div>
-                                <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="attackoverview"><label class="form-check-label text-muted" style="font-size:11px;">Tổng quan tấn công</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="attackoverview"><label class="form-check-label text-muted" style="font-size:11px;" data-i18n="nav.attack">Tổng quan tấn công</label></div>
                                 <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="sysmon" checked><label class="form-check-label text-muted" style="font-size:11px;">Sysmon</label></div>
-                                <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="memory" checked><label class="form-check-label text-muted" style="font-size:11px;">Bộ nhớ</label></div>
+                                <div class="form-check form-check-inline"><input class="form-check-input assistLogChk" type="checkbox" value="memory" checked><label class="form-check-label text-muted" style="font-size:11px;" data-i18n="nav.memory">Bộ nhớ</label></div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="text-muted" style="font-size:11px;">Phạm vi máy</label>
-                            <select class="form-select form-select-sm" id="assistScope" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="all">Toàn bộ hệ thống</option></select>
+                            <label class="text-muted" style="font-size:11px;" data-i18n="assist.scope">Phạm vi máy</label>
+                            <select class="form-select form-select-sm" id="assistScope" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="all" data-i18n="assist.allSystem">Toàn bộ hệ thống</option></select>
                         </div>
                         <div class="col-md-6 d-flex align-items-end">
-                            <button class="btn btn-success btn-sm me-2" onclick="runAssistant()"><i class="bi bi-play-fill"></i> Gửi cho AI phân tích</button>
-                            <input type="file" id="assistFileInput" accept=".json,.txt" style="display:none;" onchange="document.getElementById('assistFileName').textContent=this.files[0]?this.files[0].name:'';showToast('📎 Đã chọn: '+(this.files[0]?this.files[0].name:''))">
-                            <button class="btn btn-sm btn-outline-warning me-2" onclick="document.getElementById('assistFileInput').click()"><i class="bi bi-paperclip"></i> <span id="assistFileName">Đính kèm file</span></button>
-                            <button class="btn btn-sm export-btn me-2" onclick="downloadAssistContextFile()"><i class="bi bi-file-earmark-arrow-down"></i> Xuất JSON</button>
-                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="downloadAssistContextFile(true)"><i class="bi bi-file-earmark-text"></i> Xuất .txt</button>
+                            <button class="btn btn-success btn-sm me-2" onclick="runAssistant()"><i class="bi bi-play-fill"></i> <span data-i18n="assist.run">Gửi cho AI phân tích</span></button>
+                            <input type="file" id="assistFileInput" accept=".json,.txt" style="display:none;" onchange="document.getElementById('assistFileName').textContent=this.files[0]?this.files[0].name:'';showToast(t('ai.fileSelected',[this.files[0]?this.files[0].name:'']))">
+                            <button class="btn btn-sm btn-outline-warning me-2" onclick="document.getElementById('assistFileInput').click()"><i class="bi bi-paperclip"></i> <span id="assistFileName" data-i18n="btn.attachFile">Đính kèm file</span></button>
+                            <button class="btn btn-sm export-btn me-2" onclick="downloadAssistContextFile()"><i class="bi bi-file-earmark-arrow-down"></i> <span data-i18n="assist.exportJson">Xuất JSON</span></button>
+                            <button class="btn btn-sm btn-outline-secondary me-1" onclick="downloadAssistContextFile(true)"><i class="bi bi-file-earmark-text"></i> <span data-i18n="assist.exportTxt">Xuất .txt</span></button>
                             <button class="btn btn-sm btn-outline-info" onclick="autoFetchAndExportAssistContext()"><i class="bi bi-magic"></i> Auto</button>
                         </div>
                     </div>
 
-                    <div id="assistLoading" style="display:none;" class="text-center py-3"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2 text-muted">Đang thu thập dữ liệu log và gửi đến AI... Vui lòng đợi (10-30 giây)</div></div>
-                    <div id="assistResult" style="display:none;"><div class="card" style="background:#0a1a1a;border-color:var(--accent);"><div class="card-header d-flex justify-content-between align-items-center" style="background:rgba(0,212,170,0.1);border-color:var(--accent);"><span style="color:var(--accent);"><i class="bi bi-chat-dots"></i> Kết quả phân tích</span><div><small class="text-muted me-2" id="assistContextSize"></small><button class="btn btn-sm btn-outline-success py-0" onclick="document.getElementById('assistResult').style.display='none'"><i class="bi bi-x"></i></button></div></div><div class="card-body" id="assistResponse" style="font-size:13px;line-height:1.6;color:#d0e8d8;max-height:600px;overflow-y:auto;white-space:pre-wrap;"></div></div></div>
+                    <div id="assistLoading" style="display:none;" class="text-center py-3"><div class="spinner-border text-success" role="status"><span class="visually-hidden">Loading...</span></div><div class="mt-2 text-muted" data-i18n="assist.collecting">Đang thu thập dữ liệu log và gửi đến AI... Vui lòng đợi (10-30 giây)</div></div>
+                    <div id="assistResult" style="display:none;"><div class="card" style="background:#0a1a1a;border-color:var(--accent);"><div class="card-header d-flex justify-content-between align-items-center" style="background:rgba(0,212,170,0.1);border-color:var(--accent);"><span style="color:var(--accent);"><i class="bi bi-chat-dots"></i> <span data-i18n="assist.result">Kết quả phân tích</span></span><div><small class="text-muted me-2" id="assistContextSize"></small><button class="btn btn-sm btn-outline-success py-0" onclick="document.getElementById('assistResult').style.display='none'"><i class="bi bi-x"></i></button></div></div><div class="card-body" id="assistResponse" style="font-size:13px;line-height:1.6;color:#d0e8d8;max-height:600px;overflow-y:auto;white-space:pre-wrap;"></div></div></div>
                     <div id="assistError" style="display:none;" class="alert alert-danger py-2"></div>
-                    <div class="mt-3"><small class="text-muted"><i class="bi bi-clock-history"></i> Lịch sử phân tích (trong phiên)</small><div id="assistHistory" style="max-height:200px;overflow-y:auto;"></div></div>
+                    <div class="mt-3"><small class="text-muted"><i class="bi bi-clock-history"></i> <span data-i18n="assist.history">Lịch sử phân tích (trong phiên)</span></small><div id="assistHistory" style="max-height:200px;overflow-y:auto;"></div></div>
                 </div>
             </div>
         </div>
 
         <div id="viewEmail" style="display:none;">
-            <div class="mb-2"><span class="panel-tab active" data-tab-em="compose">📧 Soạn Email</span><span class="panel-tab" data-tab-em="config">⚙ Cấu hình SMTP</span><span class="panel-tab" data-tab-em="log">📤 Mail đã gửi</span></div>
+            <div class="mb-2"><span class="panel-tab active" data-tab-em="compose" data-i18n="email.composeTab">📧 Soạn Email</span><span class="panel-tab" data-tab-em="config" data-i18n="email.configTab">⚙ Cấu hình SMTP</span><span class="panel-tab" data-tab-em="log" data-i18n="email.sentTab">📤 Mail đã gửi</span></div>
             <div class="tab-em-content" id="tabEmCompose">
                 <div class="row g-2">
                     <div class="col-md-7">
-                        <div class="card"><div class="card-header"><i class="bi bi-send"></i> Gửi Email Cảnh báo</div>
+                        <div class="card"><div class="card-header"><i class="bi bi-send"></i> <span data-i18n="email.sendAlert">Gửi Email Cảnh báo</span></div>
                             <div class="card-body">
                                 <div class="row g-2 mb-2">
-                                    <div class="col-md-8"><label class="text-muted" style="font-size:11px;">📋 Mẫu cảnh báo có sẵn</label><select class="form-select form-select-sm" id="emailTemplate" onchange="onEmailTemplateChange()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="">-- Chọn mẫu cảnh báo --</option><option value="uptime_24h">⚠️ Cảnh báo hoạt động liên tục quá 24h</option><option value="brute_force">🚨 Cảnh báo tấn công Brute Force</option><option value="malware_detected">🦠 Cảnh báo phát hiện Malware/Virus</option><option value="phishing_alert">🎣 Cảnh báo tấn công Phishing</option><option value="unauthorized_access">🔓 Cảnh báo truy cập trái phép</option><option value="vulnerability_found">🛡️ Cảnh báo lỗ hổng bảo mật</option><option value="suspicious_connection">🌐 Cảnh báo kết nối độc hại</option><option value="fim_alert">📁 Cảnh báo thay đổi file hệ thống</option><option value="general_warning">⚠️ Cảnh báo bảo mật chung</option></select></div>
-                                    <div class="col-md-4"><label class="text-muted" style="font-size:11px;">🖥 Máy trạm</label><select class="form-select form-select-sm" id="emailMachine" onchange="onEmailMachineChange()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="">-- Chọn máy --</option></select></div>
+                                    <div class="col-md-8"><label class="text-muted" style="font-size:11px;" data-i18n="email.templates">📋 Mẫu cảnh báo có sẵn</label><select class="form-select form-select-sm" id="emailTemplate" onchange="onEmailTemplateChange()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="" data-i18n="opt.selectTemplate">-- Chọn mẫu cảnh báo --</option><option value="uptime_24h" data-i18n="email.tpl.uptime24h">⚠️ Cảnh báo hoạt động liên tục quá 24h</option><option value="brute_force" data-i18n="email.tpl.bruteforce">🚨 Cảnh báo tấn công Brute Force</option><option value="malware_detected" data-i18n="email.tpl.malware">🦠 Cảnh báo phát hiện Malware/Virus</option><option value="phishing_alert" data-i18n="email.tpl.phishing">🎣 Cảnh báo tấn công Phishing</option><option value="unauthorized_access" data-i18n="email.tpl.unauthorized">🔓 Cảnh báo truy cập trái phép</option><option value="vulnerability_found" data-i18n="email.tpl.vuln">🛡️ Cảnh báo lỗ hổng bảo mật</option><option value="suspicious_connection" data-i18n="email.tpl.suspiciousConn">🌐 Cảnh báo kết nối độc hại</option><option value="fim_alert" data-i18n="email.tpl.fim">📁 Cảnh báo thay đổi file hệ thống</option><option value="general_warning" data-i18n="email.tpl.general">⚠️ Cảnh báo bảo mật chung</option></select></div>
+                                    <div class="col-md-4"><label class="text-muted" style="font-size:11px;" data-i18n="email.machineLabel">🖥 Máy trạm</label><select class="form-select form-select-sm" id="emailMachine" onchange="onEmailMachineChange()" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="" data-i18n="opt.selectMachineEmail">-- Chọn máy --</option></select></div>
                                 </div>
-                                <div class="mb-2"><label class="text-muted" style="font-size:11px;">📧 Gửi đến (email người dùng)</label><input class="search-box" id="emailTo" placeholder="Tự động từ thông tin máy trạm" style="width:100%;font-size:12px;"></div>
-                                <div class="mb-2"><label class="text-muted" style="font-size:11px;">📌 Tiêu đề</label><input class="search-box" id="emailSubject" placeholder="Tiêu đề email..." style="width:100%;"></div>
-                                <div class="mb-2"><label class="text-muted" style="font-size:11px;">📝 Nội dung</label><textarea class="search-box" id="emailBody" style="width:100%;height:250px;font-family:'Segoe UI',sans-serif;font-size:12px;resize:vertical;" placeholder="Nội dung email...&#10;&#10;Biến có sẵn: {hostname}, {user_name}, {employee_id}"></textarea></div>
-                                <button class="btn btn-success btn-sm" onclick="sendEmailAlert()"><i class="bi bi-send-fill"></i> Gửi Email</button>
+                                <div class="mb-2"><label class="text-muted" style="font-size:11px;" data-i18n="email.toLabel">📧 Gửi đến (email người dùng)</label><input class="search-box" id="emailTo" placeholder="Tự động từ thông tin máy trạm" data-i18n-placeholder="ph.autoFromMachine" style="width:100%;font-size:12px;"></div>
+                                <div class="mb-2"><label class="text-muted" style="font-size:11px;" data-i18n="email.subjectLabel">📌 Tiêu đề</label><input class="search-box" id="emailSubject" placeholder="Tiêu đề email..." data-i18n-placeholder="ph.emailSubject" style="width:100%;"></div>
+                                <div class="mb-2"><label class="text-muted" style="font-size:11px;" data-i18n="email.bodyLabel">📝 Nội dung</label><textarea class="search-box" id="emailBody" style="width:100%;height:250px;font-family:'Segoe UI',sans-serif;font-size:12px;resize:vertical;" placeholder="Nội dung email...&#10;&#10;Biến có sẵn: {hostname}, {user_name}, {employee_id}"></textarea></div>
+                                <button class="btn btn-success btn-sm" onclick="sendEmailAlert()"><i class="bi bi-send-fill"></i> <span data-i18n="email.send">Gửi Email</span></button>
                                 <span id="emailSendStatus" class="ms-2" style="font-size:12px;"></span>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-5">
-                        <div class="card"><div class="card-header"><i class="bi bi-info-circle"></i> Xem trước</div>
-                            <div class="card-body" id="emailPreview" style="font-size:12px;color:#d0e8d8;white-space:pre-wrap;min-height:300px;max-height:500px;overflow-y:auto;background:#0a1a1a;border-radius:4px;padding:12px;">Chọn mẫu cảnh báo và máy trạm để xem trước nội dung.</div>
+                        <div class="card"><div class="card-header"><i class="bi bi-info-circle"></i> <span data-i18n="email.preview">Xem trước</span></div>
+                            <div class="card-body" id="emailPreview" style="font-size:12px;color:#d0e8d8;white-space:pre-wrap;min-height:300px;max-height:500px;overflow-y:auto;background:#0a1a1a;border-radius:4px;padding:12px;" data-i18n="email.previewHint">Chọn mẫu cảnh báo và máy trạm để xem trước nội dung.</div>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="tab-em-content" id="tabEmConfig" style="display:none;">
-                <div class="card"><div class="card-header"><i class="bi bi-gear"></i> Cấu hình SMTP (Outlook)</div>
+                <div class="card"><div class="card-header"><i class="bi bi-gear"></i> <span data-i18n="email.smtpTitle">Cấu hình SMTP (Outlook)</span></div>
                     <div class="card-body">
-                        <div class="alert alert-info py-2 mb-3" style="background:#1a3a5a;color:#88ccff;font-size:12px;"><i class="bi bi-info-circle"></i> Cấu hình SMTP được lưu trong file <code>.env</code> trên server. Biến môi trường: <code>GIAMSAT_SMTP_HOST</code>, <code>GIAMSAT_SMTP_PORT</code>, <code>GIAMSAT_SMTP_USER</code>, <code>GIAMSAT_SMTP_PASS</code>.</div>
+                        <div class="alert alert-info py-2 mb-3" style="background:#1a3a5a;color:#88ccff;font-size:12px;"><i class="bi bi-info-circle"></i> <span data-i18n="email.smtpInfo1">Cấu hình SMTP được lưu trong file</span> <code>.env</code> <span data-i18n="email.smtpInfo2">trên server. Biến môi trường:</span> <code>GIAMSAT_SMTP_HOST</code>, <code>GIAMSAT_SMTP_PORT</code>, <code>GIAMSAT_SMTP_USER</code>, <code>GIAMSAT_SMTP_PASS</code>.</div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6"><label class="text-muted" style="font-size:11px;">SMTP Server</label><input class="search-box" id="smtpHost" readonly style="width:100%;background:#111;color:#666;"></div>
                             <div class="col-md-2"><label class="text-muted" style="font-size:11px;">Port</label><input class="search-box" id="smtpPort" readonly style="width:100%;background:#111;color:#666;"></div>
-                            <div class="col-md-4"><label class="text-muted" style="font-size:11px;">Tài khoản</label><input class="search-box" id="smtpUser" readonly style="width:100%;background:#111;color:#666;"></div>
+                            <div class="col-md-4"><label class="text-muted" style="font-size:11px;" data-i18n="email.smtpUser">Tài khoản</label><input class="search-box" id="smtpUser" readonly style="width:100%;background:#111;color:#666;"></div>
                         </div>
-                        <div class="mb-2"><label class="text-muted" style="font-size:11px;">Trạng thái</label> <span id="smtpStatus" class="badge bg-secondary">Đang kiểm tra...</span></div>
+                        <div class="mb-2"><label class="text-muted" style="font-size:11px;" data-i18n="ui.status">Trạng thái</label> <span id="smtpStatus" class="badge bg-secondary" data-i18n="email.checking">Đang kiểm tra...</span></div>
                         <div class="row g-2">
-                            <div class="col-md-6"><label class="text-muted" style="font-size:11px;">Email test đến</label><input class="search-box" id="emailTestTo" placeholder="email@example.com" style="width:100%;"></div>
-                            <div class="col-md-6 d-flex align-items-end"><button class="btn btn-sm btn-warning" onclick="testEmailConfig()"><i class="bi bi-envelope-check"></i> Gửi Email Test</button></div>
+                            <div class="col-md-6"><label class="text-muted" style="font-size:11px;" data-i18n="email.testTo">Email test đến</label><input class="search-box" id="emailTestTo" placeholder="email@example.com" style="width:100%;"></div>
+                            <div class="col-md-6 d-flex align-items-end"><button class="btn btn-sm btn-warning" onclick="testEmailConfig()"><i class="bi bi-envelope-check"></i> <span data-i18n="email.testSend">Gửi Email Test</span></button></div>
                         </div>
                         <div id="emailTestResult" class="mt-2" style="font-size:12px;"></div>
                     </div>
                 </div>
             </div>
             <div class="tab-em-content" id="tabEmLog" style="display:none;">
-                <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-send-check"></i> Mail đã gửi <small class="text-muted">(bản sao lưu trên server GIAM-SAT — SMTP thuần không tự tạo bản ghi trên server mail)</small></span><button class="btn btn-sm btn-danger" onclick="clearSentEmails()"><i class="bi bi-trash3"></i> Xóa tất cả</button></div>
+                <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-send-check"></i> <span data-i18n="email.sentTitle">Mail đã gửi</span> <small class="text-muted">(bản sao lưu trên server GIAM-SAT — SMTP thuần không tự tạo bản ghi trên server mail)</small></span><button class="btn btn-sm btn-danger" onclick="clearSentEmails()"><i class="bi bi-trash3"></i> <span data-i18n="email.clearAll">Xóa tất cả</span></button></div>
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height:550px;overflow-y:auto;">
                             <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
                                 <thead><tr>
-                                    <th style="width:150px;">Thời gian</th>
-                                    <th style="width:220px;">Gửi đến</th>
-                                    <th>Tiêu đề</th>
-                                    <th style="width:85px;">Trạng thái</th>
-                                    <th style="width:45px;">Nội dung</th>
-                                    <th style="width:45px;">Xóa</th>
+                                    <th style="width:150px;" data-i18n="email.timeCol">Thời gian</th>
+                                    <th style="width:220px;" data-i18n="email.toCol">Gửi đến</th>
+                                    <th data-i18n="email.subjectCol">Tiêu đề</th>
+                                    <th style="width:85px;" data-i18n="ui.status">Trạng thái</th>
+                                    <th style="width:45px;" data-i18n="ui.content">Nội dung</th>
+                                    <th style="width:45px;" data-i18n="btn.delete">Xóa</th>
                                 </tr></thead>
-                                <tbody id="sentEmailList"><tr><td colspan="6" class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</td></tr></tbody>
+                                <tbody id="sentEmailList"><tr><td colspan="6" class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -514,48 +514,48 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
 
         <div id="viewAttack" style="display:none;">
             <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-crosshair"></i> Tổng quan tấn công</span>
-                <button class="btn btn-sm export-btn" onclick="loadAttackOverview()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button>
+                <span><i class="bi bi-crosshair"></i> <span data-i18n="nav.attack">Tổng quan tấn công</span></span>
+                <button class="btn btn-sm export-btn" onclick="loadAttackOverview()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button>
             </div>
             <div class="card-body p-0" id="attackContent" style="max-height:800px;overflow-y:auto;">
-                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải dữ liệu tấn công...</div>
+                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ao.loading">Đang tải dữ liệu tấn công...</span></div>
             </div></div>
         </div>
 
         <div id="viewSysmon" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-cpu"></i> Sự kiện Sysmon</span><button class="btn btn-sm export-btn" onclick="exportToJSON('sysmon','all','danh_sach_sysmon')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="sysmonList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Dang tai Sysmon events...</div></div></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-cpu"></i> Sự kiện Sysmon</span><button class="btn btn-sm export-btn" onclick="exportToJSON('sysmon','all','danh_sach_sysmon')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="sysmonList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loadingSysmon">Đang tải dữ liệu Sysmon...</span></div></div></div>
         </div>
         <div id="viewMemory" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-memory"></i> Cảnh báo Bộ nhớ</span><button class="btn btn-sm export-btn" onclick="exportToJSON('memory','all','danh_sach_memory')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="memoryList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Dang tai Memory Alerts...</div></div></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-memory"></i> Cảnh báo Bộ nhớ</span><button class="btn btn-sm export-btn" onclick="exportToJSON('memory','all','danh_sach_memory')"><i class="bi bi-download"></i> JSON</button></div><div class="card-body p-0" id="memoryList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loadingMemoryAlerts">Đang tải Memory Alerts...</span></div></div></div>
         </div>
 
         <!-- v3.2: Threat Hunting View -->
         <div id="viewHunting" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-search"></i> Săn tìm đe dọa</span><button class="btn btn-sm export-btn" onclick="loadHunting()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-search"></i> <span data-i18n="nav.hunting">Săn tìm đe dọa</span></span><button class="btn btn-sm export-btn" onclick="loadHunting()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
                 <div class="card-body">
                     <div class="row g-2 mb-2">
-                        <div class="col-md-6"><label class="text-muted" style="font-size:11px;">Giả thuyết (hypothesis)</label><textarea class="search-box" id="huntHypothesis" style="width:100%;height:60px;font-size:12px;" placeholder="VD: Co process nao dump LSASS trong 24h qua khong?"></textarea></div>
-                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;">Tactic (template)</label><select class="form-select form-select-sm" id="huntTactic" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="">-- Tu do --</option><option value="credential_access">Credential Theft</option><option value="lateral_movement">Lateral Movement</option><option value="persistence">Persistence</option><option value="c2_communication">C2 Communication</option><option value="exfiltration">Exfiltration</option><option value="defense_evasion">Defense Evasion</option></select></div>
-                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;">Thoi gian (gio)</label><input class="search-box" id="huntSinceHours" type="number" value="168" style="width:100%;"></div>
+                        <div class="col-md-6"><label class="text-muted" style="font-size:11px;" data-i18n="hunt.hypothesis">Giả thuyết (hypothesis)</label><textarea class="search-box" id="huntHypothesis" style="width:100%;height:60px;font-size:12px;" placeholder="VD: Có process nào dump LSASS trong 24h qua không?" data-i18n-placeholder="ph.huntExample"></textarea></div>
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;">Tactic (template)</label><select class="form-select form-select-sm" id="huntTactic" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"><option value="" data-i18n="hunt.free">-- Tự do --</option><option value="credential_access">Credential Theft</option><option value="lateral_movement">Lateral Movement</option><option value="persistence">Persistence</option><option value="c2_communication">C2 Communication</option><option value="exfiltration">Exfiltration</option><option value="defense_evasion">Defense Evasion</option></select></div>
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="hunt.sinceHours">Thời gian (giờ)</span></label><input class="search-box" id="huntSinceHours" type="number" value="168" style="width:100%;"></div>
                     </div>
-                    <button class="btn btn-success btn-sm" onclick="startHunting()"><i class="bi bi-play-fill"></i> Bắt đầu Săn tìm đe dọa</button>
+                    <button class="btn btn-success btn-sm" onclick="startHunting()"><i class="bi bi-play-fill"></i> <span data-i18n="hunt.start">Bắt đầu Săn tìm đe dọa</span></button>
                 </div>
             </div>
-            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-check"></i> Kết quả Săn tìm đe dọa</span><span id="huntCampaignId" class="text-muted" style="font-size:10px;"></span></div>
-                <div class="card-body p-0" id="huntResults" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3">Nhap gia thuyet va bam "Bat dau" de san moi nguy.</div></div>
+            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-check"></i> <span data-i18n="hunt.results">Kết quả Săn tìm đe dọa</span></span><span id="huntCampaignId" class="text-muted" style="font-size:10px;"></span></div>
+                <div class="card-body p-0" id="huntResults" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><span data-i18n="hunt.hint">Nhập giả thuyết và bấm "Bắt đầu" để săn mối nguy.</span></div></div>
             </div>
         </div>
 
         <!-- v3.2: Anomaly View -->
         <div id="viewAnomaly" style="display:none;">
             <div class="row g-2 mb-3">
-                <div class="col-md-3"><div class="card stat-card"><div class="value" id="anomalyTotalAlerts">0</div><div class="label">Tong Anomaly Alerts</div></div></div>
+                <div class="col-md-3"><div class="card stat-card"><div class="value" id="anomalyTotalAlerts">0</div><div class="label" data-i18n="anomaly.total">Tổng Anomaly Alerts</div></div></div>
                 <div class="col-md-3"><div class="card stat-card"><div class="value" id="anomalyHighAlerts">0</div><div class="label">High Severity</div></div></div>
                 <div class="col-md-3"><div class="card stat-card"><div class="value" id="anomalyMedAlerts">0</div><div class="label">Medium Severity</div></div></div>
                 <div class="col-md-3"><div class="card stat-card"><div class="value" id="anomalyFirstTime">0</div><div class="label">First-Time Events</div></div></div>
             </div>
-            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity"></i> Anomaly Detection Alerts</span><button class="btn btn-sm export-btn" onclick="loadAnomaly()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button></div>
-                <div class="card-body p-0" id="anomalyList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Dang tai...</div></div>
+            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-activity"></i> Anomaly Detection Alerts</span><button class="btn btn-sm export-btn" onclick="loadAnomaly()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
+                <div class="card-body p-0" id="anomalyList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
             </div>
         </div>
 
@@ -565,18 +565,18 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <div class="col-md-3">
                     <div class="card" style="max-height:700px;">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-shield-exclamation"></i> Danh sách cảnh báo</span>
+                            <span><i class="bi bi-shield-exclamation"></i> <span data-i18n="incident.alertList">Danh sách cảnh báo</span></span>
                             <button class="btn btn-sm export-btn" onclick="loadIncidentView()"><i class="bi bi-arrow-clockwise"></i></button>
                         </div>
                         <div class="card-body p-0" id="incidentSidebar" style="max-height:650px;overflow-y:auto;">
-                            <div class="text-center text-muted py-3">Đang tải...</div>
+                            <div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-9">
                     <div class="card" style="min-height:600px;">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="bi bi-clock-history"></i> Timeline điều tra <span id="incidentTitle" style="font-size:11px;"></span></span>
+                            <span><i class="bi bi-clock-history"></i> <span data-i18n="incident.timeline">Timeline điều tra</span> <span id="incidentTitle" style="font-size:11px;"></span></span>
                             <div>
                                 <span id="incidentTimeWindow" class="text-muted me-2" style="font-size:10px;"></span>
                                 <span id="incidentEvidenceCount" class="badge bg-info me-1">0 events</span>
@@ -586,8 +586,8 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                         <div class="card-body p-0" id="incidentTimeline" style="max-height:550px;overflow-y:auto;">
                             <div class="text-center text-muted py-5">
                                 <i class="bi bi-zoom-in" style="font-size:48px;"></i>
-                                <p class="mt-2">Chọn một cảnh báo từ danh sách bên trái để xem Timeline điều tra.</p>
-                                <small style="color:#889;">Tự động gom: Mạng, Sysmon, Sự kiện Windows, FIM, Bộ nhớ trong ±15 phút quanh thời điểm cảnh báo</small>
+                                <p class="mt-2" data-i18n="incident.timelineHint">Chọn một cảnh báo từ danh sách bên trái để xem Timeline điều tra.</p>
+                                <small style="color:#889;" data-i18n="incident.autoCollect">Tự động gom: Mạng, Sysmon, Sự kiện Windows, FIM, Bộ nhớ trong ±15 phút quanh thời điểm cảnh báo</small>
                             </div>
                         </div>
                     </div>
@@ -599,48 +599,48 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
         <div id="viewCleanup" style="display:none;">
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-trash3"></i> Dọn dẹp dữ liệu cũ</span>
-                    <button class="btn btn-sm export-btn" onclick="loadCleanupSummary()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button>
+                    <span><i class="bi bi-trash3"></i> <span data-i18n="cleanup.title">Dọn dẹp dữ liệu cũ</span></span>
+                    <button class="btn btn-sm export-btn" onclick="loadCleanupSummary()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button>
                 </div>
                 <div class="card-body" id="cleanupContent">
-                    <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div>
+                    <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div>
                 </div>
             </div>
         </div>
 
         <!-- v3.2: IOC Sweep View -->
         <div id="viewIoc" style="display:none;">
-            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-bullseye"></i> Quét IOC</span><button class="btn btn-sm export-btn" onclick="loadIoc()"><i class="bi bi-arrow-clockwise"></i> Tải lại</button></div>
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-bullseye"></i> <span data-i18n="nav.ioc">Quét IOC</span></span><button class="btn btn-sm export-btn" onclick="loadIoc()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
                 <div class="card-body">
                     <div class="row g-2 mb-2">
-                        <div class="col-md-6"><label class="text-muted" style="font-size:11px;">JSON IOCs (paste hoặc upload file)</label><textarea class="search-box" id="iocJsonInput" style="width:100%;height:80px;font-family:monospace;font-size:11px;" placeholder='[{"type":"ip","value":"185.220.101.100","source":"OTX"},{"type":"domain","value":"evil.com","source":"manual"}]'></textarea></div>
+                        <div class="col-md-6"><label class="text-muted" style="font-size:11px;" data-i18n="ioc.jsonLabel">JSON IOCs (paste hoặc upload file)</label><textarea class="search-box" id="iocJsonInput" style="width:100%;height:80px;font-family:monospace;font-size:11px;" placeholder='[{"type":"ip","value":"185.220.101.100","source":"OTX"},{"type":"domain","value":"evil.com","source":"manual"}]'></textarea></div>
                         <div class="col-md-3"><label class="text-muted" style="font-size:11px;">Upload file</label><input type="file" id="iocFileInput" class="search-box" style="width:100%;font-size:11px;"></div>
-                        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-success btn-sm" onclick="sweepIoc()"><i class="bi bi-search"></i> Quet IOC</button></div>
+                        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-success btn-sm" onclick="sweepIoc()"><i class="bi bi-search"></i> <span data-i18n="ioc.scan">Quét IOC</span></button></div>
                     </div>
                 </div>
             </div>
-            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> Kết quả quét</span><span id="iocStats" class="text-muted" style="font-size:10px;"></span></div>
-                <div class="card-body p-0" id="iocResults" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3">Nhap IOC va bam "Quet" de bat dau.</div></div>
+            <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> <span data-i18n="ioc.results">Kết quả quét</span></span><span id="iocStats" class="text-muted" style="font-size:10px;"></span></div>
+                <div class="card-body p-0" id="iocResults" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><span data-i18n="ioc.hint">Nhập IOC và bấm "Quét" để bắt đầu.</span></div></div>
             </div>
         </div>
 
         <!-- v3.9.3: MITRE ATT&CK Matrix -->
         <div id="viewMitre" style="display:none;">
             <div class="card"><div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-grid-3x3"></i> MITRE ATT&CK Matrix - Ma trận kỹ thuật tấn công</span>
+                <span><i class="bi bi-grid-3x3"></i> <span data-i18n="mitre.title">MITRE ATT&CK Matrix - Ma trận kỹ thuật tấn công</span></span>
                 <div>
                     <select id="mitre-since-hours" class="form-select form-select-sm d-inline-block" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);" onchange="loadMITREMatrix('mitre-matrix-container')">
-                        <option value="1">1 giờ</option>
-                        <option value="6">6 giờ</option>
-                        <option value="24" selected>24 giờ</option>
-                        <option value="72">72 giờ</option>
-                        <option value="168">7 ngày</option>
+                        <option value="1" data-i18n="time.1h">1 giờ</option>
+                        <option value="6" data-i18n="time.6h">6 giờ</option>
+                        <option value="24" selected data-i18n="time.24h">24 giờ</option>
+                        <option value="72" data-i18n="time.72h">72 giờ</option>
+                        <option value="168" data-i18n="time.7d">7 ngày</option>
                     </select>
-                    <button class="btn btn-sm export-btn ms-1" onclick="loadMITREMatrix('mitre-matrix-container')"><i class="bi bi-arrow-clockwise"></i> Tải lại</button>
+                    <button class="btn btn-sm export-btn ms-1" onclick="loadMITREMatrix('mitre-matrix-container')"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button>
                 </div>
             </div>
             <div class="card-body p-0" id="mitre-matrix-container" style="min-height:400px;">
-                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Click "Tải lại" để xem ma trận MITRE ATT&CK</div>
+                <div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="mitre.hint">Click "Tải lại" để xem ma trận MITRE ATT&CK</span></div>
             </div></div>
         </div>
 
@@ -649,39 +649,39 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <div class="mb-2"><span class="panel-tab active" data-tab-as="computers"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="assets.tabComputer">Máy tính</span></span><span class="panel-tab" data-tab-as="monitors"><i class="bi bi-display"></i> <span data-i18n="assets.tabMonitor">Màn hình</span></span><span class="panel-tab" data-tab-as="printers"><i class="bi bi-printer"></i> <span data-i18n="assets.tabPrinter">Máy in</span></span><span class="panel-tab" data-tab-as="phones"><i class="bi bi-telephone"></i> <span data-i18n="assets.tabPhone">Điện thoại</span></span><span class="panel-tab" data-tab-as="network"><i class="bi bi-hdd-network"></i> <span data-i18n="assets.tabNetwork">T. bị mạng</span></span><span class="panel-tab" data-tab-as="peripheral"><i class="bi bi-usb"></i> <span data-i18n="assets.tabPeripheral">Ngoại vi</span></span><span class="panel-tab" data-tab-as="users"><i class="bi bi-person"></i> <span data-i18n="assets.tabUsers">Người dùng</span></span><span class="panel-tab" data-tab-as="kho"><i class="bi bi-box-seam"></i> <span data-i18n="assets.tabKho">Kho</span></span><span class="panel-tab" data-tab-as="changes"><i class="bi bi-exclamation-triangle"></i> <span data-i18n="assets.tabChange">Cảnh báo</span> <span id="assetChangeBadge" class="badge bg-danger ms-1" style="font-size:9px;">0</span></span><button class="btn btn-sm ms-auto export-btn" onclick="Assets.openDiscover()" style="float:right;"><i class="bi bi-radar"></i> <span data-i18n="assets.scanBtn">Quét tự động</span></button></div>
             <div class="tab-as-content" id="tabAsComputers">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="assets.listComputers">Danh sách máy tính</span></span><div><input class="search-box" id="assetComputerSearch" data-i18n-placeholder="assets.searchComputer" placeholder="Tìm máy tính..." style="width:200px;" oninput="refreshAssetComputers()"><button class="btn btn-sm export-btn ms-1" onclick="Assets.exportExcel()"><i class="bi bi-file-earmark-spreadsheet"></i> <span data-i18n="assets.excelKho">Xuất Excel</span></button><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetComputers()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetComputersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetComputersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsMonitors" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-display"></i> <span data-i18n="assets.listMonitors">Danh sách màn hình</span></span><div><input class="search-box" id="assetMonitorSearch" data-i18n-placeholder="assets.searchMonitor" placeholder="Tìm màn hình..." style="width:200px;" oninput="refreshAssetMonitors()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetMonitors()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetMonitorsTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetMonitorsTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsPrinters" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-printer"></i> <span data-i18n="assets.tabPrinter">Máy in</span></span><div><input class="search-box" id="assetPrinterSearch" data-i18n-placeholder="assets.searchPrinter" placeholder="Tìm máy in..." style="width:200px;" oninput="refreshAssetPrinter()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetPrinter()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetPrintersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetPrintersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsPhones" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-telephone"></i> <span data-i18n="assets.tabPhone">Điện thoại</span></span><div><input class="search-box" id="assetPhoneSearch" data-i18n-placeholder="assets.searchPhone" placeholder="Tìm điện thoại..." style="width:200px;" oninput="refreshAssetPhone()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetPhone()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetPhonesTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetPhonesTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsNetwork" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-hdd-network"></i> <span data-i18n="assets.tabNetwork">T. bị mạng</span></span><div><input class="search-box" id="assetNetworkSearch" data-i18n-placeholder="assets.searchNetwork" placeholder="Tìm thiết bị..." style="width:200px;" oninput="refreshAssetNetwork()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetNetwork()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetNetworkTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetNetworkTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsPeripheral" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-usb"></i> <span data-i18n="assets.tabPeripheral">Ngoại vi</span></span><div><input class="search-box" id="assetPeripheralSearch" data-i18n-placeholder="assets.searchPeripheral" placeholder="Tìm ngoại vi..." style="width:200px;" oninput="refreshAssetPeripheral()"><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetPeripheral()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetPeripheralTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetPeripheralTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsUsers" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-person"></i> <span data-i18n="assets.listUsers">Danh sách người dùng</span></span><div><input class="search-box" id="assetUsersSearch" data-i18n-placeholder="assets.searchUsers" placeholder="Tìm người dùng..." style="width:200px;" oninput="refreshAssetUsers()"><button class="btn btn-sm export-btn ms-1" onclick="Assets.openUserForm()">＋ <span data-i18n="assets.addUser">Thêm người dùng</span></button><button class="btn btn-sm export-btn ms-1" onclick="Assets.syncUsers()"><i class="bi bi-arrow-repeat"></i> <span data-i18n="assets.syncUsers">Đồng bộ</span></button><button class="btn btn-sm export-btn ms-1" onclick="refreshAssetUsers()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetUsersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetUsersTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsKho" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-box-seam"></i> <span data-i18n="assets.tabKho">Kho</span></span><div><input class="search-box" id="assetKhoSearch" data-i18n-placeholder="assets.searchInv" placeholder="Tìm tài sản..." style="width:180px;" oninput="refreshAssetKho()"><select class="form-select form-select-sm" id="assetKhoCat" style="width:140px;display:inline-block;" onchange="refreshAssetKho()"></select><select class="form-select form-select-sm" id="assetKhoStatus" style="width:130px;display:inline-block;" onchange="refreshAssetKho()"></select><button class="btn btn-sm export-btn ms-1" onclick="Assets.openForm()">＋ <span data-i18n="assets.addAsset">Thêm tài sản</span></button><button class="btn btn-sm export-btn ms-1" onclick="Assets.exportExcel()"><i class="bi bi-file-earmark-spreadsheet"></i> <span data-i18n="assets.excelKho">Xuất Excel</span></button></div></div>
-                <div class="card-body p-0" id="assetKhoTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetKhoTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <div class="tab-as-content" id="tabAsChanges" style="display:none;">
                 <div class="card mb-2"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-exclamation-triangle"></i> <span data-i18n="assets.listChanges">Lịch sử thay đổi tài sản</span></span><div><label class="me-2" style="font-size:11px;"><input type="checkbox" id="assetUnresolvedOnly" onchange="refreshAssetChanges()" checked> <span data-i18n="assets.unresolvedOnly">Chưa xử lý</span></label><button class="btn btn-sm export-btn" onclick="refreshAssetChanges()"><i class="bi bi-arrow-clockwise"></i></button></div></div>
-                <div class="card-body p-0" id="assetChangesTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3">Đang tải...</div></div></div>
+                <div class="card-body p-0" id="assetChangesTable" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3" data-i18n="ui.loading">Đang tải...</div></div></div>
             </div>
             <!-- v4.7: Inventory form modal -->
             <div id="invModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;overflow-y:auto;">
@@ -763,47 +763,47 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
 
 <div id="floatAiDialog">
   <div id="floatAiHeader">
-    <span>🤖 Trợ lý AI GIAM-SAT</span>
+    <span data-i18n="ai.dialogTitle">🤖 Trợ lý AI GIAM-SAT</span>
     <div style="display:flex;align-items:center;gap:4px;">
       <select id="autoMonInterval" style="background:#0f1923;border:1px solid #2a3a4a;border-radius:4px;color:#c8d8e8;font-size:10px;padding:2px 4px;">
-        <option value="1">1 phút</option>
-        <option value="5">5 phút</option>
-        <option value="30" selected>30 phút</option>
-        <option value="60">1 giờ</option>
-        <option value="180">3 giờ</option>
-        <option value="360">6 giờ</option>
-        <option value="720">12 giờ</option>
+        <option value="1" data-i18n="time.1m">1 phút</option>
+        <option value="5" data-i18n="time.5m">5 phút</option>
+        <option value="30" selected data-i18n="time.30m">30 phút</option>
+        <option value="60" data-i18n="time.1h">1 giờ</option>
+        <option value="180" data-i18n="time.3h">3 giờ</option>
+        <option value="360" data-i18n="time.6h">6 giờ</option>
+        <option value="720" data-i18n="time.12h">12 giờ</option>
       </select>
-      <button onclick="toggleAutoMonitor()" id="autoMonBtn" title="Bật/Tắt tự động giám sát">⏱</button>
-      <button onclick="openAiHistory()" title="Lịch sử">📋</button>
-      <button onclick="clearAiChat()" title="Xóa chat">🗑</button>
-      <button onclick="document.getElementById('floatAiDialog').classList.remove('active')" title="Đóng">✕</button>
+      <button onclick="toggleAutoMonitor()" id="autoMonBtn" title="Bật/Tắt tự động giám sát" data-i18n-title="tt.autoMonitor">⏱</button>
+      <button onclick="openAiHistory()" title="Lịch sử" data-i18n-title="tt.history">📋</button>
+      <button onclick="clearAiChat()" title="Xóa chat" data-i18n-title="tt.clearChat">🗑</button>
+      <button onclick="document.getElementById('floatAiDialog').classList.remove('active')" title="Đóng" data-i18n-title="tt.close">✕</button>
     </div>
   </div>
   <div id="floatAiBody"></div>
   <div id="floatAiInputArea">
     <input type="file" id="floatAiFileInput" accept=".json,.txt,.log,.csv" style="display:none;" onchange="onFloatAiFileSelected()">
-    <button onclick="document.getElementById('floatAiFileInput').click()" title="Đính kèm file" style="background:none;border:1px solid #2a3a4a;border-radius:6px;color:#888;font-size:16px;padding:8px 10px;cursor:pointer;">📎</button>
-    <input id="floatAiInput" placeholder="Hỏi trợ lý AI..." onkeydown="if(event.key==='Enter')sendFloatAiMsg()" style="flex:1;">
-    <button onclick="sendFloatAiMsg()">Gửi</button>
+    <button onclick="document.getElementById('floatAiFileInput').click()" title="Đính kèm file" data-i18n-title="tt.attachFile" style="background:none;border:1px solid #2a3a4a;border-radius:6px;color:#888;font-size:16px;padding:8px 10px;cursor:pointer;">📎</button>
+    <input id="floatAiInput" placeholder="Hỏi trợ lý AI..." data-i18n-placeholder="ph.askAi" onkeydown="if(event.key==='Enter')sendFloatAiMsg()" style="flex:1;">
+    <button onclick="sendFloatAiMsg()" data-i18n="btn.send">Gửi</button>
   </div>
 </div>
 
 <div id="floatAiHistoryMenu">
-  <div class="hist-header"><span>📋 Lịch sử trợ lý AI</span><button style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;" onclick="document.getElementById('floatAiHistoryMenu').classList.remove('active')">✕</button></div>
+  <div class="hist-header"><span data-i18n="ai.historyTitle">📋 Lịch sử trợ lý AI</span><button style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;" onclick="document.getElementById('floatAiHistoryMenu').classList.remove('active')">✕</button></div>
   <div style="padding:8px;">
-    <div style="margin-bottom:8px;"><span class="panel-tab active" data-floathist="chat" style="font-size:11px;">💬 Chat</span><span class="panel-tab" data-floathist="auto" style="font-size:11px;">⏱ Tự động giám sát</span></div>
-    <div id="floatHistChat"><div class="text-center text-muted py-3" style="font-size:12px;">Chưa có lịch sử chat</div></div>
-    <div id="floatHistAuto" style="display:none;"><div class="text-center text-muted py-3" style="font-size:12px;">Chưa có lịch sử giám sát</div></div>
+    <div style="margin-bottom:8px;"><span class="panel-tab active" data-floathist="chat" style="font-size:11px;">💬 Chat</span><span class="panel-tab" data-floathist="auto" style="font-size:11px;" data-i18n="ai.autoMonitor">⏱ Tự động giám sát</span></div>
+    <div id="floatHistChat"><div class="text-center text-muted py-3" style="font-size:12px;" data-i18n="ai.noChatHistory">Chưa có lịch sử chat</div></div>
+    <div id="floatHistAuto" style="display:none;"><div class="text-center text-muted py-3" style="font-size:12px;" data-i18n="ai.noAutoHistory">Chưa có lịch sử giám sát</div></div>
   </div>
 </div>
 
-<div class="modal fade" id="detailModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-width:90vw;"><div class="modal-content" style="background:var(--card-dark);color:var(--text-bright);"><div class="modal-header" style="border-color:var(--border-color);"><h6 class="modal-title" id="detailModalTitle">Chi tiết</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body" id="detailModalBody" style="font-size:12px;max-height:85vh;overflow-y:auto;"></div></div></div></div>
+<div class="modal fade" id="detailModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-width:90vw;"><div class="modal-content" style="background:var(--card-dark);color:var(--text-bright);"><div class="modal-header" style="border-color:var(--border-color);"><h6 class="modal-title" id="detailModalTitle" data-i18n="ui.detail">Chi tiết</h6><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body" id="detailModalBody" style="font-size:12px;max-height:85vh;overflow-y:auto;"></div></div></div></div>
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3"><div id="liveToast" class="toast" style="background:var(--card-dark);color:#d0d8e0;border:1px solid var(--border-color);"><div class="toast-header" style="background:var(--card-dark);color:#d0d8e0;border-bottom:1px solid var(--border-color);"><i class="bi bi-bell me-2"></i><strong class="me-auto">GIAM-SAT</strong><button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button></div><div class="toast-body" id="toastMessage"></div></div></div>
 
 <div id="floatAiWidget" style="position:fixed;right:20px;bottom:80px;z-index:9999;cursor:grab;user-select:none;">
-  <button id="floatAiBtn" title="Trợ lý AI" onclick="toggleFloatAiDialog()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00d4aa,#0077b6);border:none;box-shadow:0 4px 16px rgba(0,212,170,0.4);color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;">🤖</button>
+  <button id="floatAiBtn" title="Trợ lý AI" data-i18n-title="tt.ai" onclick="toggleFloatAiDialog()" style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#00d4aa,#0077b6);border:none;box-shadow:0 4px 16px rgba(0,212,170,0.4);color:#fff;font-size:26px;display:flex;align-items:center;justify-content:center;">🤖</button>
   <span id="floatAiBadge" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;background:#ff4444;border-radius:50%;font-size:10px;line-height:18px;text-align:center;color:#fff;display:none;">●</span>
 </div>
 
