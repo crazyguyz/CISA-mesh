@@ -3,7 +3,7 @@ API Alert Suppression - v3.8.0: Global Whitelist for False Positive Tuning.
 CRUD for suppression rules: suppress alerts by rule_id + optional machine_id/path/hash.
 """
 from flask import request, jsonify
-from .api_common import check_auth
+from .api_common import check_auth, localize_utc
 
 
 def register(app, core):
@@ -16,6 +16,9 @@ def register(app, core):
         _, err, code = check_auth("settings")
         if err: return err, code
         list_data = core.db.get_suppressions()
+        # v4.13: created_at is stored as UTC by SQLite CURRENT_TIMESTAMP - convert to local time
+        for row in list_data:
+            row["created_at"] = localize_utc(row.get("created_at"))
         return jsonify({"suppressions": list_data})
 
     @app.route("/api/suppression/add", methods=["POST"])
@@ -33,7 +36,7 @@ def register(app, core):
             field_path=data.get("field_path") or None,
             field_hash=data.get("field_hash") or None,
             reason=data.get("reason", ""),
-            created_by=data.get("created_by", "admin")
+            created_by=username  # v4.13: log the real authenticated user, not a hardcoded "admin"
         )
         core.db.insert_audit_log(username, "suppression_add",
             f"Thêm luật suppression rule='{rule_id}' machine='{data.get('machine_id') or ''}' (id={sid})",

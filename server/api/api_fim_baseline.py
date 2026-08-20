@@ -5,7 +5,7 @@ API FIM Baseline - FIM baseline CRUD, diff, summary with suspicion scoring.
 import os
 import time
 from flask import request, jsonify
-from .api_common import check_auth, check_agent_psk
+from .api_common import check_auth, check_agent_psk, localize_utc
 
 # v3.7.2: In-memory cache for FIM baseline summary
 _baseline_summary_cache = {"data": None, "ts": 0}
@@ -212,6 +212,9 @@ def register(app, core):
         # v3.7.2: Compute suspicion only for returned page (not all baseline)
         for entry in baseline:
             entry["suspicion"] = _compute_fim_suspicion_score(entry, threats_count)
+            # v4.13: first_seen/last_checked stored as UTC (CURRENT_TIMESTAMP) - convert to local time
+            entry["first_seen"] = localize_utc(entry.get("first_seen"))
+            entry["last_checked"] = localize_utc(entry.get("last_checked"))
 
         result_data = {
             "baseline": baseline,

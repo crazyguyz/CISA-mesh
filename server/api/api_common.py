@@ -5,7 +5,22 @@ Mỗi module API imports trực tiếp từ đây để dùng _check_auth.
 
 import json
 import os
+from datetime import datetime, timezone
 from flask import request, jsonify
+
+
+def localize_utc(s):
+    """v4.13: SQLite CURRENT_TIMESTAMP stores UTC strings ('YYYY-MM-DD HH:MM:SS').
+    Convert a UTC string to the server's local timezone for correct display
+    (e.g. UTC+7 Vietnam). Non-matching values are returned unchanged.
+    """
+    if not s:
+        return s
+    try:
+        dt = datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S")
+        return dt.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return s
 
 
 def register(app, core):

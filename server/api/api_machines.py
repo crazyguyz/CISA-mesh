@@ -6,7 +6,7 @@ import json
 import time
 from flask import request, jsonify
 
-from .api_common import check_auth
+from .api_common import check_auth, localize_utc
 
 
 def register(app, core):
@@ -81,9 +81,11 @@ def register(app, core):
         baseline = core.db.get_baseline(machine_id)
         if current:
             result = dict(current)
+            # v4.13: received_at is stored as UTC - convert to local time
+            result["received_at"] = localize_utc(result.get("received_at"))
             if baseline:
                 result["baseline_data"] = baseline.get("data", {})
-                result["baseline_saved_at"] = baseline.get("saved_at", "")
+                result["baseline_saved_at"] = localize_utc(baseline.get("saved_at", ""))
                 result["diffs"] = core.db._compute_diff(baseline.get("data", {}), current.get("data", {}))
             else:
                 result["baseline_data"] = None

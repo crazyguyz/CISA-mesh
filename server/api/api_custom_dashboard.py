@@ -10,7 +10,7 @@ GET  /api/custom-dashboard/schema → Data source schema for widget builder
 """
 import json
 from flask import request, jsonify
-from .api_common import check_auth
+from .api_common import check_auth, localize_utc
 
 
 def register(app, core):
@@ -28,6 +28,10 @@ def register(app, core):
                 "SELECT id, name, description, created_by, created_at, updated_at FROM custom_dashboards ORDER BY updated_at DESC"
             ).fetchall()
             dashboards = [dict(r) for r in rows]
+            # v4.13: created_at/updated_at stored as UTC - convert to local time
+            for d in dashboards:
+                d["created_at"] = localize_utc(d.get("created_at"))
+                d["updated_at"] = localize_utc(d.get("updated_at"))
             return jsonify({"dashboards": dashboards})
         except Exception as e:
             return jsonify({"error": str(e)}), 500

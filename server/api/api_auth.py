@@ -8,7 +8,7 @@ import html as _html_mod
 from datetime import datetime
 from flask import request, jsonify
 
-from .api_common import _core, check_auth
+from .api_common import _core, check_auth, localize_utc
 
 
 def register(app, core):
@@ -161,4 +161,8 @@ def register(app, core):
     def api_audit():
         username, err, code = check_auth("settings")
         if err: return err, code
-        return jsonify(core.db.get_audit_log(limit=request.args.get("limit", 100, type=int)))
+        rows = core.db.get_audit_log(limit=request.args.get("limit", 100, type=int))
+        # v4.13: audit_log.timestamp is stored as UTC (CURRENT_TIMESTAMP) - convert to local time
+        for row in rows:
+            row["timestamp"] = localize_utc(row.get("timestamp"))
+        return jsonify(rows)
