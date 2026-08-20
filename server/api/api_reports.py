@@ -25,6 +25,20 @@ def register(app, core):
         core.db.insert_audit_log(username, "generate_report", f"Type: {report_type}", request.remote_addr)
         return jsonify({"success": True, "path": filepath})
 
+    @app.route("/api/reports/download/<path:filename>", methods=["GET"])
+    def api_report_download(filename):
+        # v4.12: Serve generated HTML reports from the reports/ directory.
+        # Path-traversal safe: only files inside report_dir are served.
+        _, err, code = check_auth("api")
+        if err: return err, code
+        base = os.path.abspath(core.reporting.report_dir)
+        target = os.path.abspath(os.path.join(base, filename))
+        if not target.startswith(base + os.sep) or not os.path.isfile(target):
+            return jsonify({"error": "Report not found"}), 404
+        return send_file(target, mimetype="text/html; charset=utf-8",
+                         as_attachment=True,
+                         download_name=os.path.basename(target))
+
     @app.route("/api/reports/machine-config-export", methods=["POST"])
     def api_machine_config_export():
         username, err, code = check_auth("api")

@@ -879,6 +879,12 @@
       'audit.title': ('Nhật ký kiểm toán (Audit Trail)', 'Audit Trail Log'),
       'audit.user': ('Người dùng', 'User'),
       'nav.audit': ('Nhật ký kiểm toán', 'Audit Log'),
+      'reports.confirmGen': ('Tạo và tải báo cáo tổng hợp?', 'Generate and download the summary report?'),
+      'reports.daily': ('Báo cáo ngày', 'Daily report'),
+      'reports.done': ('Đã tạo báo cáo', 'Report generated'),
+      'reports.summarySub': ('Tạo báo cáo an ninh tổng hợp từ dữ liệu server', 'Generate a comprehensive security report from server data'),
+      'reports.summaryTitle': ('📊 Báo cáo tổng hợp (Daily/Weekly)', '📊 Summary Report (Daily/Weekly)'),
+      'reports.weekly': ('Báo cáo tuần', 'Weekly report'),
     },
     en: {
       // Sidebar groups
@@ -1745,6 +1751,12 @@
       'audit.title': 'Audit Trail Log',
       'audit.user': 'User',
       'nav.audit': 'Audit Log',
+      'reports.confirmGen': 'Generate and download the summary report?',
+      'reports.daily': 'Daily report',
+      'reports.done': 'Report generated',
+      'reports.summarySub': 'Generate a comprehensive security report from server data',
+      'reports.summaryTitle': '📊 Summary Report (Daily/Weekly)',
+      'reports.weekly': 'Weekly report',
     }
   };
 

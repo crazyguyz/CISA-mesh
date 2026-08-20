@@ -3529,9 +3529,29 @@ function showReportModal() {
     body += '</div>';
     body += '</div>';
     body += '<div class="alert alert-info py-2 mb-2" style="background:#1a3a5a;color:#88ccff;font-size:11px;"><i class="bi bi-info-circle"></i> '+t('ui.formatInfo',[fmtLabel])+'</div>';
+    body += '<hr class="my-2">';
+    body += '<div class="mb-2"><strong>'+t('reports.summaryTitle')+'</strong><br><small class="text-muted">'+t('reports.summarySub')+'</small></div>';
+    body += '<div class="d-flex gap-2 mb-3">';
+    body += '<button class="btn btn-sm btn-outline-info" onclick="generateSummaryReport(\'daily\')"><i class="bi bi-calendar-day"></i> '+t('reports.daily')+'</button>';
+    body += '<button class="btn btn-sm btn-outline-info" onclick="generateSummaryReport(\'weekly\')"><i class="bi bi-calendar-week"></i> '+t('reports.weekly')+'</button>';
+    body += '</div>';
     body += '<div class="text-end"><button class="btn btn-sm btn-success" onclick="exportReport()"><i class="bi bi-download"></i> ' + t('dash.downloadReport') + '</button></div>';
     body += '</div>';
     showDetailModal(t('dash.exportTitle'), body);
+}
+
+function generateSummaryReport(type) {
+    if (!confirm(t('reports.confirmGen'))) return;
+    fetch('/api/reports/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type: type})})
+        .then(r => r.json()).then(d => {
+            if (!d.success) { showToast('❌ ' + (d.error || t('ui.errGeneric'))); return; }
+            const filename = String(d.path || '').split(/[\\/]/).pop();
+            const a = document.createElement('a');
+            a.href = '/api/reports/download/' + encodeURIComponent(filename);
+            a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            showToast('✅ ' + t('reports.done'));
+        }).catch(() => { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
 function exportReport() {
