@@ -51,6 +51,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             mitre: { el: 'viewMitre', container: 'mitre-matrix-container', load: function() { if (window.loadMITREMatrix) loadMITREMatrix('mitre-matrix-container'); } },
             cleanup: { el: 'viewCleanup', container: 'cleanupContent', load: function() { loadCleanupSummary(); } },
             audit: { el: 'viewAudit', container: 'auditList', load: function() { loadAudit(); } },
+            cluster: { el: 'viewCluster', container: 'clusterContent', load: function() { loadCluster(); } },
             dashboards: { el: 'viewDashboards', container: null, load: function() { if (typeof DbBuilder !== 'undefined') DbBuilder.init(); else setTimeout(function() { DbBuilder.init(); }, 200); } },
             assets: { el: 'viewAssets', container: null, load: function() { if (typeof Assets !== 'undefined') Assets.init(); else setTimeout(function() { Assets.init(); }, 200); } }
         };
@@ -2564,6 +2565,32 @@ function renderAudit() {
         + items.map(function(r) {
             return '<tr><td style="white-space:nowrap;">'+escapeHtml(r.timestamp||'')+'</td><td>'+escapeHtml(r.username||'')+'</td><td><span class="badge bg-info">'+escapeHtml(r.action||'')+'</span></td><td>'+escapeHtml(r.details||'')+'</td><td>'+escapeHtml(r.ip_address||'-')+'</td></tr>';
         }).join('') + '</tbody></table>';
+}
+
+// ===== CLUSTER STATUS =====
+function loadCluster() {
+    const el = document.getElementById('clusterContent');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
+    fetch('/api/cluster/nodes').then(r => r.json()).then(data => {
+        let html = '';
+        html += '<div class="row g-2 mb-3">';
+        html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.nodeId')+'</div><div class="value" style="font-size:14px;">'+escapeHtml(data.node_id||'-')+'</div></div></div>';
+        html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.role')+'</div><div class="value" style="font-size:14px;color:#00d4aa;">'+(data.is_master ? '👑 '+t('cluster.master') : t('cluster.slave'))+'</div></div></div>';
+        html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.nodes')+'</div><div class="value" style="font-size:14px;">'+(Array.isArray(data.nodes) ? data.nodes.length : 0)+'</div></div></div>';
+        html += '</div>';
+        const nodes = Array.isArray(data.nodes) ? data.nodes : [];
+        if (!nodes.length) {
+            html += '<div class="text-center text-muted py-3">'+t('cluster.noNodes')+'</div>';
+        } else {
+            html += '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>'+t('cluster.nodeId')+'</th><th>IP</th><th>'+t('cluster.tcpPort')+'</th><th>'+t('cluster.webPort')+'</th><th>'+t('cluster.agentCount')+'</th><th>'+t('cluster.role')+'</th><th>'+t('cluster.status')+'</th><th>'+t('cluster.lastSeen')+'</th></tr></thead><tbody>';
+            html += nodes.map(function(n) {
+                return '<tr><td><strong style="color:#ffcc66;">'+escapeHtml(n.node_id||'')+'</strong></td><td>'+escapeHtml(n.ip||'-')+'</td><td>'+escapeHtml(n.tcp_port||'-')+'</td><td>'+escapeHtml(n.web_port||'-')+'</td><td>'+(n.agent_count||0)+'</td><td>'+(n.is_master ? '<span class="badge bg-warning text-dark">'+t('cluster.master')+'</span>' : '<span class="badge bg-secondary">'+t('cluster.slave')+'</span>')+'</td><td>'+escapeHtml(n.status||t('cluster.online'))+'</td><td style="white-space:nowrap;">'+escapeHtml(n.last_seen ? new Date(n.last_seen*1000).toLocaleString() : '-')+'</td></tr>';
+            }).join('');
+            html += '</tbody></table>';
+        }
+        el.innerHTML = html;
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
 }
 
 // ===== TABLE SORT (Excel-style: date, number, text; persistent per-table per-column state) =====

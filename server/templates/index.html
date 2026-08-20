@@ -159,6 +159,7 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <small class="text-muted px-2" data-i18n="group.system">HỆ THỐNG</small>
                 <a class="nav-link" href="#" data-view="cleanup"><i class="bi bi-trash3"></i> <span data-i18n="nav.cleanup">Dọn dẹp dữ liệu</span></a>
                 <a class="nav-link" href="#" data-view="audit"><i class="bi bi-journal-text"></i> <span data-i18n="nav.audit">Nhật ký kiểm toán</span></a>
+                <a class="nav-link" href="#" data-view="cluster"><i class="bi bi-diagram-2"></i> <span data-i18n="nav.cluster">Cluster</span></a>
             </nav>
         </div>
     </div>
@@ -621,6 +622,12 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <button class="btn btn-sm export-btn" onclick="loadAudit()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button>
             </div></div></div>
             <div class="card"><div class="card-body p-0" id="auditList" style="max-height:600px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div></div>
+        </div>
+
+        <div id="viewCluster" style="display:none;">
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-diagram-2"></i> <span data-i18n="cluster.title">Trạng thái Cluster</span></span><button class="btn btn-sm export-btn" onclick="loadCluster()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
+                <div class="card-body" id="clusterContent"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
+            </div>
         </div>
 
         <!-- v3.2: Data Cleanup View -->
