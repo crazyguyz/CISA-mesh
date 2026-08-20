@@ -1,12 +1,32 @@
 # HƯỚNG DẪN SỬ DỤNG DASHBOARD — DASHBOARD USER GUIDE
 
-Tài liệu song ngữ (Việt - Anh) hướng dẫn chức năng và cách sử dụng từng menu của dashboard GIAM-SAT.
-Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-SAT dashboard menu.
+Tài liệu song ngữ (Việt - Anh) hướng dẫn chi tiết chức năng và cách sử dụng từng menu của dashboard GIAM-SAT.
+Bilingual (Vietnamese - English) detailed guide to every function and how to use each GIAM-SAT dashboard menu.
+
+> **🆕 MỚI / NEW:** Các chức năng mới bổ sung gần đây được đánh dấu **🆕** — xem chi tiết hơn ở cuối mỗi mục.
+> Newly added features are marked **🆕** — each gets extra detail below.
+
+---
 
 ## Đăng nhập — Log in
 
-- **VI:** Mở trình duyệt, truy cập địa chỉ máy chủ (mặc định `http://<địa-chỉ-server>:5000`) rồi đăng nhập bằng tài khoản admin.
-- **EN:** Open a browser, go to the server address (default `http://<server-ip>:5000`) and log in with an admin account.
+- **VI:**
+  1. Mở trình duyệt (Chrome/Edge/Firefox), truy cập `http://<địa-chỉ-server>:5000`.
+  2. Nhập tên đăng nhập **admin** và mật khẩu (đặt khi cài đặt server, hoặc tự tạo ở lần chạy đầu tiên).
+  3. Nhấn **Đăng nhập**. Nếu hệ thống yêu cầu **đổi mật khẩu** (lần đầu), hãy đổi ngay trước khi dùng.
+  4. Đổi ngôn ngữ bất kỳ lúc nào: góc trên phải → nút 🌐 → chọn **🇻🇳 Tiếng Việt** hoặc **🇬🇧 English**. Giao diện chuyển ngay, không cần tải lại.
+- **EN:**
+  1. Open a browser (Chrome/Edge/Firefox) and go to `http://<server-ip>:5000`.
+  2. Log in with the **admin** account (set at install, or auto-generated on first run).
+  3. If asked to **change the password** (first login), do it before proceeding.
+  4. Switch language anytime: top-right → 🌐 button → **🇻🇳 Tiếng Việt** or **🇬🇧 English**. No reload needed.
+
+## Mẹo chung — Common tips
+
+- **VI:** Mọi danh sách đều có ô **tìm kiếm**, nút **Tải lại** 🔄, và tự cập nhật thời gian thực (SSE). Click **tiêu đề cột** để sắp xếp bảng (ngày/số/chữ). Nút 🔄 góc trên phải tải lại toàn trang.
+- **EN:** Every list has a **search box**, a **Reload** 🔄 button, and real-time updates (SSE). Click **column headers** to sort. The top-right 🔄 reloads the whole page.
+- **VI:** Bấm máy trạm bên trái → trang chi tiết máy với các tab: **Nhật ký sự kiện / FIM / Phản hồi / Cấu hình / Kiểm soát / SSH từ xa**.
+- **EN:** Click a machine on the left → its detail page with tabs: **Event Log / FIM / Response / Config / Control / Remote SSH**.
 
 ---
 
@@ -14,78 +34,158 @@ Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-S
 
 ### Tổng quan (Overview)
 
-- **VI:** Trang chính hiển thị tổng trạng thái hệ thống: số máy online/offline, tổng sự kiện, cảnh báo gần đây và biểu đồ. Là màn hình đầu tiên sau khi đăng nhập.
-- **EN:** Main page showing overall system status: online/offline machines, event totals, recent alerts and charts. First screen after login.
+- **VI:** Màn hình đầu tiên sau khi đăng nhập.
+  - Bên trái: bảng **toàn cảnh Server Health & Security** (tự làm mới mỗi 15 giây).
+  - Bên phải: thẻ **Tổng máy trạm / Đang online / Sự kiện / Syslog**; bảng **Máy trạm đã đăng ký** (bấm tiêu đề để mở/đóng; có nút **Dọn log cũ** và **Xóa offline**); biểu đồ **Phân loại sự kiện**; thẻ **📊 Báo cáo** (xem mục *Báo cáo tổng hợp* ở cuối tài liệu).
+- **EN:** First screen after login.
+  - Left: **Server Health & Security panorama** (auto-refresh every 15s).
+  - Right: **Total machines / Online / Events / Syslog** stat cards; **Registered machines** table (click header to expand — buttons **Clean old logs**, **Delete offline**); **Event types** chart; **📊 Reports** card (see *Summary Reports* at the end).
 
 ### Dashboard (Custom Dashboards)
 
-- **VI:** Tạo và bố trí các dashboard tùy chỉnh (thêm widget, sắp xếp bố cục) để theo dõi các chỉ số riêng theo nhu cầu.
-- **EN:** Create and lay out custom dashboards (add widgets, arrange layout) to track your own metrics.
+- **VI:** Tạo dashboard tùy chỉnh với các widget (số liệu, bảng, biểu đồ) từ nhiều nguồn dữ liệu.
+  1. Vào menu **Dashboard** (biểu tượng lưới).
+  2. Nhập tên dashboard vào ô tên (mặc định `My Dashboard`).
+  3. Nhấn **＋ Thêm Widget** → chọn **Nguồn dữ liệu** (stats, events, threats...), **Loại widget** (số/stat, bảng/table, biểu đồ cột/đường/tròn), chọn **trường dữ liệu**, nhập **Tiêu đề**, **Độ rộng** (1–12 cột), **Tự làm mới** (giây; 0 = tắt).
+  4. Nhấn **Thêm** → widget hiện trên lưới; có thể xóa từng widget (❌) hoặc **Xóa hết** (💨).
+  5. Nhấn **Lưu** để lưu; nhấn **Mở** để xem danh sách dashboard đã lưu.
+- **EN:** Build custom dashboards with widgets (numbers, tables, charts) from multiple data sources.
+  1. Open the **Dashboards** menu (grid icon).
+  2. Type a name in the name box (default `My Dashboard`).
+  3. Click **＋ Add Widget** → pick **Data source** (stats, events, threats...), **Widget type** (stat, table, bar/line/pie chart), choose **data field(s)**, set **Title**, **Width** (1–12 columns), **Refresh seconds** (0 = off).
+  4. Click **Add** — the widget appears; delete it with ❌ or **Clear all** (💨).
+  5. Click **Save** to store it, or **Open** to list saved dashboards.
 
-### Event Log
+- **VI — 🆕 Xóa dashboard tùy chỉnh:**
+  1. Nhấn **Mở** trong Dashboard Builder.
+  2. Trong cửa sổ danh sách, mỗi dashboard có nút **Xóa** (đỏ) bên phải.
+  3. Nhấn **Xóa** → xác nhận → dashboard bị xóa vĩnh viễn (không thể hoàn tác). Hành động được ghi vào Nhật ký kiểm toán.
+- **EN — 🆕 Delete a custom dashboard:**
+  1. Click **Open** in the Dashboard Builder.
+  2. In the list dialog every dashboard row has a red **Delete** button on the right.
+  3. Click **Delete** → confirm → permanently removed (cannot be undone). The action is recorded in the Audit Log.
+### Event Log (Nhật ký sự kiện)
 
-- **VI:** Xem nhật ký sự kiện Windows/Linux (Security, System, Application...) do agent thu thập; lọc theo máy, mức nghiêm trọng, Event ID.
-- **EN:** View Windows/Linux event logs (Security, System, Application...) collected by agents; filter by machine, severity and Event ID.
+- **VI:** Xem nhật ký sự kiện Windows/Linux do agent thu thập.
+  1. Chọn máy trạm bên trái (hoặc menu **Event Log** để xem tất cả máy).
+  2. Dùng ô **Tìm kiếm** lọc theo text; click **tiêu đề cột** để sắp xếp.
+  3. Click một dòng để xem **chi tiết đầy đủ** (raw data + thời gian nhận).
+- **EN:** View Windows/Linux event logs collected by agents.
+  1. Select a machine on the left (or the **Event Log** menu for all machines).
+  2. Use **Search** to filter; click **column headers** to sort.
+  3. Click a row for **full details** (raw data + received time).
 
 ### FIM (File Integrity Monitoring)
 
-- **VI:** Xem cảnh báo thay đổi file/thư mục quan trọng (tạo, sửa, xóa) — phát hiện chỉnh sửa trái phép.
-- **EN:** View alerts for changes to critical files/folders (create, modify, delete) — detect unauthorized modifications.
+- **VI:** Theo dõi thay đổi file/thư mục quan trọng.
+  - Chọn máy (hoặc menu **FIM** cho tất cả máy) → danh sách hành động **Tạo / Sửa / Xóa** trên file được giám sát.
+  - Mỗi dòng hiện: đường dẫn, hành động, thời gian, máy. Bấm dòng để xem chi tiết; nút **JSON** xuất dữ liệu.
+- **EN:** Monitor changes to critical files/folders.
+  - Pick a machine (or the **FIM** menu for all) — a list of **Create / Modify / Delete** actions.
+  - Each row shows: path, action, time, machine. Click a row for details; **JSON** exports data.
 
 ### Syslog
 
-- **VI:** Xem log syslog nhận từ thiết bị mạng (router, switch, firewall) gửi về cổng 514.
-- **EN:** View syslog messages received from network devices (routers, switches, firewalls) on port 514.
+- **VI:** Log từ thiết bị mạng (router/switch/firewall) qua cổng 514.
+  - Chọn **Syslog** → danh sách log với **Nguồn IP, Facility, Severity, Thời gian, Nội dung**.
+  - Ô tìm kiếm lọc theo IP nguồn hoặc nội dung.
+  - *Lưu ý:* server phải mở UDP 514 và thiết bị phải được cấu hình gửi log về.
+- **EN:** Logs from network devices (routers/switches/firewalls) on port 514.
+  - Open **Syslog** — logs with **Source IP, Facility, Severity, Timestamp, Message**.
+  - Search filters by source IP or message.
+  - *Note:* server must listen on UDP 514 and devices must send logs to it.
 
-### Response
+### Response (Phản hồi)
 
-- **VI:** Thực thi hành động phản hồi lên máy trạm (cách ly mạng, kill tiến trình, chặn IP, cách ly file) để xử lý sự cố.
-- **EN:** Run response actions on endpoints (isolate network, kill process, block IP, quarantine file) to handle incidents.
+- **VI:** Xem kết quả các **hành động phản hồi** (Active Response) đã thực thi trên máy trạm: cách ly mạng, kill tiến trình, chặn IP, cách ly file...
+  - Vào menu **Response** (hoặc tab **Phản hồi** trong trang máy).
+  - Mỗi dòng: máy, hành động, trạng thái (thành công/lỗi), output, mã thoát.
+  - *Để GỬI hành động mới:* dùng tab **Kiểm soát** (Control) trong trang máy.
+- **EN:** View results of **Active Response** actions executed on endpoints: isolate network, kill process, block IP, quarantine file...
+  - Open **Response** (menu or machine tab).
+  - Each row: machine, action, status (success/error), output, exit code.
+  - *To SEND new actions:* use the **Control** tab on a machine page.
 
 ### Network
 
-- **VI:** Theo dõi lưu lượng mạng: kết nối TCP/UDP, truy vấn DNS, lưu lượng bất thường giữa các máy.
-- **EN:** Monitor network traffic: TCP/UDP connections, DNS queries, suspicious traffic between machines.
+- **VI:** Theo dõi lưu lượng mạng giữa các máy.
+  - Chọn **Network** → biểu đồ kết nối + danh sách kết nối TCP/UDP, truy vấn DNS, lưu lượng bất thường.
+  - Lọc theo máy nguồn/đích, cổng, giao thức; bấm vào một kết nối để xem chi tiết.
+- **EN:** Monitor network traffic between machines.
+  - Open **Network** → connection graph + list of TCP/UDP connections, DNS queries, suspicious traffic.
+  - Filter by source/destination machine, port, protocol; click a connection for details.
 
 ### Threats
 
-- **VI:** Xem cảnh báo mối đe dọa do correlation engine phát hiện (theo rule, có ánh xạ MITRE ATT&CK và độ tin cậy).
-- **EN:** View threat alerts detected by the correlation engine (rule-based, with MITRE ATT&CK mapping and confidence).
+- **VI:** Cảnh báo mối đe dọa do correlation engine phát hiện.
+  - Mỗi dòng: tên rule, mức độ (CRITICAL/HIGH/MEDIUM/LOW), máy bị ảnh hưởng, thời gian, độ tin cậy.
+  - Bấm vào dòng để xem **chi tiết + hành động đề xuất**; có thể **Điều tra** (mở dòng thời gian Incident).
+- **EN:** Threat alerts detected by the correlation engine.
+  - Each row: rule name, severity (CRITICAL/HIGH/MEDIUM/LOW), affected machine, time, confidence.
+  - Click a row for **details + suggested actions**; you can **Investigate** (open the incident timeline).
 
 ### Vulns
 
-- **VI:** Xem kết quả quét lỗ hổng (CVE) của phần mềm đã cài trên máy trạm, kèm mức độ nghiêm trọng.
-- **EN:** View vulnerability scan results (CVEs) for installed software, with severity levels.
+- **VI:** Kết quả quét lỗ hổng (CVE) phần mềm đã cài.
+  - Chọn máy hoặc xem tất cả → danh sách CVE với **CVE ID, mức nghiêm trọng, phần mềm, bản vá**.
+  - Lọc theo severity (CRITICAL/HIGH...) để ưu tiên xử lý.
+- **EN:** Vulnerability scan results (CVEs) of installed software.
+  - Pick a machine or view all → list of CVEs with **CVE ID, severity, software, patch**.
+  - Filter by severity (CRITICAL/HIGH...) to prioritize.
 
 ### YARA
 
-- **VI:** Xem kết quả quét mã độc bằng rule YARA (phát hiện file nghi ngờ, mã độc đã biết).
-- **EN:** View malware scan results using YARA rules (detect suspicious files, known malware).
+- **VI:** Kết quả quét mã độc bằng rule YARA.
+  - Xem file nghi ngờ: **rule YARA khớp, máy, đường dẫn file, thời gian**.
+  - *Lưu ý:* rule YARA quản lý trên server; nếu chưa có rule nào, tab sẽ trống.
+- **EN:** Malware scan results using YARA rules.
+  - View suspicious files: **matched rule, machine, file path, time**.
+  - *Note:* rules are managed on the server; if none are defined the tab is empty.
 
 ### SCA (Security Configuration Assessment)
 
-- **VI:** Xem đánh giá cấu hình bảo mật theo chuẩn (CIS, PCI-DSS, ISO 27001, HIPAA, GDPR) — trạng thái PASS/FAIL/WARN.
-- **EN:** View security configuration assessment against standards (CIS, PCI-DSS, ISO 27001, HIPAA, GDPR) — PASS/FAIL/WARN status.
+- **VI:** Đánh giá cấu hình bảo mật theo chuẩn (CIS, PCI-DSS, ISO 27001, HIPAA, GDPR).
+  - Chọn máy → checklist với trạng thái **PASS / FAIL / WARN**, kèm mô tả và gợi ý khắc phục.
+- **EN:** Security configuration assessment against standards (CIS, PCI-DSS, ISO 27001, HIPAA, GDPR).
+  - Pick a machine → checklist with **PASS / FAIL / WARN** status, description and remediation hints.
 
 ### Agentless
 
-- **VI:** Theo dõi thiết bị không cài agent (server, gateway, máy in...) qua ping/SNMP — trạng thái online/offline.
-- **EN:** Monitor devices without an agent (servers, gateways, printers...) via ping/SNMP — online/offline status.
-
-### Agent Assistant
-
-- **VI:** Trò chuyện với trợ lý AI (DeepSeek/OpenAI/Gemini/Groq) để phân tích sự kiện, cảnh báo và nhận gợi ý xử lý.
-- **EN:** Chat with the AI assistant (DeepSeek/OpenAI/Gemini/Groq) to analyze events/alerts and get remediation suggestions.
+- **VI:** Giám sát thiết bị KHÔNG cài agent (server cũ, gateway, máy in, thiết bị mạng) qua ping/SNMP.
+  - Danh sách thiết bị: **IP, loại thiết bị, trạng thái online/offline, thời gian phản hồi**.
+- **EN:** Monitor devices WITHOUT an agent (legacy servers, gateways, printers, network gear) via ping/SNMP.
+  - Device list: **IP, type, online/offline status, response time**.
 
 ### Sysmon
 
-- **VI:** Xem log Sysmon chi tiết (tạo tiến trình, kết nối mạng, ghi file, registry, DLL load) để điều tra sâu.
-- **EN:** View detailed Sysmon logs (process creation, network, file, registry, DLL load) for deep investigation.
+- **VI:** Log Sysmon chi tiết (tạo tiến trình, kết nối mạng, ghi file, registry, DLL load) để điều tra sâu.
+  - Chọn máy → lọc theo **Event ID, process, đường dẫn**.
+  - Hữu ích khi truy tìm chuỗi tấn công (parent → child process).
+- **EN:** Detailed Sysmon logs (process creation, network, file writes, registry, DLL load) for deep investigation.
+  - Pick a machine → filter by **Event ID, process, path**.
+  - Useful for tracing attack chains (parent → child process).
 
 ### Memory
 
-- **VI:** Xem kết quả quét bộ nhớ (process hollowing, injection, giả mạo tên tiến trình) — phát hiện mã độc ẩn trong tiến trình.
-- **EN:** View memory scan results (process hollowing, injection, name spoofing) — detect malware hidden in processes.
+- **VI:** Kết quả quét bộ nhớ tiến trình: phát hiện **process hollowing, injection, giả mạo tên tiến trình**.
+  - Mỗi dòng: **máy, tiến trình, kỹ thuật nghi ngờ, mức độ, thời gian**.
+- **EN:** Memory scan results: detect **process hollowing, injection, process-name spoofing**.
+  - Each row: **machine, process, suspected technique, severity, time**.
+
+### 🆕 Cluster Status (Trạng thái Cluster)
+
+- **VI:** Xem trạng thái các node của cluster GIAM-SAT (khi triển khai nhiều node).
+  1. Vào menu **Cluster**.
+  2. Phần trên: 3 thẻ **Node ID** (node hiện tại), **Vai trò** (👑 Master / Slave), **Số node** đang online.
+  3. Bảng bên dưới liệt kê từng node: **Node ID, IP, cổng TCP, cổng Web, số agent, vai trò, trạng thái, lần cuối kết nối** (hiển thị giờ địa phương).
+  4. Nhấn **Tải lại** để cập nhật.
+  - *Lưu ý:* chạy 1 server vẫn thấy node của chính mình với vai trò Master.
+- **EN:** View the status of each node in a GIAM-SAT cluster (multi-node deployments).
+  1. Open the **Cluster** menu.
+  2. Top cards: **Node ID** (current), **Role** (👑 Master / Slave), **Online node count**.
+  3. The table lists every node: **Node ID, IP, TCP port, Web port, agent count, role, status, last seen** (local time).
+  4. Click **Reload** to refresh.
+  - *Note:* on a single-server install you still see your own node as Master.
 
 ---
 
@@ -93,33 +193,95 @@ Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-S
 
 ### Điều tra (Incident)
 
-- **VI:** Xem dòng thời gian điều tra sự cố — tổng hợp mọi sự kiện (Network, Sysmon, Events, FIM, Memory) quanh một cảnh báo trong ±15 phút.
-- **EN:** View an incident investigation timeline — all events (Network, Sysmon, Events, FIM, Memory) around an alert within ±15 minutes.
+- **VI:** Dòng thời gian điều tra sự cố quanh một cảnh báo.
+  1. Vào menu **Incident** → danh sách cảnh báo bên trái.
+  2. Chọn một cảnh báo → bên phải hiện **dòng thời gian** tổng hợp mọi sự kiện (Network, Sysmon, Events, FIM, Memory) trong **±15 phút** quanh thời điểm cảnh báo.
+  3. Bấm từng sự kiện để xem chi tiết; dùng để xác định chuỗi tấn công.
+- **EN:** Incident investigation timeline around an alert.
+  1. Open **Incident** → alert list on the left.
+  2. Select an alert → the right side shows a **timeline** of all events (Network, Sysmon, Events, FIM, Memory) within **±15 minutes** of the alert.
+  3. Click events for details; use it to reconstruct the attack chain.
 
 ### Attack Overview
 
-- **VI:** Xem tổng quan chuỗi tấn công — kỹ thuật MITRE đã bị phát hiện và chuỗi tiến trình (process chain) của cuộc tấn công.
-- **EN:** View the attack chain overview — detected MITRE techniques and the process chain of the attack.
+- **VI:** Tổng quan chuỗi tấn công.
+  - Xem **các kỹ thuật MITRE ATT&CK** đã phát hiện và **chuỗi tiến trình** (process chain) của cuộc tấn công.
+  - Dùng menu **Attack** → bảng tóm tắt + sơ đồ chuỗi; bấm vào từng mắt xích để xem chi tiết.
+- **EN:** Attack chain overview.
+  - View **detected MITRE ATT&CK techniques** and the **process chain** of the attack.
+  - Use the **Attack** menu → summary + chain diagram; click each link for details.
 
-### Threat Hunting
+### Săn tìm đe dọa (Threat Hunting)
 
-- **VI:** Chủ động tìm kiếm mối đe dọa trong dữ liệu lịch sử bằng các bộ lọc/truy vấn tùy chỉnh.
-- **EN:** Proactively hunt for threats across historical data using custom filters/queries.
+- **VI:** Chủ động săn tìm mối đe dọa trong dữ liệu lịch sử.
+  1. Vào menu **Hunting**.
+  2. Nhập **Giả thuyết** (VD: "Có process nào dump LSASS trong 24h qua không?").
+  3. (Tùy chọn) chọn **Tactic** mẫu: Credential Theft, Lateral Movement, Persistence, C2 Communication, Exfiltration, Defense Evasion.
+  4. Chọn **Thời gian (giờ)** cần quét (mặc định 168 giờ = 7 ngày).
+  5. Nhấn **Bắt đầu Săn tìm đe dọa** → kết quả hiện bên dưới (kèm Campaign ID để theo dõi).
+- **EN:** Proactively hunt for threats in historical data.
+  1. Open **Hunting**.
+  2. Type a **Hypothesis** (e.g. "Any process dumping LSASS in the last 24h?").
+  3. (Optional) pick a **Tactic** template: Credential Theft, Lateral Movement, Persistence, C2 Communication, Exfiltration, Defense Evasion.
+  4. Set the **Time window (hours)** to scan (default 168 h = 7 days).
+  5. Click **Start Threat Hunt** → results appear below (with a Campaign ID).
 
 ### Anomaly
 
-- **VI:** Xem phát hiện bất thường hành vi (độ lệch so với baseline đã học) — dấu hiệu tấn công chưa có rule.
-- **EN:** View behavior anomaly detections (deviations from learned baselines) — signs of attacks not yet covered by rules.
+- **VI:** Phát hiện bất thường hành vi (độ lệch so với baseline đã học).
+  - 4 thẻ tổng: **Tổng Anomaly Alerts / High / Medium / First-Time Events**.
+  - Danh sách bên dưới: mô tả bất thường, máy, mức độ, thời gian.
+  - Bấm vào dòng để xem chi tiết và đánh giá xem có cần chặn hay không.
+- **EN:** Behavior anomaly detections (deviations from learned baselines).
+  - 4 summary cards: **Total / High / Medium / First-Time Events**.
+  - List below: anomaly description, machine, severity, time.
+  - Click a row for details and decide whether to block.
 
-### IOC Sweep
+### Quét IOC (IOC Sweep)
 
-- **VI:** Quét toàn bộ máy trạm theo Indicator of Compromise (IP/domain/hash) để tìm dấu vết xâm nhập.
-- **EN:** Sweep all machines against Indicators of Compromise (IP/domain/hash) to find signs of compromise.
+- **VI:** Quét toàn bộ máy trạm theo Indicators of Compromise.
+  1. Vào menu **IOC Sweep**.
+  2. Dán JSON IOC vào ô **JSON IOCs** (định dạng: `[{"type":"ip","value":"1.2.3.4","source":"OTX"}, ...]`) — hoặc chọn file để upload.
+  3. Nhấn **Quét IOC** → kết quả: máy nào khớp với IOC nào, đường dẫn file/hash.
+  4. Theo dõi tổng số khớp ở góc phải (**iocStats**).
+- **EN:** Sweep all machines against Indicators of Compromise.
+  1. Open **IOC Sweep**.
+  2. Paste IOC JSON into **JSON IOCs** (format: `[{"type":"ip","value":"1.2.3.4","source":"OTX"}, ...]`) — or upload a file.
+  3. Click **Scan IOC** → results: which machine matched which IOC, file path/hash.
+  4. Watch the match counter on the right (**iocStats**).
 
 ### MITRE ATT&CK
 
-- **VI:** Xem ma trận MITRE ATT&CK — các kỹ thuật/tactic đã được phát hiện trên hệ thống.
-- **EN:** View the MITRE ATT&CK matrix — techniques/tactics detected on the system.
+- **VI:** Ma trận MITRE ATT&CK các kỹ thuật đã phát hiện.
+  - Chọn khoảng thời gian (1h/6h/24h/72h/7 ngày) rồi nhấn **Tải lại**.
+  - Ma trận hiện tactic (cột) × kỹ thuật (hàng); kỹ thuật đã phát hiện được tô màu — bấm để xem chi tiết.
+- **EN:** MITRE ATT&CK matrix of detected techniques.
+  - Pick a period (1h/6h/24h/72h/7 days) then click **Reload**.
+  - Matrix shows tactics (columns) × techniques (rows); detected ones are highlighted — click for details.
+
+### Agent Assistant (Trợ lý AI)
+
+- **VI:** Hỏi-đáp với trợ lý AI để phân tích sự kiện/cảnh báo.
+  1. Vào menu **Assistant**.
+  2. Chọn **Hãng API** (DeepSeek / OpenAI / Gemini / Groq / xAI) và mô hình tương ứng.
+  3. Chọn **Phạm vi** (toàn hệ thống / máy cụ thể) rồi gõ câu hỏi (VD: "Tóm tắt 5 mối đe dọa nghiêm trọng nhất").
+  4. Nhấn gửi → AI trả lời kèm dữ liệu hệ thống thực. Có cửa sổ AI nổi (⚡ góc dưới phải) dùng mọi lúc.
+- **EN:** Ask the AI assistant to analyze events/alerts.
+  1. Open **Assistant**.
+  2. Pick the **API provider** (DeepSeek / OpenAI / Gemini / Groq / xAI) and matching model.
+  3. Choose **Scope** (whole system / a specific machine) and type a question (e.g. "Summarize the 5 most severe threats").
+  4. Send — the AI replies with real system data. A floating AI widget (⚡ bottom-right) is available everywhere.
+
+- **VI — 🆕 Bật/Tắt AI (quản trị):**
+  - Trên cùng khung Assistant có **badge trạng thái** (xanh = AI đang bật, đỏ = AI bị tắt) và nút **Bật/Tắt AI** (biểu tượng nguồn ⏻).
+  - Nhấn nút → xác nhận → AI bật/tắt ngay lập tức cho toàn hệ thống; badge đổi màu tương ứng.
+  - Khi tắt: mọi yêu cầu AI (kể cả cửa sổ AI nổi) sẽ bị từ chối.
+  - *Lưu ý:* nếu server đặt biến môi trường `GIAMSAT_DISABLE_AI=1`, nút Bật không ghi đè được — AI vẫn bị tắt (an toàn tuyệt đối theo yêu cầu quản trị).
+- **EN — 🆕 Enable/Disable AI (admin):**
+  - The Assistant header has a **status badge** (green = AI enabled, red = AI disabled) and a **Toggle AI** button (power icon ⏻).
+  - Click it → confirm → AI toggles instantly system-wide; the badge updates.
+  - When disabled, all AI requests (including the floating widget) are refused.
+  - *Note:* if the server sets `GIAMSAT_DISABLE_AI=1`, the Enable button cannot override it — AI stays off (admin-level guarantee).
 
 ---
 
@@ -127,49 +289,159 @@ Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-S
 
 ### Tin nhắn (Messages)
 
-- **VI:** Nhắn tin hai chiều giữa admin và người dùng máy trạm (thông báo, yêu cầu hỗ trợ).
-- **EN:** Two-way messaging between admin and workstation users (announcements, support requests).
+- **VI:** Nhắn tin hai chiều giữa admin và người dùng máy trạm.
+  1. Vào menu **Messages** → danh sách hội thoại theo máy.
+  2. Chọn máy → gõ tin nhắn và gửi; agent hiển thị thông báo cho người dùng (popup / bong bóng).
+  3. Dùng để gửi thông báo bảo mật, yêu cầu hỗ trợ hoặc cảnh báo nội bộ.
+- **EN:** Two-way messaging between admin and workstation users.
+  1. Open **Messages** → conversations per machine.
+  2. Pick a machine → type and send; the agent shows it to the user (popup/bubble).
+  3. Use for security announcements, support requests, internal alerts.
 
-### Agent Groups
+### Agent Groups (Nhóm máy trạm)
 
-- **VI:** Quản lý nhóm agent — gom máy theo nhóm để áp dụng chính sách chung.
-- **EN:** Manage agent groups — group machines together to apply common policies.
+- **VI:** Gom máy theo nhóm để áp dụng chính sách chung.
+  1. Vào menu **Groups** → danh sách nhóm.
+  2. **Tạo nhóm mới** (đặt tên + mô tả), **thêm máy vào nhóm**, **xóa máy khỏi nhóm**.
+  3. Có thể gán **Group Policy** (chặn website, chặn USB, chặn phần mềm) cho từng nhóm.
+- **EN:** Group machines to apply common policies.
+  1. Open **Groups** → list of groups.
+  2. **Create a group** (name + description), **add/remove machines**.
+  3. Optionally assign **Group Policies** (block websites, block USB, block software) per group.
 
-### Update Agent
+### Cập nhật Agent (Update Agent)
 
-- **VI:** Quản lý bản cập nhật agent — xem phiên bản, đẩy cập nhật agent mới xuống các máy trạm.
-- **EN:** Manage agent updates — view versions and push new agent updates to workstations.
+- **VI:** Quản lý phiên bản và đẩy cập nhật agent xuống máy trạm.
+  1. Vào menu **Update Agent** → 2 tab: **📋 Trạng thái Agent** và **📜 Nhật ký Update**.
+  2. Trạng thái: xem **phiên bản agent trên server**, danh sách máy theo nhóm với phiên bản đang chạy.
+  3. Nhấn **Push Update Tất cả** để đẩy agent mới cho toàn bộ máy; hoặc push từng nhóm/máy.
+  4. Nút **Reset User Info All** xóa thông tin người dùng trên agent (máy sẽ phải khai báo lại).
+  5. Tab **Nhật ký Update** theo dõi kết quả cập nhật từng máy.
+- **EN:** Manage agent versions and push updates to endpoints.
+  1. Open **Update Agent** → 2 tabs: **📋 Agent Status** and **📜 Update Log**.
+  2. Status: **server agent version**, per-group machine list with running versions.
+  3. Click **Push Update All** to deploy the new agent everywhere, or push per group/machine.
+  4. **Reset User Info All** wipes user info on agents (they must be re-declared).
+  5. The **Update Log** tab tracks the result per machine.
 
 ### FIM Baseline
 
-- **VI:** Quản lý baseline FIM — chọn file/thư mục cần giám sát toàn vẹn (tối đa 500 mục).
-- **EN:** Manage FIM baselines — choose files/folders to monitor for integrity (up to 500 items).
+- **VI:** Chọn file/thư mục cần giám sát toàn vẹn (tối đa 500 mục).
+  1. Vào menu **FIM Baseline** → danh sách máy với số mục đã giám sát.
+  2. Chọn máy → mở bảng chi tiết: **thêm mục** (đường dẫn file/thư mục, loại: file/registry), **xóa mục**.
+  3. Baseline = cấu hình giám sát; mọi thay đổi sau đó sẽ tạo cảnh báo FIM.
+- **EN:** Choose files/folders to monitor for integrity (up to 500 items).
+  1. Open **FIM Baseline** → machine list with monitored-item counts.
+  2. Pick a machine → detail table: **add items** (path, type: file/registry), **remove items**.
+  3. The baseline is your monitoring config; any later change raises a FIM alert.
 
-### Quản lý Rules
+### Quản lý Rule (Correlation Rules)
 
-- **VI:** Quản lý correlation rules — bật/tắt, xem chi tiết các rule phát hiện tấn công.
-- **EN:** Manage correlation rules — enable/disable and view details of attack-detection rules.
+- **VI:** Quản lý các rule phát hiện tấn công.
+  1. Vào menu **Rules** → bảng danh sách rule với trạng thái bật/tắt.
+  2. **Bật/Tắt rule**: dùng switch/button trên mỗi dòng.
+  3. **Tạo/Sửa rule**: chọn rule (hoặc nút **📋 Template**) → sửa JSON trong ô bên phải → **Lưu Rule**.
+  4. **Test rule**: dán JSON rule + JSON event mẫu → **Test Rule** → xem kết quả TRIGGERED hay không.
+  5. **Deploy to Agents** đẩy rule xuống agent; **Hot-reload** nạp lại rule từ server mà không cần khởi động lại.
+- **EN:** Manage attack-detection rules.
+  1. Open **Rules** → rule list with enable/disable state.
+  2. **Toggle** rules on/off per row.
+  3. **Create/Edit**: select a rule (or **📋 Template**) → edit JSON → **Save Rule**.
+  4. **Test**: paste rule JSON + sample event JSON → **Test Rule** → see TRIGGERED or not.
+  5. **Deploy to Agents** pushes rules down; **Hot-reload** reloads from the server without restart.
 
-### Email Alerts
+### 🆕 Chặn cảnh báo giả (Suppression Manager)
 
-- **VI:** Cấu hình cảnh báo qua email (SMTP, người nhận, mức nghiêm trọng tối thiểu).
-- **EN:** Configure email alert notifications (SMTP, recipients, minimum severity).
+- **VI:** Dùng để "chặn lặp" — bỏ qua cảnh báo từ một **rule** (và tuỳ chọn: một **máy**) khi nó là dương tính giả (false positive) đã được xác nhận. Rule bị chặn sẽ **không tạo cảnh báo mới** nữa.
+
+  **Thêm suppression:**
+  1. Vào menu **Chặn cảnh báo giả (False-Positive Suppression)**.
+  2. Ô **Rule ID**: gõ hoặc chọn từ danh sách gợi ý (nạp từ các rule hiện có, VD `THREAT-001`, `SIGMA-*`).
+  3. **Máy trạm**: chọn máy cụ thể, hoặc để **"(Tất cả máy)"** để áp dụng cho mọi máy.
+  4. **Lý do** (khuyến nghị ghi rõ): VD "Cảnh báo giả - phần mềm nội bộ quét file lúc 2h sáng".
+  5. Nhấn **Thêm suppression** → dòng mới xuất hiện trong danh sách bên dưới.
+
+  **Xóa suppression:**
+  - Trong danh sách, dòng muốn bỏ → nút **Xóa** (đỏ) → xác nhận. Rule được phép cảnh báo trở lại.
+
+  **Bảng danh sách:** ID, Rule ID, Máy (trống = tất cả), Đường dẫn/Hash (nếu có), Lý do, Người tạo, Thời gian tạo.
+  - Đếm tổng ở góc phải tiêu đề: *"Tổng cộng: N suppression"*.
+  - Nút **Tải lại** 🔄 để cập nhật danh sách.
+
+  *Lưu ý:* chặn theo rule + máy là chính xác nhất; chặn "tất cả máy" cho một rule phổ biến có thể che giấu tấn công thật — hãy giới hạn máy và ghi rõ lý do.
+
+- **EN:** Used to **suppress repeated alerts** from a **rule** (optionally scoped to one **machine**) once it is confirmed as a false positive. A suppressed rule **no longer creates new alerts**.
+
+  **Add a suppression:**
+  1. Open the **Suppression Manager** menu.
+  2. **Rule ID**: type or pick from the suggestion list (populated from existing rules, e.g. `THREAT-001`, `SIGMA-*`).
+  3. **Machine**: choose a specific one, or leave **"(All machines)"** to apply everywhere.
+  4. **Reason** (recommended): e.g. "False positive — internal software scans files at 2 AM".
+  5. Click **Add suppression** — the row appears in the list below.
+
+  **Delete a suppression:**
+  - In the list, click the row's **Delete** (red) button → confirm. The rule may alert again.
+
+  **List columns:** ID, Rule ID, Machine (blank = all), Path/Hash (if any), Reason, Created by, Created at.
+  - Total counter in the header: *"Total: N suppression(s)"*.
+  - **Reload** 🔄 refreshes the list.
+
+  *Note:* suppressing by rule+machine is most precise; a global rule suppression for a common rule can hide real attacks — scope it and always state the reason.
+
+### ⏳ Phê duyệt đang chờ (Pending Approvals)
+
+- **VI:** Khi một rule cảnh báo có hành động **tự động yêu cầu phê duyệt** (cách ly mạng, khóa tài khoản, cách ly file), hệ thống sẽ đưa vào hàng đợi **chờ duyệt**.
+  - **Cách 1 — Tự động:** cứ **30 giây** hệ thống kiểm tra; có yêu cầu mới → **cửa sổ phê duyệt tự hiện** kèm chi tiết: **Máy, Hành động, Rule, Mô tả**.
+  - **Cách 2 — Thủ công:** badge đỏ **⏳ (số lượng)** trên menu **Bảng điều khiển** (góc trái sidebar) → nhấn vào → danh sách chờ hiện ra.
+  - **Duyệt (✅):** cho phép thực thi hành động trên máy đó. **Từ chối (❌):** hủy — không thực thi.
+  - Sau khi xử lý, hệ thống báo kết quả (đã duyệt / đã từ chối).
+- **EN:** When an alert rule includes an action that **requires approval** (isolate network, lock account, quarantine file), it goes into the **pending queue**.
+  - **Automatic:** every **30 seconds** the system checks; a new request **auto-opens the approval dialog** with details: **Machine, Action, Rule, Description**.
+  - **Manual:** the red badge **⏳ (count)** on the **Dashboards** menu (left sidebar) → click it → pending list opens.
+  - **Approve (✅):** allows the action to run on that machine. **Deny (❌):** cancels it.
+  - The system then reports the result (approved / denied).
+
+
+### Email Alerts (Cảnh báo Email)
+
+- **VI:** 3 tab: **📧 Soạn Email**, **⚙ Cấu hình SMTP**, **📤 Mail đã gửi**.
+  1. **Soạn Email**: chọn **mẫu cảnh báo** có sẵn (uptime 24h, brute force, malware, phishing, truy cập trái phép, lỗ hổng, kết nối độc hại, FIM, cảnh báo chung) → hệ thống tự điền tiêu đề/nội dung; chọn máy (tự lấy email người dùng), sửa nếu cần → **Gửi Email**. Biến có sẵn trong nội dung: `{hostname}`, `{user_name}`, `{employee_id}`.
+  2. **Cấu hình SMTP**: thông tin **chỉ đọc** từ biến môi trường server (`GIAMSAT_SMTP_HOST/PORT/USER/PASS`); bấm **Gửi Email Test** để kiểm tra.
+  3. **Mail đã gửi**: lịch sử gửi (thời gian, người nhận, tiêu đề, trạng thái); **Xóa tất cả** để dọn.
+- **EN:** 3 tabs: **📧 Compose**, **⚙ SMTP Config**, **📤 Sent Mail**.
+  1. **Compose**: pick a **template** (uptime 24h, brute force, malware, phishing, unauthorized access, vulnerability, suspicious connection, FIM, general) → subject/body auto-fill; pick a machine (user email auto-loaded), edit if needed → **Send Email**. Body variables: `{hostname}`, `{user_name}`, `{employee_id}`.
+  2. **SMTP Config**: **read-only** values from server env (`GIAMSAT_SMTP_HOST/PORT/USER/PASS`); use **Send Test Email** to verify.
+  3. **Sent Mail**: send history (time, recipient, subject, status); **Clear all** empties it.
 
 ### Tài sản (Assets)
 
-- **VI:** Quản lý tài sản IT với nhiều sub-tab: **Máy tính**, **Màn hình**, **Máy in**, **Điện thoại**, **Thiết bị mạng**, **Ngoại vi**, **Kho** và **Cảnh báo thay đổi**.
-  - **Tự phát hiện:** nút **"🔍 Quét tự động"** → nhập dải IP (VD `192.168.1.0/24`) để dò máy in (SNMP/JetDirect), điện thoại IP (VD Yealink), router/switch/AP rồi tự nạp vào kho với nhãn **"Tự động"** (kèm serial, địa chỉ IP).
-  - **Nhập tay:** tab **Kho** → **"＋ Thêm tài sản"** để quản lý tồn kho (chuột, bàn phím, điện thoại, linh kiện dự phòng...) với: loại, hãng, model, serial, mã số tài sản, trạng thái (Còn hàng/Đã cấp/Đang sửa/Thanh lý), người đang dùng, vị trí/phòng, ngày mua, bảo hành, giá, ghi chú. Sửa/xoá trực tiếp.
+- **VI:** Quản lý tài sản IT với 8 sub-tab: **Máy tính, Màn hình, Máy in, Điện thoại, Thiết bị mạng, Ngoại vi, Kho, Cảnh báo thay đổi**.
+  - **Tự phát hiện:** nút **"🔍 Quét tự động"** → nhập dải IP (VD `192.168.1.0/24`) → server dò máy in (SNMP/JetDirect), điện thoại IP (VD Yealink), router/switch/AP → tự nạp vào kho nhãn **"Tự động"** (kèm serial, IP).
+  - **Nhập tay:** tab **Kho** → **"＋ Thêm tài sản"** → loại, hãng, model, serial, mã số tài sản, trạng thái (Còn hàng/Đã cấp/Đang sửa/Thanh lý), người dùng, vị trí/phòng, ngày mua, bảo hành, giá, ghi chú. Sửa/xóa trực tiếp từng dòng.
   - **Adopt:** tài sản tự phát hiện có nút **"Đưa vào kho"** để gán người/vị trí/mã TS (chuyển từ Tự động → Nhập tay).
-  - **Xuất Excel đa sheet:** `May tinh`, `Man hinh`, `May in`, `Dien thoai`, `Thiet bi mang`, `Ngoai vi`, `Kho`.
-  - Theo dõi **thay đổi phần cứng** và lịch sử xử lý (đã xác nhận/chưa xử lý).
-- **EN:**
-  - **Computers / Monitors / Printers / Phones / Network devices / Peripherals / Inventory / Changes** tabs.
-  - **"🔍 Auto scan"** → enter an IP range to auto-discover printers (SNMP/JetDirect), IP phones (e.g. Yealink), routers/switches/APs; found items are added to inventory as **"Auto"** (with serial, IP).
-  - **Inventory** tab → **"＋ Add asset"** to manage stock manually (mice, keyboards, phones, spare components...) with: category, brand, model, serial, asset tag, status (in stock/assigned/in repair/disposed), assignee, location, purchase date, warranty, cost, notes; edit/delete.
-  - **Adopt** button turns an auto-discovered asset into a manually-managed one.
+  - **Xuất Excel đa sheet:** `May tinh, Man hinh, May in, Dien thoai, Thiet bi mang, Ngoai vi, Kho`.
+  - Theo dõi **thay đổi phần cứng** (đã xác nhận / chưa xử lý).
+- **EN:** IT asset management with 8 sub-tabs: **Computers, Monitors, Printers, Phones, Network devices, Peripherals, Inventory, Changes**.
+  - **Auto scan:** **"🔍 Auto scan"** → enter an IP range → discovers printers (SNMP/JetDirect), IP phones (e.g. Yealink), routers/switches/APs → added as **"Auto"** (with serial, IP).
+  - **Manual:** **Inventory** tab → **"＋ Add asset"** → category, brand, model, serial, asset tag, status (in stock/assigned/in repair/disposed), assignee, location, purchase date, warranty, cost, notes; edit/delete inline.
+  - **Adopt:** converts an auto-discovered asset into a manually-managed one (assign user/location/tag).
   - **Multi-sheet Excel export:** Computers, Monitors, Printers, Phones, Network, Peripherals, Inventory.
-  - Tracks **hardware changes** with resolved/unresolved status.
+  - Tracks **hardware changes** (resolved/unresolved).
+
+### 🆕 Nhật ký kiểm toán (Audit Log)
+
+- **VI:** Xem toàn bộ **lịch sử hành động của người dùng** trên dashboard (ai làm gì, khi nào, từ IP nào) — phục vụ kiểm toán bảo mật và truy vết thao tác quản trị.
+  1. Vào menu **Nhật ký kiểm toán (Audit Trail Log)**.
+  2. Ô **Tìm kiếm** lọc nhanh theo **người dùng / hành động / chi tiết / IP** (lọc ngay khi gõ, không cần nhấn Enter).
+  3. Chọn **số bản ghi** hiển thị (50 / 100 / 200 / 500) → danh sách tự tải lại.
+  4. Bảng hiển thị: **Thời gian, Người dùng, Hành động** (badge), **Chi tiết, IP**.
+  - *Mẹo:* các thao tác quan trọng (thêm/xóa suppression, tạo báo cáo, bật/tắt AI, xóa dashboard, cập nhật rule...) đều được ghi ở đây — dùng tab Audit để kiểm tra ai đã thay đổi cấu hình.
+- **EN:** View the full **audit trail of user actions** on the dashboard (who did what, when, from which IP) — for security auditing and admin-activity forensics.
+  1. Open the **Audit Trail Log** menu.
+  2. The **Search** box filters live by **user / action / details / IP** (no Enter needed).
+  3. Pick a **record limit** (50 / 100 / 200 / 500) — the list reloads.
+  4. Columns: **Time, User, Action** (badge), **Details, IP**.
+  - *Tip:* important actions (add/remove suppression, generate report, toggle AI, delete dashboard, update rules...) are all logged here — use it to verify who changed what.
 
 ---
 
@@ -177,12 +449,55 @@ Bilingual (Vietnamese - English) guide to the functions and usage of each GIAM-S
 
 ### Dọn dẹp dữ liệu (Cleanup)
 
-- **VI:** Dọn dẹp dữ liệu cũ theo thời gian lưu trữ (retention) để giải phóng dung lượng cơ sở dữ liệu.
-- **EN:** Clean up old data according to retention settings to free database space.
+- **VI:** Giải phóng dung lượng cơ sở dữ liệu.
+  1. Vào menu **Dọn dẹp dữ liệu cũ**.
+  2. Xem **thống kê dung lượng** từng bảng (events, fim, syslog, response, network...).
+  3. Chọn các bảng cần dọn và nhấn **Dọn dẹp** (xóa dữ liệu cũ hơn số ngày cấu hình, mặc định giữ lại dữ liệu liên quan threat).
+  - *Cảnh báo:* dữ liệu đã xóa **không thể khôi phục**. Nên chạy sau khi đã xuất/lưu trữ báo cáo.
+- **EN:** Free up database space.
+  1. Open **Cleanup old data**.
+  2. Review **size stats** per table (events, fim, syslog, response, network...).
+  3. Select tables and click **Clean** (removes data older than the retention days; threat-related data is kept by default).
+  - *Warning:* deleted data **cannot be recovered**. Run it after exporting/archiving reports.
+
+### 🆕 Báo cáo tổng hợp (Summary Reports)
+
+- **VI:** Xuất **báo cáo HTML tổng hợp** tự động (thống kê máy, sự kiện, mối đe dọa, lỗ hổng, SCA, YARA...) — dùng cho báo cáo cuối ngày/tuần cho cấp trên hoặc lưu hồ sơ.
+
+  **Báo cáo tổng hợp (Báo cáo ngày / Báo cáo tuần):**
+  1. Trên trang **Tổng quan**, trong thẻ **📊 Báo cáo**, nhấn **Xuất báo cáo** → cửa sổ cấu hình mở ra.
+  2. (Tùy chọn) chọn định dạng **Excel (.xlsx)** hoặc **HTML (.html)** và các mục trong **cấu hình máy** (Cấu hình / Phần mềm / Thông tin người dùng) cho báo cáo chi tiết máy.
+  3. Trong phần **Báo cáo tổng hợp**, nhấn **Báo cáo ngày** (daily) hoặc **Báo cáo tuần** (weekly).
+  4. Xác nhận → server tạo file HTML trong vài giây → trình duyệt **tự tải file về** ngay lập tức (VD `giamsat_report_daily_20260820_110423.html`).
+  5. Mở file bằng trình duyệt: báo cáo có cấu trúc (tổng quan, mối đe dọa, lỗ hổng, khuyến nghị) — sẵn sàng in PDF/chia sẻ.
+
+  *Lưu ý:* nút **Xuất báo cáo** (Excel/HTML cấu hình máy) và **Báo cáo ngày/tuần** (báo cáo tổng hợp) là **hai chức năng khác nhau** — cái trước là chi tiết 1 máy, cái sau là báo cáo toàn hệ thống.
+- **EN:** Generate an automated **summary HTML report** (machines, events, threats, vulnerabilities, SCA, YARA stats...) — for end-of-day/week reporting to management or record-keeping.
+
+  **Summary report (Daily / Weekly):**
+  1. On **Overview**, in the **📊 Reports** card, click **Export report** → the configuration dialog opens.
+  2. (Optional) choose **Excel (.xlsx)** or **HTML (.html)** and the machine-config sections (Config / Software / User info) for the per-machine detail report.
+  3. In the **Summary report** area, click **Daily report** or **Weekly report**.
+  4. Confirm → the server builds the HTML file in seconds → the browser **downloads it automatically** (e.g. `giamsat_report_daily_20260820_110423.html`).
+  5. Open it in a browser: the report is structured (overview, threats, vulnerabilities, recommendations) — ready to print to PDF or share.
+
+  *Note:* **Export report** (per-machine Excel/HTML) and **Daily/Weekly report** (system summary) are **two different features** — the former is one machine's detail, the latter is a system-wide report.
 
 ---
 
-*Mẹo: các menu đều hỗ trợ tìm kiếm, lọc và cập nhật theo thời gian thực (SSE).*
-*Tip: all menus support search, filtering and real-time updates (SSE).*
+## Bảng quyền nhanh — Quick permission reference
 
+- **VI:** Một số hành động nhạy cảm yêu cầu quyền nâng cao:
+  - **Viewer:** xem tất cả (không gửi lệnh điều khiển, không đổi cấu hình).
+  - **Operator (+):** gửi hành động phản hồi, gửi lệnh SSH, dùng AI.
+  - **Admin:** mọi thứ — quản lý rule, suppression, xóa dữ liệu, bật/tắt AI, xóa dashboard, cấu hình.
+- **EN:** Some sensitive actions require elevated permissions:
+  - **Viewer:** read-only (no response/control commands, no config changes).
+  - **Operator (+):** send response actions, SSH commands, use AI.
+  - **Admin:** everything — rules, suppression, data cleanup, AI toggle, dashboard delete, config.
+
+---
+
+*Mẹo cuối: mọi menu đều hỗ trợ tìm kiếm, lọc, sắp xếp và cập nhật thời gian thực (SSE). Nếu một thao tác "không chạy", kiểm tra tab **Nhật ký kiểm toán** xem lệnh đã được ghi nhận chưa.*
+*Final tip: every menu supports search, filter, sorting and real-time updates (SSE). If an action "does nothing", check the **Audit Log** to see whether the command was recorded.*
 
