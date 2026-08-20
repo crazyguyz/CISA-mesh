@@ -2497,7 +2497,7 @@ function loadSuppressions() {
     fetch('/api/suppression/list').then(r => r.json()).then(data => {
         const items = data.suppressions || [];
         const cnt = document.getElementById('supCount');
-        if (cnt) cnt.textContent = items.length + ' suppression(s)';
+        if (cnt) cnt.textContent = t('supp.count', [items.length]);
         if (!items.length) { el.innerHTML = '<div class="text-center text-muted py-3">'+t('supp.none')+'</div>'; return; }
         el.innerHTML = '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>ID</th><th>'+t('supp.ruleId')+'</th><th>'+t('supp.machine')+'</th><th>'+t('supp.pathHash')+'</th><th>'+t('supp.reason')+'</th><th>'+t('supp.createdBy')+'</th><th>'+t('supp.createdAt')+'</th><th></th></tr></thead><tbody>'
             + items.map(function(s) {
@@ -2573,13 +2573,14 @@ function loadCluster() {
     if (!el) return;
     el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
     fetch('/api/cluster/nodes').then(r => r.json()).then(data => {
+        // API returns nodes as an object keyed by node_id (cluster_manager.get_all_active_nodes)
+        const nodes = Array.isArray(data.nodes) ? data.nodes : Object.values(data.nodes || {});
         let html = '';
         html += '<div class="row g-2 mb-3">';
         html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.nodeId')+'</div><div class="value" style="font-size:14px;">'+escapeHtml(data.node_id||'-')+'</div></div></div>';
         html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.role')+'</div><div class="value" style="font-size:14px;color:#00d4aa;">'+(data.is_master ? '👑 '+t('cluster.master') : t('cluster.slave'))+'</div></div></div>';
-        html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.nodes')+'</div><div class="value" style="font-size:14px;">'+(Array.isArray(data.nodes) ? data.nodes.length : 0)+'</div></div></div>';
+        html += '<div class="col-md-4"><div class="stat-card"><div class="label">'+t('cluster.nodes')+'</div><div class="value" style="font-size:14px;">'+nodes.length+'</div></div></div>';
         html += '</div>';
-        const nodes = Array.isArray(data.nodes) ? data.nodes : [];
         if (!nodes.length) {
             html += '<div class="text-center text-muted py-3">'+t('cluster.noNodes')+'</div>';
         } else {

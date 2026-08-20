@@ -15,6 +15,7 @@
 
   var DICT = {
     vi: {
+      'supp.count': 'Tổng cộng: {0} suppression',
       'db.confirmDelete': 'Xóa dashboard {0}?',
       'db.deleted': 'Đã xóa dashboard',
       'assist.confirmToggle': 'Bật/tắt AI Assistant?',
@@ -907,6 +908,7 @@
       'reports.weekly': 'Báo cáo tuần',
     },
     en: {
+      'supp.count': 'Total: {0} suppression(s)',
       'db.confirmDelete': 'Delete dashboard {0}?',
       'db.deleted': 'Dashboard deleted',
       'assist.confirmToggle': 'Enable/disable the AI Assistant?',
