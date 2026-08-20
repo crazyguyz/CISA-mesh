@@ -15,6 +15,20 @@
 
   var DICT = {
     vi: {
+      'cluster.agentCount': ('Số Agent', 'Agents'),
+      'cluster.lastSeen': ('Cập nhật cuối', 'Last seen'),
+      'cluster.master': ('Master', 'Master'),
+      'cluster.noNodes': ('Chưa có node nào kết nối', 'No nodes connected'),
+      'cluster.nodeId': ('Node ID', 'Node ID'),
+      'cluster.nodes': ('Node', 'Nodes'),
+      'cluster.online': ('online', 'online'),
+      'cluster.role': ('Vai trò', 'Role'),
+      'cluster.slave': ('Slave', 'Slave'),
+      'cluster.status': ('Trạng thái', 'Status'),
+      'cluster.tcpPort': ('TCP Port', 'TCP Port'),
+      'cluster.title': ('Trạng thái Cluster', 'Cluster Status'),
+      'cluster.webPort': ('Web Port', 'Web Port'),
+      'nav.cluster': ('Cluster', 'Cluster'),
       // Sidebar groups
       'group.monitoring': 'GIÁM SÁT',
       'group.analysis': 'PHÂN TÍCH & ĐIỀU TRA',
@@ -887,6 +901,20 @@
       'reports.weekly': ('Báo cáo tuần', 'Weekly report'),
     },
     en: {
+      'cluster.agentCount': 'Agents',
+      'cluster.lastSeen': 'Last seen',
+      'cluster.master': 'Master',
+      'cluster.noNodes': 'No nodes connected',
+      'cluster.nodeId': 'Node ID',
+      'cluster.nodes': 'Nodes',
+      'cluster.online': 'online',
+      'cluster.role': 'Role',
+      'cluster.slave': 'Slave',
+      'cluster.status': 'Status',
+      'cluster.tcpPort': 'TCP Port',
+      'cluster.title': 'Cluster Status',
+      'cluster.webPort': 'Web Port',
+      'nav.cluster': 'Cluster',
       // Sidebar groups
       'group.monitoring': 'MONITORING',
       'group.analysis': 'ANALYSIS & INVESTIGATION',
