@@ -4,6 +4,39 @@
 
 ---
 
+## 🔄 Cập nhật phiên bản từ GitHub (không cần tải lại ZIP) — Update from GitHub (no ZIP re-download)
+
+> Hướng dẫn song ngữ (Việt - Anh) — Bilingual (Vietnamese - English).
+
+**VI:** Sau khi đã chạy dự án trên server, bạn có thể cập nhật lên bản mới nhất trực tiếp từ GitHub bằng Git — **không cần xóa bản cũ, không cần tải lại file ZIP**.
+**EN:** Once the project is running on your server, update to the latest version directly from GitHub with Git — **no need to delete the old copy or re-download the ZIP**.
+
+Trên server (làm 1 lần) — On the server (one-time setup):
+
+```powershell
+cd C:\giamsat
+git init
+git remote add origin https://github.com/crazyguyz/CISA-mesh.git
+git fetch origin main
+git reset --hard origin/main      # ← lấy đúng bản mới nhất (get the exact latest version)
+```
+
+Mỗi lần có bản mới — Every time a new version is released:
+
+```powershell
+git pull
+```
+
+**Lưu ý — Notes:**
+- Chỉ thay đổi giao diện (`server\templates\`, `server\static\`) → **không cần restart**, chỉ cần **Ctrl+F5** trên trình duyệt.
+- Only UI files changed (`server\templates\`, `server\static\`) → **no restart needed**, just press **Ctrl+F5** in the browser.
+- Có thay đổi mã Python (`*.py`) → **restart server** để áp dụng (agent sẽ tự kết nối lại sau vài giây).
+- Python files changed (`*.py`) → **restart the server** to apply (agents reconnect automatically within a few seconds).
+- Sao lưu trước khi cập nhật: `server\giamsat_data.db`, `users.json`, `.env` (nếu có).
+- Back up before updating: `server\giamsat_data.db`, `users.json`, `.env` (if present).
+
+---
+
 ## 🏗️ Kiến trúc
 
 ```
