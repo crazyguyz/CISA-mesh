@@ -57,7 +57,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             document.getElementById(v.el).style.display = '';
             if (v.container) {
                 var cEl = document.getElementById(v.container);
-                if (cEl && (cEl.innerHTML.indexOf('Đang tải') < 0 && cEl.innerHTML.indexOf('Chưa có dữ liệu') < 0 && cEl.innerHTML.indexOf('spinner') < 0)) {
+                if (cEl && (cEl.innerHTML.indexOf(t('ui.loading')) < 0 && cEl.innerHTML.indexOf(t('ui.noData')) < 0 && cEl.innerHTML.indexOf('spinner') < 0)) {
                     cEl.innerHTML = loadingVD;
                 }
             }
@@ -118,10 +118,10 @@ function selectMachine(machineId) {
 
 function updateSSHTitle(hostname) {
     const headerEl = document.querySelector('#tabCommand .card-header');
-    if (headerEl) { headerEl.innerHTML = `<i class="bi bi-terminal"></i> SSH Remote Shell → <strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong> (gửi lệnh đến máy trạm này)`; }
+    if (headerEl) { headerEl.innerHTML = `<i class="bi bi-terminal"></i> SSH Remote Shell → <strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong> (${t('ssh.toMachine')})`; }
     const outputEl = document.getElementById('cmdOutput');
     if (outputEl && outputEl.innerHTML.indexOf('GIAM-SAT Remote Shell v1.0') === 0) {
-        outputEl.innerHTML = `GIAM-SAT Remote Shell v1.0<br>================================<br>🎯 Máy trạm: <strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong><br>Gõ lệnh → Enter để gửi đến máy trạm này<br>Kết quả hiển thị sau 2-5 giây<br>================================<br>`;
+        outputEl.innerHTML = `GIAM-SAT Remote Shell v1.0<br>================================<br>${t('ssh.machineLabel')}<strong style="color:#ffcc66;">${escapeHtml(hostname)}</strong><br>${t('ssh.typeCommand')}<br>${t('ssh.resultDelay')}<br>================================<br>`;
     }
 }
 
@@ -328,7 +328,7 @@ function loadAllEvents() {
     const el = document.getElementById('allEventList');
     fetch('/api/events?limit=300').then(r => r.json()).then(events => {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noEvents') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),'Loại / Kênh','ID',t('dash.source'),'Chi tiết'],
+        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),t('ui.type')+' / '+t('ui.channel'),'ID',t('dash.source'),t('ui.detail')],
             events.map(e => {
                 const cat = e.event_category || '';
                 const catBadge = cat ? `<span class="badge bg-secondary me-1" style="font-size:9px;">${escapeHtml(cat)}</span>` : '';
@@ -350,7 +350,7 @@ function loadMachineEvents(machineId) {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noEvents') + '</div>'; return; }
         el.innerHTML = tableWrap([t('dash.time'),t('dash.type'),'ID',t('dash.source'),t('dash.desc')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml(e.time||'-')}</td><td><span class="log-type event">${escapeHtml(e.subtype||'?')}</span></td><td>${escapeHtml(e.event_id||'-')}</td><td>${escapeHtml(e.source||'-')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml((e.description||'').substring(0,80))}</td></tr>`));
         document.getElementById('eventSearch').oninput = function() { const q = this.value.toLowerCase(); el.querySelectorAll('tbody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'); };
-    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
+    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>');
 }
 
 function loadAllFim() {
@@ -366,7 +366,7 @@ function loadMachineFim(machineId) {
     fetch(`/api/fim?machine_id=${machineId}&limit=200`).then(r => r.json()).then(events => {
         if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noFimEvents') + '</div>'; return; }
         el.innerHTML = tableWrap([t('dash.time'),t('dash.action'),t('dash.path')], events.map(e => `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml(e.time||'-')}</td><td><span class="log-type fim">${escapeHtml(e.action||'?')}</span></td><td style="max-width:500px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.path||'-')}</td></tr>`));
-    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
+    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>');
 }
 
 function loadMachineResponses(machineId) {
@@ -374,7 +374,7 @@ function loadMachineResponses(machineId) {
     fetch(`/api/responses?machine_id=${machineId}&limit=50`).then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noResponseResults') + '</div>'; return; }
         el.innerHTML = tableWrap([t('dash.time'),t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${escapeHtml(e.status||'?')}</span></td><td style="max-width:500px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${escapeHtml((e.output||e.error||'-').substring(0,200))}</td></tr>`));
-    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>');
+    }).catch(() => el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>');
 }
 
 function loadSyslog() {
@@ -392,13 +392,13 @@ function loadSyslog() {
         if(!r.ok) throw new Error('HTTP '+r.status);
         return r.json();
     }).then(function(data){
-        if(!Array.isArray(data)){ el.innerHTML='<div class="text-center text-muted py-3">⚠ Dữ liệu không đúng định dạng</div>'; return; }
+        if(!Array.isArray(data)){ el.innerHTML='<div class="text-center text-muted py-3">'+t('ui.badData')+'</div>'; return; }
         var total = data.length;
         if (!total) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> ' + t('dash.noSyslog') + (search||facility||severity||sourceIp?'<br><small style="font-size:11px;color:#6a8aaa;">' + t('dash.clearFilter') + '</small>':'<br><small style="font-size:11px;color:#6a8aaa;">' + t('dash.syslogHint') + '</small>') + '</div>'; return; }
         el.innerHTML = '<div class="text-muted mb-1" style="font-size:11px;">' + t('dash.foundRecords', [total]) + (search||facility||severity||sourceIp?t('dash.filtered'):'') + '</div>' +
             tableWrap([t('dash.time'),t('dash.source'),'Facility',t('dash.severity'),t('dash.content')], data.map(function(e){ return '<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">'+escapeHtml((e.timestamp||'').substring(0,19))+'</td><td>'+escapeHtml(e.hostname||e.source_ip||'-')+'</td><td><span class="badge bg-dark" style="font-size:9px;">'+escapeHtml(e.facility||'?')+'</span></td><td><span class="badge '+(e.severity==='error'||e.severity==='critical'?'bg-danger':e.severity==='warning'?'bg-warning text-dark':'bg-secondary')+'">'+escapeHtml(e.severity||'?')+'</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escapeHtml(e.message||'')+'">'+escapeHtml((e.message||'').substring(0,120))+'</td></tr>'; }));
     }).catch(function(e){
-        el.innerHTML='<div class="text-center text-muted py-3">⚠ Lỗi tải syslog: '+e.message+'<br><small style="font-size:11px;color:#6a8aaa;">Kiểm tra Syslog Server đã chạy chưa (port 514/UDP)</small></div>';
+        el.innerHTML='<div class="text-center text-muted py-3">⚠ '+t('ui.loadSyslogErr')+''+e.message+'<br><small style="font-size:11px;color:#6a8aaa;">'+t('ui.syslogHint')+'</small></div>';
     });
 }
 
@@ -416,7 +416,7 @@ function loadNetwork() {
         let html = '';
         if (!data.length) { html += '<div class="text-center text-muted py-2">' + t('dash.noNetworkTraffic') + '</div>'; }
         else {
-            html += '<h6 class="px-2 pt-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-diagram-3"></i> Lưu lượng mạng (TCP/UDP)</h6>';
+            html += '<h6 class="px-2 pt-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-diagram-3"></i> '+t('ui.networkTraffic')+'</h6>';
             html += tableWrap([t('dash.time'),t('dash.machine'),t('dash.source'),'Đích','Giao thức','Port','Size','Ứng dụng'],
                 data.map(e => {
                     const row = Object.assign({}, e, {type: 'network_traffic'});
@@ -450,7 +450,7 @@ function loadNetwork() {
         fetch('/api/inspection?limit=100').then(r2 => r2.json()).then(inspData => {
             if (inspData.length) {
                 html += '<hr style="border-color:#2a3a4a;margin:8px 0;"><h6 class="px-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-search"></i> Deep Packet Inspection (DNS / TLS / HTTP / Beaconing)</h6>';
-                html += inspData.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong>${e.subtype==='beaconing'?` (chu kỳ ${escapeHtml(e.avg_interval_sec)}s)`:''}</span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
+                html += inspData.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong>${e.subtype==='beaconing'?` (${t('ssh.period')} ${escapeHtml(e.avg_interval_sec)}s)`:''}</span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
             }
             el.innerHTML = html;
         });
@@ -468,14 +468,14 @@ function loadInspection() {
 function loadYara() {
     const el = document.getElementById('yaraList');
     fetch('/api/yara?limit=500').then(r => r.json()).then(data => {
-        if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> Không phát hiện mã độc</div>'; return; }
+        if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> '+t('ui.noMalware')+'</div>'; return; }
         // v2.6.5: Highlight Binary_Padding_Evasion alerts
         const paddingAlerts = data.filter(e => e.rule_name === 'Binary_Padding_Evasion');
         let html = '';
         if (paddingAlerts.length > 0) {
             html += '<div class="p-2 mb-2" style="background:#1a1000;border:1px solid #ffcc66;border-radius:6px;">';
             html += '<strong style="color:#ffcc66;">⚠ Binary Padding Evasion Detected (' + paddingAlerts.length + ' files)</strong>';
-            html += '<div style="font-size:11px;color:#ffaa44;margin-top:4px;">File lớn (>100MB) có entropy thấp — nghi ngờ bị padding để bypass scan.</div>';
+            html += '<div style="font-size:11px;color:#ffaa44;margin-top:4px;">'+t('ui.lowEntropyHint')+'</div>';
             html += '</div>';
         }
         html += buildGroupedByMachine(data, 'yara', '🦠 YARA/Pattern Scan');
@@ -496,7 +496,7 @@ function loadVulns() {
     fetch('/api/vulns?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('dash.noVulns') + '</div>'; return; }
         el.innerHTML = buildGroupedByMachine(data, 'vulns', '🐞 Vulnerability Alerts (CVE)');
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
 }
 
 function loadSca() {
@@ -504,7 +504,7 @@ function loadSca() {
     fetch('/api/sca?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noScaData') + '</div>'; return; }
         el.innerHTML = buildGroupedByMachine(data, 'sca', '📋 SCA Compliance');
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
 }
 
 // ===== v2.6.2: SYSMON + MEMORY SCANNER =====
@@ -529,7 +529,7 @@ function loadSysmon() {
 
         let html = '<div class="p-2">';
         html += '<div class="row text-center mb-3" style="position:sticky;top:0;z-index:10;background:var(--bg-dark);padding-top:8px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">';
-        html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#00d4aa;">' + data.length + '</div><div class="label">Tổng Events</div></div></div>';
+        html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#00d4aa;">' + data.length + '</div><div class="label">'+t('ui.totalEvents')+'</div></div></div>';
         html += '<div class="col-3"><div class="stat-card" style="background:#3a1a1a;"><div class="value" style="color:#ff4444;">' + critical + '</div><div class="label">Critical</div></div></div>';
         html += '<div class="col-3"><div class="stat-card" style="background:#1a2a3a;"><div class="value" style="color:#ffcc66;">' + high + '</div><div class="label">High</div></div></div>';
         html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#8888ff;">' + medium + '</div><div class="label">Medium</div></div></div>';
@@ -538,7 +538,7 @@ function loadSysmon() {
         // Detection summary
         if (credDump > 0 || persistence > 0 || injection > 0 || lsassAccess > 0) {
             html += '<div class="mb-3 p-2" style="background:#1a0a0a;border:1px solid #ff4444;border-radius:6px;">';
-            html += '<strong style="color:#ff6666;">⚠ Phát Hiện Nguy Hiểm:</strong> ';
+            html += '<strong style="color:#ff6666;">'+t('ui.dangerDetected')+'</strong> ';
             const alerts = [];
             if (credDump > 0) alerts.push('<span class="badge bg-danger">' + credDump + ' Credential Dumping</span>');
             if (lsassAccess > 0) alerts.push('<span class="badge bg-danger">' + lsassAccess + ' LSASS Access</span>');
@@ -599,7 +599,7 @@ function loadSysmon() {
 
         html += '</tbody></table></div></div>';
         el.innerHTML = html;
-    }).catch(e => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải Sysmon Events: ' + escapeHtml(e.message) + '</div>'; });
+    }).catch(e => { el.innerHTML = '<div class="text-center text-muted py-3">❌ '+t('ui.loadSysmonErr')+'' + escapeHtml(e.message) + '</div>'; });
 }
 
 function loadMemory() {
@@ -608,7 +608,7 @@ function loadMemory() {
     el.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">' + t('dash.loadingMemory') + '</p></div>';
     fetch('/api/memory?limit=200').then(r => r.json()).then(data => {
         if (!data.length) {
-            el.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-check-circle text-success"></i><p class="mt-2" style="font-size:16px;">Không phát hiện bất thường bộ nhớ</p><p style="font-size:11px;color:#5a6a7a;">Memory Scanner đang hoạt động bình thường</p></div>';
+            el.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-check-circle text-success"></i><p class="mt-2" style="font-size:16px;">'+t('ui.noMemAnomaly')+'</p><p style="font-size:11px;color:#5a6a7a;">'+t('ui.memScannerOk')+'</p></div>';
             return;
         }
         // v2.6.5: Count by alert type
@@ -656,7 +656,7 @@ function loadMemory() {
         });
         html += '</tbody></table></div>';
         el.innerHTML = html;
-    }).catch(e => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải Memory Scan: ' + escapeHtml(e.message) + '</div>'; });
+    }).catch(e => { el.innerHTML = '<div class="text-center text-muted py-3">❌ '+t('ui.loadMemErr')+'' + escapeHtml(e.message) + '</div>'; });
 }
 
 // v2.6.2: Sysmon detail popup
@@ -706,10 +706,10 @@ function buildGroupedByMachine(data, type, title) {
     // v2.0.2: Sticky stats bar + scrollable machine list
     let html = '<div class="p-2">';
     html += '<div class="row text-center mb-3" style="position:sticky;top:0;z-index:10;background:var(--bg-dark);padding-top:8px;padding-bottom:8px;border-bottom:1px solid var(--border-color);">';
-    html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#ffcc66;">' + totalMachines + '</div><div class="label">Máy trạm</div></div></div>';
-    html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#ff6666;">' + totalAlerts + '</div><div class="label">Tổng cảnh báo</div></div></div>';
-    html += '<div class="col-3"><div class="stat-card" style="background:#3a1a1a;"><div class="value" style="color:#ff4444;">' + criticalCount + '</div><div class="label">Nghiêm trọng</div></div></div>';
-    html += '<div class="col-3"><div class="stat-card" style="background:#1a2a3a;"><div class="value" style="color:#00d4aa;">' + title + '</div><div class="label">Loại</div></div></div>';
+    html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#ffcc66;">' + totalMachines + '</div><div class="label">'+t('ui.machines')+'</div></div></div>';
+    html += '<div class="col-3"><div class="stat-card" style="background:#1a1a2a;"><div class="value" style="color:#ff6666;">' + totalAlerts + '</div><div class="label">'+t('ui.totalAlerts')+'</div></div></div>';
+    html += '<div class="col-3"><div class="stat-card" style="background:#3a1a1a;"><div class="value" style="color:#ff4444;">' + criticalCount + '</div><div class="label">'+t('ui.critical')+'</div></div></div>';
+    html += '<div class="col-3"><div class="stat-card" style="background:#1a2a3a;"><div class="value" style="color:#00d4aa;">' + title + '</div><div class="label">'+t('ui.type')+'</div></div></div>';
     html += '</div>';
 
     sorted.forEach((group, idx) => {
@@ -741,7 +741,7 @@ function buildGroupedByMachine(data, type, title) {
         html += '<strong style="color:#e4e7eb;font-size:14px;">🖥 ' + hostname + '</strong> ';
         html += '<small class="text-muted" style="font-size:10px;">(' + mid.substring(0,12) + '...)</small>';
         html += '<div style="margin-top:4px;">' + sevBadges.join(' ') + ' <span class="badge bg-dark">' + itemCount + ' alerts</span></div>';
-        html += '<div style="margin-top:4px;font-size:11px;color:#8892a4;">📌 Mới nhất: ' + latestSummary + '</div>';
+        html += '<div style="margin-top:4px;font-size:11px;color:#8892a4;">'+t('ui.latest')+'' + latestSummary + '</div>';
         html += '<div style="margin-top:2px;font-size:10px;color:#5a6a7a;">⏱ ' + (group.latest ? group.latest.substring(0,19) : '-') + '</div>';
         html += '</div>';
         html += '<span id="grp_arrow_' + type + '_' + idx + '" style="color:#8892a4;font-size:14px;transition:transform 0.3s;">▼</span>';
@@ -774,7 +774,7 @@ function buildGroupedByMachine(data, type, title) {
         html += '</div>';
     });
 
-    html += '<div class="text-muted mt-2" style="font-size:10px;text-align:center;">Hiển thị ' + totalAlerts + ' cảnh báo từ ' + totalMachines + ' máy trạm</div>';
+    html += '<div class="text-muted mt-2" style="font-size:10px;text-align:center;">' + t('ui.showingAlerts',[totalAlerts,totalMachines]) + '</div>';
     html += '</div>';
     return html;
 }
@@ -795,9 +795,9 @@ function loadAgentless() {
     fetch('/api/agentless?limit=200').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noAgentlessData') + '</div>'; return; }
         el.innerHTML = data.map(e => `<div style="background:#1a1a2a;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><strong>${escapeHtml(e.device_name||e.ip||'?')}</strong> <small class="text-muted">${escapeHtml(e.timestamp||'')}</small><br><span style="font-size:11px;color:#999;">${escapeHtml((e.data_json||'').substring(0,120))}</span></div>`).join('');
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
     // Load management tab lazily
-    if (document.getElementById('tabAgManage') && document.getElementById('agentlessDeviceMgmt').innerHTML.indexOf('Đang tải') > -1) {
+    if (document.getElementById('tabAgManage') && document.getElementById('agentlessDeviceMgmt').innerHTML.indexOf(t('ui.loading')) > -1) {
         loadAgentlessDevices();
     }
 }
@@ -827,17 +827,17 @@ function loadAgentlessDevices() {
             html += '<div class="text-center text-muted py-2">' + t('dash.noDevices') + '</div>';
         }
         // Add form
-        html += '<div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">➕ Thêm thiết bị mới</strong>';
+        html += '<div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">'+t('ui.addNewDevice')+'</strong>';
         html += '<div class="row g-1 mt-1">';
-        html += '<div class="col-3"><input class="search-box" id="agName" placeholder="Tên thiết bị" style="width:100%;font-size:11px;"></div>';
+        html += '<div class="col-3"><input class="search-box" id="agName" placeholder="'+t('ph.deviceName')+'" style="width:100%;font-size:11px;"></div>';
         html += '<div class="col-2"><input class="search-box" id="agIp" placeholder="IP" style="width:100%;font-size:11px;"></div>';
         html += '<div class="col-2"><select class="form-select form-select-sm" id="agType" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="generic">Generic</option><option value="router">Router</option><option value="switch">Switch</option><option value="server">Server</option><option value="printer">Printer</option></select></div>';
         html += '<div class="col-2"><select class="form-select form-select-sm" id="agMethod" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="ping">Ping</option><option value="snmp">SNMP</option><option value="ssh">SSH</option></select></div>';
         html += '<div class="col-1"><input class="search-box" id="agInterval" placeholder="300" style="width:100%;font-size:11px;" value="300"></div>';
-        html += '<div class="col-2"><button class="btn btn-sm export-btn" onclick="addAgentlessDevice()"><i class="bi bi-plus-circle"></i> Thêm</button></div>';
+        html += '<div class="col-2"><button class="btn btn-sm export-btn" onclick="addAgentlessDevice()"><i class="bi bi-plus-circle"></i> '+t('btn.add')+'</button></div>';
         html += '</div></div>';
         el.innerHTML = html;
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-2">❌ Lỗi tải</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-2">'+t('ui.loadErrShort')+'</div>'; });
 }
 
 function addAgentlessDevice() {
@@ -858,7 +858,7 @@ function addAgentlessDevice() {
 }
 
 function deleteAgentlessDevice(index) {
-    if (!confirm('Xóa thiết bị này?')) return;
+    if (!confirm(t('ui.confirmDeleteDevice'))) return;
     fetch('/api/agentless/devices/' + index, {method:'DELETE'})
         .then(r => r.json()).then(d => {
             if (d.success) { showToast(t('dash.deleted')); loadAgentlessDevices(); }
@@ -1294,7 +1294,7 @@ function loadMachines() {
         // v2.5.19: Dropdown thay vì div list tránh kéo dài sidebar
         const curVal = sel ? sel.value : '';
         if (sel) {
-            sel.innerHTML = '<option value="">-- Chọn máy trạm (' + ms.length + ' máy) --</option>' +
+            sel.innerHTML = '<option value="">' + t('opt.selectMachineN',[ms.length]) + '</option>' +
                 ms.map(m => {
                     const status = m.is_online == 1 ? '🟢' : '🔴';
                     const notesSuffix = m.notes ? ' - ' + m.notes.substring(0, 30) : '';
@@ -1325,7 +1325,7 @@ function onMachineDropdownChange() {
 }
 
 function clearAgentlessLogs(){
-    if(!confirm('Xóa toàn bộ log Agentless Monitoring?')) return;
+    if(!confirm(t('ui.confirmClearAgentless'))) return;
     fetch('/api/agentless/clear', {method:'POST'})
         .then(r => r.json()).then(d => {
             if(d.success) { showToast(t('dash.deletedLogs', [d.deleted])); loadAgentless(); }
@@ -1333,14 +1333,14 @@ function clearAgentlessLogs(){
         }).catch(() => showToast('❌ Lỗi kết nối'));
 }
 
-function stopMachineById(id) { if(confirm(`Dừng máy ${id}?`)) fetch(`/api/machine/${id}/stop`,{method:'POST'}).then(r=>r.json()).then(d=>showToast(d.message)).then(loadMachines); }
-function deleteMachineById(id) { if(confirm(`Xóa máy ${id}?`)) fetch(`/api/machine/${id}/delete`,{method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message);if(selectedMachine===id){selectedMachine=null;document.getElementById('viewMachine').style.display='none';document.getElementById('viewOverview').style.display='';}loadMachines();loadStats();}); }
+function stopMachineById(id) { if(confirm(t('ui.confirmStopMachine',[id]))) fetch(`/api/machine/${id}/stop`,{method:'POST'}).then(r=>r.json()).then(d=>showToast(d.message)).then(loadMachines); }
+function deleteMachineById(id) { if(confirm(t('ui.confirmDeleteMachine',[id]))) fetch(`/api/machine/${id}/delete`,{method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message);if(selectedMachine===id){selectedMachine=null;document.getElementById('viewMachine').style.display='none';document.getElementById('viewOverview').style.display='';}loadMachines();loadStats();}); }
 function stopMachine() { stopMachineById(selectedMachine); }
 function deleteMachine() { deleteMachineById(selectedMachine); }
 // ===== v2.5.0: ISOLATE MACHINE =====
 function isolateMachine() {
     if (!selectedMachine) { showToast('Chọn máy trạm trước!'); return; }
-    if (!confirm('Cô lập máy ' + selectedMachine + '?\n\nMáy sẽ bị chặn toàn bộ kết nối ra ngoài (outbound).\nChỉ admin mới gỡ được.')) return;
+    if (!confirm(t('ui.confirmIsolate',[selectedMachine]))) return;
     showToast('Đang gửi lệnh cô lập...');
     fetch('/api/machine/' + selectedMachine + '/isolate', {method: 'POST'})
         .then(r => r.json()).then(d => {
@@ -1369,7 +1369,7 @@ function unisolateMachine() {
 }
 
 function deleteOfflineMachines() {
-    if(!confirm('Xóa tất cả máy offline?')) return;
+    if(!confirm(t('ui.confirmDeleteOffline'))) return;
     fetch('/api/machines').then(r=>r.json()).then(ms=>{
         const offline = ms.filter(m=>m.is_online==0);
         if(!offline.length){showToast(t('dash.noOfflineMachines'));return;}
@@ -1451,7 +1451,7 @@ function loadOverviewPanorama() {
             badge.textContent = '🔄 Auto 15s (' + ts.getHours().toString().padStart(2,'0') + ':' + ts.getMinutes().toString().padStart(2,'0') + ':' + ts.getSeconds().toString().padStart(2,'0') + ')';
         }
     }).catch(() => {
-        el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu Panorama</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadPanoramaErr')+'</div>';
     });
 }
 
@@ -1473,7 +1473,7 @@ function loadStats() {
     fetch('/api/stats').then(r=>r.json()).then(s=>{document.getElementById('statTotalMachines').textContent=s.total_machines||0;document.getElementById('statOnlineMachines').textContent=s.online_machines||0;document.getElementById('statTotalEvents').textContent=s.events||0;document.getElementById('statSyslog').textContent=s.syslog||0;});
     fetch('/api/event_types').then(r=>r.json()).then(types=>{
         const el=document.getElementById('eventTypesChart');
-        if(!types.length){el.innerHTML='<div class="text-center text-muted py-3">Chưa có dữ liệu</div>';return;}
+        if(!types.length){el.innerHTML='<div class="text-center text-muted py-3">'+t('ui.noData')+'</div>';return;}
         const total=types.reduce((a,b)=>a+b.cnt,0);
         // v4.11 (UI fix): event-type names were squeezed into a fixed 120px span
         // and truncated ("Microsoft-Windows-PowerShell/Operational" -> "...Po").
@@ -1696,7 +1696,7 @@ document.addEventListener('click', function(e) {
             showDetailModal(title, body);
             return;
         }
-        let b = ''; if(data.description) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">Mô tả</div><div class="card-body py-2" style="font-size:11px;color:#d0d8e0;">'+(data.description||'-')+'</div></div>';
+        let b = ''; if(data.description) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">'+t('ui.description')+'</div><div class="card-body py-2" style="font-size:11px;color:#d0d8e0;">'+(data.description||'-')+'</div></div>';
         if(data.raw_data) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">Raw Data</div><div class="card-body py-2" style="font-family:monospace;font-size:10px;color:#888;word-break:break-all;">'+String(data.raw_data).substring(0,2000)+'</div></div>';
         showDetailModal(t('dash.details') + ' - '+typ+' ('+(data.hostname||data.machine_id||'?')+')', b+'<table class="table table-data" style="font-size:11px;"><tbody>'+Object.entries(data).filter(([k])=>!['raw_data','data_json','fingerprint','rendered_at'].includes(k)).map(([k,v])=>'<tr><th style="width:180px;">'+k+'</th><td>'+(typeof v==='object'?JSON.stringify(v,null,2):String(v||'-'))+'</td></tr>').join('')+'</tbody></table>');
     } catch(ex) {}
@@ -1730,16 +1730,16 @@ function sendCommand() {
         body:JSON.stringify({machine_id:selectedMachine,action,command,exec_id})
     }).then(r=>r.json()).then(d=>{
         if(d.success){
-            output.innerHTML+='⏳ Đã gửi lệnh, đang đợi kết quả...\n';
+            output.innerHTML+=t('ssh.sentWaiting')+'\n';
             pollCommandResult(exec_id,output,0);
         }else{
             delete pendingExecs[exec_id];
-            output.innerHTML+='❌ Không gửi được: '+(d.error||'Máy offline hoặc lỗi auth')+'\n────────────────────────────────────\n';
+            output.innerHTML+=t('ssh.sendFailed')+(d.error||t('ssh.offlineAuth'))+'\n────────────────────────────────────\n';
         }
         output.scrollTop=output.scrollHeight;
     }).catch(err=>{
         delete pendingExecs[exec_id];
-        output.innerHTML+='❌ Lỗi kết nối: '+err.message+'\n────────────────────────────────────\n';
+        output.innerHTML+=t('ui.connErr')+err.message+'\n────────────────────────────────────\n';
         output.scrollTop=output.scrollHeight;
     });
 }
@@ -1747,7 +1747,7 @@ function pollCommandResult(exec_id,output,attempt){
     if(attempt>=90){ // 90 x 2s = 3 phút
         if(pendingExecs[exec_id]){
             delete pendingExecs[exec_id];
-            output.innerHTML+='⏰ Timeout (3 phút) - Agent không phản hồi\n────────────────────────────────────\n';
+            output.innerHTML+=t('ssh.timeout')+'\n────────────────────────────────────\n';
             output.scrollTop=output.scrollHeight;
         }
         return;
@@ -1764,8 +1764,8 @@ function pollCommandResult(exec_id,output,attempt){
                 const found=Array.isArray(data)?data.find(r=>r.exec_id===exec_id):null;
                 if(found){
                     delete pendingExecs[exec_id];
-                    const result = found.output || found.error || '(trống)';
-                    output.innerHTML+=`\n✅ KẾT QUẢ (${escapeHtml(found.status||'completed')}):\n${escapeHtml(result)}\n────────────────────────────────────\n`;
+                    const result = found.output || found.error || ''+t('ui.empty')+'';
+                    output.innerHTML+=`\n${t('ssh.resultPrefix')}${escapeHtml(found.status||'completed')}):\n${escapeHtml(result)}\n────────────────────────────────────\n`;
                     output.scrollTop=output.scrollHeight;
                 }else{
                     pollCommandResult(exec_id,output,attempt+1);
@@ -1783,7 +1783,7 @@ const ASSIST_MODELS={deepseek:['deepseek-chat (V3)','deepseek-reasoner (R1)'],op
 function updateAssistModel(){const p=document.getElementById('assistProvider').value;document.getElementById('assistModel').innerHTML=(ASSIST_MODELS[p]||['default']).map(m=>`<option value="${m}">${m}</option>`).join('');}
 updateAssistModel();
 function toggleApiKey(){document.getElementById('assistApiKey').type=document.getElementById('assistApiKey').type==='password'?'text':'password';}
-function loadAssistScope(){fetch('/api/machines').then(r=>r.json()).then(ms=>{document.getElementById('assistScope').innerHTML='<option value="all">Toàn bộ hệ thống</option>'+ms.map(m=>`<option value="${m.machine_id}">${m.hostname||m.machine_id}</option>`).join('');});}
+function loadAssistScope(){fetch('/api/machines').then(r=>r.json()).then(ms=>{document.getElementById('assistScope').innerHTML='<option value="all">'+t('assist.allSystem')+'</option>'+ms.map(m=>`<option value="${m.machine_id}">${m.hostname||m.machine_id}</option>`).join('');});}
 
 function runAssistant(){
     const provider=document.getElementById('assistProvider').value;
@@ -1842,9 +1842,9 @@ function sendToAssistant(contextData){
         assistHistoryList.unshift({ts,provider,model,question:custom_prompt,fullResponse:data.response});
         hEl.innerHTML=assistHistoryList.map((h,i)=>`<div class="card mb-1" style="background:var(--bg-dark);border-color:var(--border-color);"><div class="card-body py-2 px-3" style="font-size:11px;cursor:pointer;" onclick="showHistoryDetail(${i})"><span class="text-muted">${escapeHtml(h.ts)}</span> <span class="badge bg-info" style="font-size:9px;">${escapeHtml(h.provider)}</span> <span style="color:#d0d8e0;"> - ${escapeHtml(h.question.substring(0,80))}...</span></div></div>`).join('');
         showToast('✅ Phân tích hoàn tất');
-    }).catch(err=>{document.getElementById('assistLoading').style.display='none';document.getElementById('assistError').textContent='⚠ Lỗi: '+err.message;document.getElementById('assistError').style.display='';});
+    }).catch(err=>{document.getElementById('assistLoading').style.display='none';document.getElementById('assistError').textContent=''+t('ui.errPrefix')+''+err.message;document.getElementById('assistError').style.display='';});
 }
-function showHistoryDetail(i){const h=assistHistoryList[i];if(!h)return;showDetailModal('📜 Lịch sử',`<div style="white-space:pre-wrap;color:#d0e8d8;font-size:12px;"><strong>❓</strong> ${escapeHtml(h.question)}\n\n<strong>🤖</strong> ${escapeHtml(h.fullResponse||'(trống)')}</div>`);}
+function showHistoryDetail(i){const h=assistHistoryList[i];if(!h)return;showDetailModal(t('ui.history'),`<div style="white-space:pre-wrap;color:#d0e8d8;font-size:12px;"><strong>❓</strong> ${escapeHtml(h.question)}\n\n<strong>🤖</strong> ${escapeHtml(h.fullResponse||t('ui.empty'))}</div>`);}
 
 // ===== DEBOUNCE =====
 let _lastEventRefresh=0,_lastFimRefresh=0;
@@ -1861,8 +1861,8 @@ function loadMachineConfig(mid){
         el.innerHTML=configCache[mid];
         return;
     }
-    if(configLoadedFor===mid&&el.innerHTML.indexOf('Loading')===-1&&el.innerHTML.indexOf('Đang tải')===-1)return;
-    el.innerHTML='<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div>';
+    if(configLoadedFor===mid&&el.innerHTML.indexOf('Loading')===-1&&el.innerHTML.indexOf(t('ui.loading'))===-1)return;
+    el.innerHTML='<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
     fetch(`/api/machine/${mid}/config`).then(r=>r.json()).then(data=>{
         if(mid!==selectedMachine)return;if(!data||!data.data){el.innerHTML='<div class="text-center text-muted py-3">⏳ ' + t('dash.noConfig') + '</div>';configLoadedFor=null;return;}
         configLoadedFor=mid;const cfg=data.data,diffs=data.diffs||[],baselineTs=data.baseline_saved_at;
@@ -1874,7 +1874,7 @@ function loadMachineConfig(mid){
             var d=diffMap[path];
             if(!d)return'';
             var oldV=d.baseline_value||'-',newV=d.current_value||'-';
-            return' <span title="Thay đổi: '+label+'\nTrước: '+oldV+'\nHiện tại: '+newV+'" style="cursor:help;color:#ffcc66;font-size:14px;">⚠️</span>';
+            return' <span title="'+t('ui.changed')+''+label+'\n'+t('ui.before')+''+oldV+'\n'+t('ui.current')+''+newV+'" style="cursor:help;color:#ffcc66;font-size:14px;">⚠️</span>';
         }
         // Helper: check if any sub-path under prefix has diff
         function _hasDiff(prefix){
@@ -1896,16 +1896,16 @@ function loadMachineConfig(mid){
         if(diffs.length>0){
             html+='<div class="alert alert-warning py-2 mb-3" style="font-size:12px;background:#3a2a1a;color:#ffcc66;">⚠ <b>' + t('dash.changes', [diffs.length]) + '</b>' + t('dash.vsBaseline')+ (baselineTs?baselineTs:'') +'</div>';
             html+='<div class="mb-3 p-2" style="background:#1a1410;border:1px solid #3a2a1a;border-radius:4px;">';
-            html+='<div style="font-size:11px;color:#ffcc66;margin-bottom:4px;">📋 Chi tiết thay đổi:</div>';
+            html+='<div style="font-size:11px;color:#ffcc66;margin-bottom:4px;">'+t('ui.changeDetails')+'</div>';
             diffs.forEach(function(d){
                 html+='<div style="font-size:10px;padding:2px 0;border-bottom:1px solid #2a1a0a;">';
                 html+='<span style="color:#ffaa44;">📌 '+d.path+'</span><br>';
-                html+='<span style="color:#ff8888;text-decoration:line-through;">Trước: '+(d.baseline_value||'-')+'</span> → ';
-                html+='<span style="color:#88ff88;">Hiện tại: '+(d.current_value||'-')+'</span>';
+                html+='<span style="color:#ff8888;text-decoration:line-through;">'+t('ui.before')+''+(d.baseline_value||'-')+'</span> → ';
+                html+='<span style="color:#88ff88;">'+t('ui.current')+''+(d.current_value||'-')+'</span>';
                 html+='</div>';
             });
             html+='</div>';
-        }else if(baselineTs)html+='<div class="alert alert-success py-2 mb-3" style="font-size:12px;background:#1a3a2a;color:#88dd99;">✅ Không thay đổi (baseline: '+baselineTs+')</div>';
+        }else if(baselineTs)html+='<div class="alert alert-success py-2 mb-3" style="font-size:12px;background:#1a3a2a;color:#88dd99;">'+t('ui.noChangeBaseline')+''+baselineTs+')</div>';
         // OS
         if(cfg.os){
             var osChanged=_hasDiff('os.');
@@ -1913,7 +1913,7 @@ function loadMachineConfig(mid){
             html+='<h6 class="text-info"><i class="bi bi-windows"></i> ' + t('dash.os') + (osChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
             html+='<tr><th>' + t('dash.osShort') + '</th><td>'+_diffIcon('os.name', t('dash.osShort'))+' '+(cfg.os.name||'-')+' '+(cfg.os.release||'')+' (Build '+(cfg.os.build||'?')+')</td></tr>';
-            html+='<tr><th>Phiên bản</th><td>'+_diffIcon('os.version','Phiên bản')+' '+(cfg.os.version||'-')+'</td></tr>';
+            html+='<tr><th>Phiên bản</th><td>'+_diffIcon('os.version',t('cfg.version'))+' '+(cfg.os.version||'-')+'</td></tr>';
             html+='</tbody></table>';
             if(osChanged)html+=_diffDetails('os.');
             html+='</div>';
@@ -1924,7 +1924,7 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(mbChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-motherboard"></i> Mainboard'+(mbChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('motherboard.manufacturer','Hãng Mainboard')+' '+(cfg.motherboard.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>Hãng</th><td>'+_diffIcon('motherboard.manufacturer',t('cfg.mainboard'))+' '+(cfg.motherboard.manufacturer||'-')+'</td></tr>';
             html+='<tr><th>Model</th><td>'+_diffIcon('motherboard.product','Model Mainboard')+' '+(cfg.motherboard.product||'-')+'</td></tr>';
             if(cfg.motherboard.version)html+='<tr><th>Version</th><td>'+_diffIcon('motherboard.version','Version Mainboard')+' '+(cfg.motherboard.version)+'</td></tr>';
             if(cfg.motherboard.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('motherboard.serial','Serial Mainboard')+' '+(cfg.motherboard.serial)+'</td></tr>';
@@ -1937,9 +1937,9 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(biosChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-cpu"></i> BIOS'+(biosChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('bios.manufacturer','Hãng BIOS')+' '+(cfg.bios.manufacturer||'-')+'</td></tr>';
-            html+='<tr><th>Version</th><td>'+_diffIcon('bios.name','Tên BIOS')+' '+(cfg.bios.name||'-')+' v'+(cfg.bios.version||'')+'</td></tr>';
-            if(cfg.bios.release_date)html+='<tr><th>Ngày phát hành</th><td>'+_diffIcon('bios.release_date','Ngày PH BIOS')+' '+(cfg.bios.release_date)+'</td></tr>';
+            html+='<tr><th>Hãng</th><td>'+_diffIcon('bios.manufacturer',t('cfg.biosMaker'))+' '+(cfg.bios.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>Version</th><td>'+_diffIcon('bios.name',t('cfg.biosName'))+' '+(cfg.bios.name||'-')+' v'+(cfg.bios.version||'')+'</td></tr>';
+            if(cfg.bios.release_date)html+='<tr><th>Ngày phát hành</th><td>'+_diffIcon('bios.release_date',t('cfg.biosRelease'))+' '+(cfg.bios.release_date)+'</td></tr>';
             if(cfg.bios.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('bios.serial','Serial BIOS')+' '+(cfg.bios.serial)+'</td></tr>';
             html+='</tbody></table>';
             if(biosChanged)html+=_diffDetails('bios.');
@@ -1953,7 +1953,7 @@ function loadMachineConfig(mid){
             html+='<table class="table table-data"><tbody>';
             html+='<tr><th>' + t('dash.name') + '</th><td>'+_diffIcon('cpu.name','Tên CPU')+' '+(cfg.cpu.name||'-')+'</td></tr>';
             html+='<tr><th>' + t('dash.clockSpeed') + '</th><td>'+_diffIcon('cpu.max_clock_speed_mhz', t('dash.cpuClock'))+' '+(cfg.cpu.max_clock_speed_mhz?Math.round(cfg.cpu.max_clock_speed_mhz/1000*10)/10+' GHz':'-')+'</td></tr>';
-            html+='<tr><th>Số nhân</th><td>'+_diffIcon('cpu.cores','Số nhân CPU')+' '+(cfg.cpu.cores||'-')+' cores / '+(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
+            html+='<tr><th>Số nhân</th><td>'+_diffIcon('cpu.cores',t('cfg.cpuCores'))+' '+(cfg.cpu.cores||'-')+' cores / '+(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
             html+='</tbody></table>';
             if(cpuChanged)html+=_diffDetails('cpu.');
             html+='</div>';
@@ -1963,18 +1963,18 @@ function loadMachineConfig(mid){
             var ramChanged=_hasDiff('ram.');
             html+='<div class="mb-3" style="'+(ramChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-memory"></i> RAM'+(ramChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><tbody><tr><th>Tổng</th><td>'+_diffIcon('ram.total_gb','Tổng RAM')+' <strong>'+(cfg.ram.total_gb||0)+' GB</strong></td></tr></tbody></table>';
+            html+='<table class="table table-data"><tbody><tr><th>Tổng</th><td>'+_diffIcon('ram.total_gb',t('cfg.totalRam'))+' <strong>'+(cfg.ram.total_gb||0)+' GB</strong></td></tr></tbody></table>';
             if(cfg.ram.sticks&&cfg.ram.sticks.length){
-                html+='<table class="table table-data mt-1"><thead><tr><th>#</th><th>Hãng</th><th>Dung lượng</th><th>Bus</th><th>Loại</th><th>Form</th><th>Part Number</th></tr></thead><tbody>';
+                html+='<table class="table table-data mt-1"><thead><tr><th>#</th><th>'+t('cfg.manufacturer')+'</th><th>'+t('cfg.capacity')+'</th><th>Bus</th><th>'+t('cfg.kind')+'</th><th>Form</th><th>Part Number</th></tr></thead><tbody>';
                 cfg.ram.sticks.forEach(function(s,i){
                     var bus=cfg.ram.sticks.length>0?((s.configured_speed_mhz||s.speed_mhz||'?')+(s.configured_speed_mhz&&s.speed_mhz&&s.configured_speed_mhz!==s.speed_mhz?' (Max: '+s.speed_mhz+' MHz)':(s.speed_mhz?' MHz':''))):'-';
                     var rowStyle='';
                     if(_hasDiff('ram.sticks['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
-                    html+='<tr'+rowStyle+'><td>'+_diffIcon('ram.sticks['+i+'] (số lượng)','Số lượng RAM stick')+' '+(i+1)+'</td>';
-                    html+='<td>'+_diffIcon('ram.sticks['+i+'].manufacturer','Hãng RAM #'+(i+1))+' '+(s.manufacturer||'-')+'</td>';
-                    html+='<td>'+_diffIcon('ram.sticks['+i+'].capacity_gb','Dung lượng RAM #'+(i+1))+' '+(s.capacity_gb||0)+' GB</td>';
+                    html+='<tr'+rowStyle+'><td>'+_diffIcon('ram.sticks['+i+'] (số lượng)',t('cfg.ramQty'))+' '+(i+1)+'</td>';
+                    html+='<td>'+_diffIcon('ram.sticks['+i+'].manufacturer',t('cfg.ramMaker',[i+1]))+' '+(s.manufacturer||'-')+'</td>';
+                    html+='<td>'+_diffIcon('ram.sticks['+i+'].capacity_gb',t('cfg.ramCapacity',[i+1]))+' '+(s.capacity_gb||0)+' GB</td>';
                     html+='<td>'+_diffIcon('ram.sticks['+i+'].speed_mhz','Bus RAM #'+(i+1))+' '+bus+'</td>';
-                    html+='<td>'+_diffIcon('ram.sticks['+i+'].memory_type','Loại RAM #'+(i+1))+' '+(s.memory_type||'-')+'</td>';
+                    html+='<td>'+_diffIcon('ram.sticks['+i+'].memory_type',t('cfg.ramType',[i+1]))+' '+(s.memory_type||'-')+'</td>';
                     html+='<td>'+_diffIcon('ram.sticks['+i+'].form_factor','Form RAM #'+(i+1))+' '+(s.form_factor||'-')+'</td>';
                     html+='<td style="font-family:monospace;font-size:10px;">'+_diffIcon('ram.sticks['+i+'].part_number','Part Number RAM #'+(i+1))+' '+(s.part_number||'-')+'</td></tr>';
                 });
@@ -1988,15 +1988,15 @@ function loadMachineConfig(mid){
             var diskChanged=_hasDiff('disks.');
             html+='<div class="mb-3" style="'+(diskChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-device-hdd"></i> ' + t('dash.disk') + (diskChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><thead><tr><th>#</th><th>Model</th><th>Dung lượng</th><th>Chuẩn</th><th>Loại</th></tr></thead><tbody>';
+            html+='<table class="table table-data"><thead><tr><th>#</th><th>'+t('cfg.model')+'</th><th>'+t('cfg.capacity')+'</th><th>'+t('cfg.standard')+'</th><th>'+t('cfg.kind')+'</th></tr></thead><tbody>';
             cfg.disks.forEach(function(d,i){
                 var rowStyle='';
                 if(_hasDiff('disks['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
-                html+='<tr'+rowStyle+'><td>'+_diffIcon('disks['+i+'] (số lượng)','Số lượng ổ đĩa')+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('disks['+i+'].model','Model ổ đĩa #'+(i+1))+' '+(d.model||'-')+'</td>';
-                html+='<td>'+_diffIcon('disks['+i+'].size_gb','Dung lượng ổ đĩa #'+(i+1))+' '+(d.size_gb||0)+' GB</td>';
-                html+='<td>'+_diffIcon('disks['+i+'].interface','Chuẩn ổ đĩa #'+(i+1))+' '+(d.interface||'-')+'</td>';
-                html+='<td>'+_diffIcon('disks['+i+'].media_type','Loại ổ đĩa #'+(i+1))+' '+(d.media_type||'-')+'</td></tr>';
+                html+='<tr'+rowStyle+'><td>'+_diffIcon('disks['+i+'] (số lượng)',t('cfg.diskQty'))+' '+(i+1)+'</td>';
+                html+='<td>'+_diffIcon('disks['+i+'].model',t('cfg.diskModel',[i+1]))+' '+(d.model||'-')+'</td>';
+                html+='<td>'+_diffIcon('disks['+i+'].size_gb',t('cfg.diskCapacity',[i+1]))+' '+(d.size_gb||0)+' GB</td>';
+                html+='<td>'+_diffIcon('disks['+i+'].interface',t('cfg.diskStd',[i+1]))+' '+(d.interface||'-')+'</td>';
+                html+='<td>'+_diffIcon('disks['+i+'].media_type',t('cfg.diskType',[i+1]))+' '+(d.media_type||'-')+'</td></tr>';
             });
             html+='</tbody></table>';
             if(diskChanged)html+=_diffDetails('disks.');
@@ -2011,8 +2011,8 @@ function loadMachineConfig(mid){
             cfg.gpu.forEach(function(g,i){
                 var rowStyle='';
                 if(_hasDiff('gpu['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
-                html+='<tr'+rowStyle+'><td>'+_diffIcon('gpu['+i+'] (số lượng)','Số lượng GPU')+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('gpu['+i+'].name','Tên GPU #'+(i+1))+' '+(g.name||'-')+'</td>';
+                html+='<tr'+rowStyle+'><td>'+_diffIcon('gpu['+i+'] (số lượng)',t('cfg.gpuQty'))+' '+(i+1)+'</td>';
+                html+='<td>'+_diffIcon('gpu['+i+'].name',t('cfg.gpuName',[i+1]))+' '+(g.name||'-')+'</td>';
                 html+='<td>'+_diffIcon('gpu['+i+'].ram_gb', t('dash.gpuVram', [i+1]))+' '+(g.ram_gb>0?g.ram_gb+' GB':'-')+'</td>';
                 html+='<td>'+_diffIcon('gpu['+i+'].driver_version','Driver GPU #'+(i+1))+' '+(g.driver_version||'-')+'</td>';
                 html+='<td>'+_diffIcon('gpu['+i+'].video_processor','GPU Chip #'+(i+1))+' '+(g.video_processor||'-')+'</td></tr>';
@@ -2026,15 +2026,15 @@ function loadMachineConfig(mid){
             var monChanged=_hasDiff('monitors.');
             html+='<div class="mb-3" style="'+(monChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-display"></i> ' + t('dash.monitor') + (monChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><thead><tr><th>#</th><th>' + t('dash.name') + '</th><th>Hãng</th><th>Độ phân giải</th><th>Loại</th></tr></thead><tbody>';
+            html+='<table class="table table-data"><thead><tr><th>#</th><th>' + t('dash.name') + '</th><th>Hãng</th><th>Độ phân giải</th><th>'+t('ui.type')+'</th></tr></thead><tbody>';
             cfg.monitors.forEach(function(m,i){
                 var rowStyle='';
                 if(_hasDiff('monitors['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
-                html+='<tr'+rowStyle+'><td>'+_diffIcon('monitors['+i+'] (số lượng)','Số lượng màn hình')+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('monitors['+i+'].name','Tên màn hình #'+(i+1))+' '+(m.name||'-')+'</td>';
-                html+='<td>'+_diffIcon('monitors['+i+'].manufacturer','Hãng màn hình #'+(i+1))+' '+(m.manufacturer||'-')+'</td>';
-                html+='<td>'+_diffIcon('monitors['+i+'].resolution','Độ phân giải màn hình #'+(i+1))+' '+(m.resolution||'-')+'</td>';
-                html+='<td>'+_diffIcon('monitors['+i+'].type','Loại màn hình #'+(i+1))+' '+(m.type||'-')+'</td></tr>';
+                html+='<tr'+rowStyle+'><td>'+_diffIcon('monitors['+i+'] (số lượng)',t('cfg.monQty'))+' '+(i+1)+'</td>';
+                html+='<td>'+_diffIcon('monitors['+i+'].name',t('cfg.monName',[i+1]))+' '+(m.name||'-')+'</td>';
+                html+='<td>'+_diffIcon('monitors['+i+'].manufacturer',t('cfg.monMaker',[i+1]))+' '+(m.manufacturer||'-')+'</td>';
+                html+='<td>'+_diffIcon('monitors['+i+'].resolution',t('cfg.monRes',[i+1]))+' '+(m.resolution||'-')+'</td>';
+                html+='<td>'+_diffIcon('monitors['+i+'].type',t('cfg.monType',[i+1]))+' '+(m.type||'-')+'</td></tr>';
             });
             html+='</tbody></table>';
             if(monChanged)html+=_diffDetails('monitors.');
@@ -2045,25 +2045,25 @@ function loadMachineConfig(mid){
             var swChanged=_hasDiff('installed_software.');
             html+='<div class="mb-3" style="'+(swChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-boxes"></i> ' + t('dash.installedSoftware') + ' ('+cfg.installed_software.length+')'+(swChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><thead><tr><th>#</th><th>Tên phần mềm</th><th>Phiên bản</th><th>Nhà phát hành</th><th>Ngày cài đặt</th></tr></thead><tbody>';
+            html+='<table class="table table-data"><thead><tr><th>#</th><th>'+t('cfg.swName')+'</th><th>'+t('cfg.version')+'</th><th>'+t('cfg.publisher')+'</th><th>'+t('cfg.installDate')+'</th></tr></thead><tbody>';
             cfg.installed_software.forEach(function(sw,i){
                 var rowStyle='';
                 if(_hasDiff('installed_software['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
-                html+='<tr'+rowStyle+'><td>'+_diffIcon('installed_software['+i+'] (số lượng)','Số lượng phần mềm')+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].name','Tên PM #'+(i+1))+' '+(sw.name||'-')+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].version','Phiên bản PM #'+(i+1))+' '+(sw.version||'-')+'</td>';
+                html+='<tr'+rowStyle+'><td>'+_diffIcon('installed_software['+i+'] (số lượng)',t('cfg.swQty'))+' '+(i+1)+'</td>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].name',t('cfg.swNameN',[i+1]))+' '+(sw.name||'-')+'</td>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].version',t('cfg.swVerN',[i+1]))+' '+(sw.version||'-')+'</td>';
                 html+='<td>'+_diffIcon('installed_software['+i+'].publisher','NXB PM #'+(i+1))+' '+(sw.publisher||'-')+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].install_date','Ngày cài PM #'+(i+1))+' '+(sw.install_date||'-')+'</td></tr>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].install_date',t('cfg.swDateN',[i+1]))+' '+(sw.install_date||'-')+'</td></tr>';
             });
             html+='</tbody></table>';
             if(swChanged)html+=_diffDetails('installed_software.');
             html+='</div>';
         }
-        html+='<div class="text-muted mt-2" style="font-size:11px;">⏱ Cập nhật: '+(data.received_at||'-')+'</div></div>';
+        html+='<div class="text-muted mt-2" style="font-size:11px;">'+t('cfg.updated')+''+(data.received_at||'-')+'</div></div>';
         el.innerHTML=html;
         // Cache the rendered config
         configCache[mid]=html;
-    }).catch(function(){if(mid!==selectedMachine)return;el.innerHTML='<div class="text-center text-muted py-3">❌ Lỗi tải cấu hình</div>';configLoadedFor=null;});
+    }).catch(function(){if(mid!==selectedMachine)return;el.innerHTML='<div class="text-center text-muted py-3">❌ '+t('ui.loadConfigErr')+'</div>';configLoadedFor=null;});
 }
 
 // ===== CLEANUP =====
@@ -2086,12 +2086,12 @@ function loadGroups(){
             html += '<strong style="color:#e4e7eb;">📁 ' + g.name + '</strong>';
             html += '<div><button class="btn btn-del btn-sm py-0 px-1" onclick="deleteGroup(' + g.id + ')"><i class="bi bi-trash3"></i></button></div>';
             html += '</div>';
-            html += '<small class="text-muted">' + (g.description || '') + ' | ' + (g.members ? g.members.length : 0) + ' máy</small>';
+            html += '<small class="text-muted">' + (g.description || '') + ' | ' + t('ui.groupsMembers',[g.members ? g.members.length : 0]) + '</small>';
             if (g.members && g.members.length) {
-                html += '<div style="margin-top:4px;">' + g.members.map(m => '<span class="badge bg-info me-1" style="cursor:pointer;" onclick="removeFromGroup(\'' + m.machine_id + '\',' + g.id + ')" title="Click để xóa">' + (m.hostname || m.machine_id) + ' ✕</span>').join('') + '</div>';
+                html += '<div style="margin-top:4px;">' + g.members.map(m => '<span class="badge bg-info me-1" style="cursor:pointer;" onclick="removeFromGroup(\'' + m.machine_id + '\',' + g.id + ')" title="' + t('ui.remFromGroupTitle') + '">' + (m.hostname || m.machine_id) + ' ✕</span>').join('') + '</div>';
             }
-            html += '<div class="mt-2"><select class="form-select form-select-sm d-inline-block" id="addMachSelect_' + g.id + '" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">+ Thêm máy...</option></select>';
-            html += '<button class="btn btn-sm export-btn ms-1" onclick="addToGroup(' + g.id + ')" style="font-size:10px;">Thêm</button></div>';
+            html += '<div class="mt-2"><select class="form-select form-select-sm d-inline-block" id="addMachSelect_' + g.id + '" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">'+t('ui.addMachineHint')+'</option></select>';
+            html += '<button class="btn btn-sm export-btn ms-1" onclick="addToGroup(' + g.id + ')" style="font-size:10px;">'+t('btn.add')+'</button></div>';
             html += '</div>';
         });
         html += '<div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">' + t('dash.createGroup') + '</strong><div class="row g-1 mt-1"><div class="col-4"><input class="search-box" id="grpName" placeholder="' + t('dash.groupName') + '" style="width:100%;font-size:11px;"></div><div class="col-6"><input class="search-box" id="grpDesc" placeholder="' + t('dash.groupDesc') + '" style="width:100%;font-size:11px;"></div><div class="col-2"><button class="btn btn-sm export-btn" onclick="createGroup()"><i class="bi bi-plus-circle"></i> Tạo</button></div></div></div>';
@@ -2122,7 +2122,7 @@ function loadMachinesForGroupSelect(){
             return '<option value="' + m.machine_id + '">' + label + '</option>';
         }).join('');
         document.querySelectorAll('[id^="addMachSelect_"]').forEach(sel => {
-            sel.innerHTML = '<option value="">+ Thêm máy... (' + available.length + ' khả dụng)</option>' + opts;
+            sel.innerHTML = '<option value="">' + t('ui.availableMachines',[available.length]) + '</option>' + opts;
         });
     });
 }
@@ -2139,7 +2139,7 @@ function createGroup(){
 }
 
 function deleteGroup(id){
-    if (!confirm('Xóa group này?')) return;
+    if (!confirm(t('ui.confirmDelGroup'))) return;
     fetch('/api/groups/' + id, {method:'DELETE'}).then(r => r.json()).then(d => {
         if (d.success) { showToast(t('dash.deleteGroup')); loadGroups(); }
         else { showToast('❌ Lỗi'); }
@@ -2152,13 +2152,13 @@ function addToGroup(groupId){
     if (!machineId) { showToast('⚠ Chọn máy!'); return; }
     fetch('/api/groups/' + groupId + '/members', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({machine_id: machineId})})
         .then(r => r.json()).then(d => {
-            if (d.success) { showToast('✅ Đã thêm máy vào group'); loadGroups(); }
+            if (d.success) { showToast(t('ui.machineAdded')); loadGroups(); }
             else { showToast('❌ Lỗi'); }
         }).catch(() => showToast('❌ Lỗi kết nối'));
 }
 
 function executeResponseAction(machineId, hostname, action, paramValue) {
-    if (!confirm('Thuc thi ' + action + ' trên ' + (hostname || machineId) + '?')) return;
+    if (!confirm(t('ui.confirmExec',[action, hostname || machineId]))) return;
     var params = {};
     if (typeof paramValue === 'object') {
         params = paramValue;
@@ -2213,7 +2213,7 @@ function _actionButtons(type, item) {
 }
 
 function removeFromGroup(machineId, groupId){
-    if (!confirm('Xóa máy khỏi group?')) return;
+    if (!confirm(t('ui.confirmRemoveFromGroup'))) return;
     fetch('/api/groups/' + groupId + '/members/' + machineId, {method:'DELETE'})
         .then(r => r.json()).then(d => {
             if (d.success) { showToast(t('dash.deleted')); loadGroups(); }
@@ -2227,7 +2227,7 @@ let _fimBaselineSelectedMachine = null;
 
 function loadFimBaselineMachines(){
     const el = document.getElementById('fimBaselineMachineList');
-    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div>';
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
     fetch('/api/fim/baseline/summary').then(r => r.json()).then(data => {
         const machines = data.machines || [];
         if (!machines.length) {
@@ -2240,7 +2240,7 @@ function loadFimBaselineMachines(){
         let html = '';
         // Legend header
         html += '<div style="display:flex;align-items:center;padding:10px 14px;background:#0f1923;border-bottom:1px solid var(--border-color);font-size:11px;color:#b0c8e0;">';
-        html += '<div style="flex:2;">🖥 Máy trạm</div>';
+        html += '<div style="flex:2;">'+t('ui.machineCol')+'</div>';
         html += '<div style="flex:1;text-align:center;">📁 Files</div>';
         html += '<div style="flex:0.7;text-align:center;" title="Critical">🔴</div>';
         html += '<div style="flex:0.7;text-align:center;" title="High">🟠</div>';
@@ -2267,7 +2267,7 @@ function loadFimBaselineMachines(){
         });
         el.innerHTML = html;
     }).catch(e => {
-        el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu: ' + e.message + '</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+': ' + e.message + '</div>';
     });
 }
 
@@ -2284,7 +2284,7 @@ function expandFimBaselineMachine(machineId, hostname) {
 
     panel.style.display = '';
     title.innerHTML = '<i class="bi bi-zoom-in"></i> FIM Baseline: <strong style="color:#00d4aa;">' + hostname + '</strong>';
-    content.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div>';
+    content.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
 
     fetch('/api/fim/baseline/' + machineId).then(r => r.json()).then(data => {
         const baseline = data.baseline || [];
@@ -2336,7 +2336,7 @@ function expandFimBaselineMachine(machineId, hostname) {
             })
         );
         content.innerHTML = html;
-    }).catch(() => { content.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { content.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
 }
 
 // ===== FIM BASELINE DETAIL MODAL =====
@@ -2389,7 +2389,7 @@ function loadRules(){
         if (!rules.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noRules') + '</div>'; return; }
         window._cachedRules = rules;
         el.innerHTML = rules.map((r, i) => {
-            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + r.id + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + (r.name||'?') + '</strong><br><small class="text-muted">' + (r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">Điều kiện: ' + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + (r.mitre||'?') + ' | Tactic: ' + (r.tactic||'?') + (r.logic ? ' | Logic: ' + r.logic : '') + (r.rule_type ? ' | Type: ' + r.rule_type : '') + '</small></div></div>';
+            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + r.id + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + (r.name||'?') + '</strong><br><small class="text-muted">' + (r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">'+t('ui.conditions') + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + (r.mitre||'?') + ' | Tactic: ' + (r.tactic||'?') + (r.logic ? ' | Logic: ' + r.logic : '') + (r.rule_type ? ' | Type: ' + r.rule_type : '') + '</small></div></div>';
         }).join('');
         // Add delegated click handler
         el.querySelectorAll('[data-rule-index]').forEach(div => {
@@ -2403,11 +2403,11 @@ function loadRules(){
                 }
             });
         });
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải rules</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrShort')+' rules</div>'; });
 }
 
 function reloadRules(){
-    if (!confirm('Hot-reload rules từ file YAML? Điều này sẽ cập nhật correlation engine mà không cần restart server.')) return;
+    if (!confirm(t('ui.confirmHotReload'))) return;
     fetch('/api/rules/reload', {method:'POST'}).then(r => r.json()).then(d => {
         if (d.success) { showToast('✅ Đã reload ' + d.agent_rules + ' agent rules + ' + d.cross_machine_rules + ' cross-machine rules'); loadRules(); }
         else { showToast('❌ ' + (d.error || 'Lỗi')); }
@@ -2415,7 +2415,7 @@ function reloadRules(){
 }
 
 function deployRules(){
-    if (!confirm('Deploy rules đến tất cả agent đang online?\n\nThao tác này sẽ:\n1. Copy file YAML từ server sang agent\n2. Gửi lệnh reload_rules đến từng agent')) return;
+    if (!confirm(t('ui.confirmDeploy'))) return;
     showToast('⏳ Đang deploy rules...');
     fetch('/api/rules/deploy', {method:'POST'}).then(r => r.json()).then(d => {
         if (d.success) { showToast('✅ Đã deploy rules đến ' + d.agents_notified + ' agent(s). Agent sẽ tự động reload.'); }
@@ -2448,7 +2448,7 @@ function saveRule(){
     const jsonText = document.getElementById('editRuleJson').value.trim();
     if (!jsonText) { showToast('⚠ Nhập JSON rule vào editor!'); return; }
     let rule;
-    try { rule = JSON.parse(jsonText); } catch(e) { showToast('❌ JSON không hợp lệ: ' + e.message); return; }
+    try { rule = JSON.parse(jsonText); } catch(e) { showToast(''+t('ioc.jsonInvalid')+'' + e.message); return; }
     if (!rule.id) { showToast('⚠ Rule cần có trường "id"!'); return; }
     // Check if update or create
     const existing = window._cachedRules ? window._cachedRules.find(r => r.id === rule.id) : null;
@@ -2457,7 +2457,7 @@ function saveRule(){
     fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify({rule})})
         .then(r => r.json()).then(d => {
             if (d.success) {
-                showToast(existing ? '✅ Đã cập nhật rule ' + rule.id : '✅ Đã tạo rule ' + rule.id + ' (' + (d.rule_count || '') + ' rules total)');
+                showToast(existing ? t('ui.ruleUpdated') + rule.id : t('ui.ruleCreated') + rule.id + ' (' + (d.rule_count || '') + t('ui.ruleCount'));
                 loadRules();
             } else { showToast('❌ ' + (d.error || 'Lỗi')); }
         }).catch(() => showToast('❌ Lỗi kết nối'));
@@ -2467,23 +2467,23 @@ function testRule(){
     const ruleJson = document.getElementById('testRuleJson').value.trim();
     const eventJson = document.getElementById('testEventJson').value.trim();
     const resultEl = document.getElementById('testRuleResult');
-    if (!ruleJson || !eventJson) { resultEl.innerHTML = '<div class="alert alert-warning py-1">⚠ Nhập Rule JSON và Event JSON</div>'; return; }
+    if (!ruleJson || !eventJson) { resultEl.innerHTML = '<div class="alert alert-warning py-1">'+t('ui.enterRuleEventJson')+'</div>'; return; }
     let rule, event;
-    try { rule = JSON.parse(ruleJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">❌ Rule JSON không hợp lệ: ' + e.message + '</div>'; return; }
-    try { event = JSON.parse(eventJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">❌ Event JSON không hợp lệ: ' + e.message + '</div>'; return; }
-    resultEl.innerHTML = '<div class="text-muted"><i class="bi bi-hourglass-split"></i> Đang test...</div>';
+    try { rule = JSON.parse(ruleJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.ruleJsonInvalid') + e.message + '</div>'; return; }
+    try { event = JSON.parse(eventJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.eventJsonInvalid') + e.message + '</div>'; return; }
+    resultEl.innerHTML = '<div class="text-muted"><i class="bi bi-hourglass-split"></i> '+t('ui.testing')+'</div>';
     fetch('/api/rules/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rule, event})})
         .then(r => r.json()).then(d => {
             if (d.success) {
                 if (d.triggered) {
                     resultEl.innerHTML = '<div class="alert alert-success py-1">✅ Rule TRIGGERED! ' + d.alerts.length + ' alert(s):<br>' + d.alerts.map(a => '<strong>' + a.rule_id + ': ' + a.rule_name + '</strong> [' + a.severity + ']').join('<br>') + '</div>';
                 } else {
-                    resultEl.innerHTML = '<div class="alert alert-info py-1">ℹ Rule NOT triggered - event không match điều kiện</div>';
+                    resultEl.innerHTML = '<div class="alert alert-info py-1">'+t('ui.notTriggered')+'</div>';
                 }
             } else {
-                resultEl.innerHTML = '<div class="alert alert-danger py-1">❌ ' + (d.error || 'Lỗi') + '</div>';
+                resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.errPrefix') + (d.error || t('ui.errGeneric')) + '</div>';
             }
-        }).catch(() => { resultEl.innerHTML = '<div class="alert alert-danger py-1">❌ Lỗi kết nối</div>'; });
+        }).catch(() => { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.connErrShort')+'</div>'; });
 }
 
 // ===== TABLE SORT (Excel-style: date, number, text; persistent per-table per-column state) =====
@@ -2594,10 +2594,10 @@ function loadAgentUpdateStatus() {
                 html += '<strong style="color:#e4e7eb;">📁 ' + g.name + '</strong>';
                 html += '<button class="btn btn-sm btn-warning" onclick="pushUpdateToGroup(' + g.id + ')" style="font-size:10px;"><i class="bi bi-cloud-upload"></i> Push Update Group</button>';
                 html += '</div>';
-                html += '<small class="text-muted">' + members.length + ' máy</small>';
+                html += '<small class="text-muted">' + t('ui.groupsMembers',[members.length]) + '</small>';
 
                 if (members.length > 0) {
-                    html += '<table class="table table-data" style="margin-top:4px;"><thead><tr><th>Hostname</th><th>Machine ID</th><th>Phiên bản Agent</th><th>Server</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>';
+                    html += '<table class="table table-data" style="margin-top:4px;"><thead><tr><th>Hostname</th><th>Machine ID</th><th>'+t('ui.agentVersion')+'</th><th>Server</th><th>'+t('ui.status')+'</th><th>'+t('ui.actions')+'</th></tr></thead><tbody>';
                     members.forEach(m => {
                         const info = machineMap[m.machine_id] || {};
                         const agentVer = info.version || '?';
@@ -2614,7 +2614,7 @@ function loadAgentUpdateStatus() {
                     });
                     html += '</tbody></table>';
                 } else {
-                    html += '<div class="text-center text-muted py-2">Group trống</div>';
+                    html += '<div class="text-center text-muted py-2">'+t('ui.groupEmpty')+'</div>';
                 }
                 html += '</div>';
             });
@@ -2624,8 +2624,8 @@ function loadAgentUpdateStatus() {
         const ungroupedList = Array.from(ungroupedMachines).map(mid => machineMap[mid]).filter(Boolean);
         if (ungroupedList.length > 0) {
             html += '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin:8px;padding:12px;">';
-            html += '<strong style="color:#ffcc66;">📋 Máy chưa phân nhóm (' + ungroupedList.length + ')</strong>';
-            html += '<table class="table table-data" style="margin-top:4px;"><thead><tr><th>Hostname</th><th>Machine ID</th><th>Phiên bản Agent</th><th>Server</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>';
+            html += '<strong style="color:#ffcc66;">'+t('ui.ungroupedTitle',[ungroupedList.length])+'</strong>';
+            html += '<table class="table table-data" style="margin-top:4px;"><thead><tr><th>Hostname</th><th>Machine ID</th><th>'+t('ui.agentVersion')+'</th><th>Server</th><th>'+t('ui.status')+'</th><th>'+t('ui.actions')+'</th></tr></thead><tbody>';
             ungroupedList.forEach(info => {
                 const agentVer = info.version || '?';
                 const needsUpdate = agentVer !== serverVersion;
@@ -2653,7 +2653,7 @@ function loadAgentUpdateStatus() {
         }
         el.innerHTML = html;
     }).catch(() => {
-        el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>';
     });
 }
 
@@ -2737,9 +2737,9 @@ function loadAgentUpdateLogs() {
         el.innerHTML = tableWrap([t('dash.time'), t('dash.machine'), 'Từ phiên bản', 'Đến phiên bản', t('dash.status'), t('dash.source'), 'Thông báo'],
             logs.map(l => {
                 let statusBadge = '';
-                if (l.status === 'success') statusBadge = '<span class="badge bg-success">✅ Thành công</span>';
-                else if (l.status === 'failed') statusBadge = '<span class="badge bg-danger">❌ Thất bại</span>';
-                else if (l.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">⏳ Đang chờ</span>';
+                if (l.status === 'success') statusBadge = '<span class="badge bg-success">'+t('ui.success')+'</span>';
+                else if (l.status === 'failed') statusBadge = '<span class="badge bg-danger">'+t('ui.failed')+'</span>';
+                else if (l.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">'+t('ui.pending')+'</span>';
                 else if (l.status === 'downloading') statusBadge = '<span class="badge bg-info">📥 ' + t('dash.downloading') + '</span>';
                 else statusBadge = '<span class="badge bg-secondary">' + (l.status || '?') + '</span>';
                 let sourceBadge = '';
@@ -2750,7 +2750,7 @@ function loadAgentUpdateLogs() {
             })
         );
     }).catch(() => {
-        el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải nhật ký</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadLogErr')+'</div>';
     });
 }
 
@@ -2848,7 +2848,7 @@ function loadEmailView(){
     }).catch(function(){
         // Fallback: build from DOM select options
         var td = {};
-        td['uptime_24h'] = {s: '⚠️ Cảnh báo: Máy {hostname} hoạt động liên tục quá 24 giờ', b: 'Kính gửi {user_name},\\n\\nMáy trạm {hostname} (MSNV: {employee_id}) đã hoạt động liên tục quá 24 giờ.\\n\\nĐề nghị kiểm tra và khởi động lại máy để đảm bảo hiệu suất và bảo mật.\\n\\nTrân trọng,\\nBộ phận IT'};
+        td['uptime_24h'] = {s: '⚠️ Cảnh báo: Máy {hostname} hoạt động liên tục quá 24 giờ', b: 'Kính gửi {user_name},\\n\\n'+t('ui.machines')+' {hostname} (MSNV: {employee_id}) đã hoạt động liên tục quá 24 giờ.\\n\\nĐề nghị kiểm tra và khởi động lại máy để đảm bảo hiệu suất và bảo mật.\\n\\nTrân trọng,\\nBộ phận IT'};
         td['brute_force'] = {s: '🚨 Cảnh báo: Phát hiện tấn công Brute Force trên máy {hostname}', b: 'Kính gửi {user_name},\\n\\nHệ thống GIAM-SAT đã phát hiện dấu hiệu tấn công Brute Force trên máy {hostname}.\\n\\nVui lòng ngắt kết nối mạng ngay lập tức và liên hệ bộ phận IT.\\n\\nTrân trọng,\\nBộ phận IT'};
         td['malware_detected'] = {s: '🦠 Cảnh báo: Phát hiện Malware/Virus trên máy {hostname}', b: 'Kính gửi {user_name},\\n\\nHệ thống GIAM-SAT đã phát hiện phần mềm độc hại trên máy {hostname}.\\n\\nVui lòng KHÔNG mở thêm bất kỳ file nào và liên hệ ngay bộ phận IT.\\n\\nTrân trọng,\\nBộ phận IT'};
         td['phishing_alert'] = {s: '🎣 Cảnh báo: Phát hiện tấn công Phishing trên máy {hostname}', b: 'Kính gửi {user_name},\\n\\nHệ thống GIAM-SAT đã phát hiện dấu hiệu tấn công Phishing trên máy {hostname}.\\n\\nVui lòng không click vào bất kỳ link đáng ngờ nào và báo cáo ngay cho bộ phận IT.\\n\\nTrân trọng,\\nBộ phận IT'};
@@ -2862,7 +2862,7 @@ function loadEmailView(){
     });
     fetch('/api/machines').then(r=>r.json()).then(ms=>{
         const sel = document.getElementById('emailMachine');
-        sel.innerHTML = '<option value="">-- Chọn máy --</option>' + ms.map(m=>'<option value="'+m.machine_id+'">'+(m.hostname||m.machine_id)+' ('+(m.user_name||'?')+')</option>').join('');
+        sel.innerHTML = '<option value="">'+t('opt.selectMachineEmail')+'</option>' + ms.map(m=>'<option value="'+m.machine_id+'">'+(m.hostname||m.machine_id)+' ('+(m.user_name||'?')+')</option>').join('');
     });
     // Email tabs
     document.querySelectorAll('[data-tab-em]').forEach(el=>{
@@ -2925,10 +2925,10 @@ function updateEmailPreview(){
                 preview = preview.replace(/{user_name}/g, m.user_name||'');
                 preview = preview.replace(/{employee_id}/g, m.employee_id||'');
             }
-            document.getElementById('emailPreview').textContent = '📧 Đến: '+to+'\n📌 Tiêu đề: '+document.getElementById('emailSubject').value+'\n\n'+preview;
+            document.getElementById('emailPreview').textContent = t('email.toLabel2')+to+'\n'+t('email.subjectLabel2')+document.getElementById('emailSubject').value+'\n\n'+preview;
         });
     } else {
-        document.getElementById('emailPreview').textContent = '📧 Đến: '+to+'\n📌 Tiêu đề: '+document.getElementById('emailSubject').value+'\n\n'+preview;
+        document.getElementById('emailPreview').textContent = t('email.toLabel2')+to+'\n'+t('email.subjectLabel2')+document.getElementById('emailSubject').value+'\n\n'+preview;
     }
 }
 document.getElementById('emailBody').addEventListener('input', updateEmailPreview);
@@ -2941,13 +2941,13 @@ function sendEmailAlert(){
     const body = document.getElementById('emailBody').value;
     const to = document.getElementById('emailTo').value;
     if(!subject||!body){ showToast('⚠ Nhập tiêu đề và nội dung!'); return; }
-    document.getElementById('emailSendStatus').textContent = '⏳ Đang gửi...';
+    document.getElementById('emailSendStatus').textContent = t('ui.sendingEmail');
     fetch('/api/email/send', {method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({machine_id:mid, template_id:tid, subject, body, to_email:to})
     }).then(r=>r.json()).then(d=>{
         if(d.success){ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#88dd99;">✅ '+d.message+'</span>'; showToast('✅ Đã gửi email!'); }
-        else { document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">❌ '+(d.error||'Lỗi')+'</span>'; }
-    }).catch(e=>{ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">❌ Lỗi kết nối</span>'; });
+        else { document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.errPrefix')+(d.error||t('ui.errGeneric'))+'</span>'; }
+    }).catch(e=>{ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.connErrShort')+'</span>'; });
 }
 function loadEmailConfig(){
     fetch('/api/email/config').then(r=>r.json()).then(d=>{
@@ -2960,12 +2960,12 @@ function loadEmailConfig(){
 }
 function testEmailConfig(){
     const to = document.getElementById('emailTestTo').value.trim() || 'it@example.com';
-    document.getElementById('emailTestResult').innerHTML = '<span style="color:#ffcc66;">⏳ Đang gửi email test...</span>';
+    document.getElementById('emailTestResult').innerHTML = '<span style="color:#ffcc66;">'+t('ui.sendingTestEmail')+'</span>';
     fetch('/api/email/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({to})})
         .then(r=>r.json()).then(d=>{
             if(d.success) document.getElementById('emailTestResult').innerHTML = '<span style="color:#88dd99;">✅ '+d.message+'</span>';
             else document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ '+d.error+'</span>';
-        }).catch(e=>{ document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ Lỗi kết nối</span>'; });
+        }).catch(e=>{ document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">'+t('ui.connErrShort')+'</span>'; });
 }
 
 // ===== v4.10: MAIL ĐÃ GỬI (local sent-mail log on the GIAM-SAT server) =====
@@ -2974,25 +2974,25 @@ function loadEmailLog(){
         const list = d.emails || [];
         const tb = document.getElementById('sentEmailList');
         if(!list.length){
-            tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Chưa có email nào được ghi nhận.</td></tr>';
+            tb.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">'+t('ui.noSentEmail')+'</td></tr>';
             return;
         }
         tb.innerHTML = list.map(function(m){
             const st = m.status==='sent'
-                ? '<span class="badge bg-success">Đã gửi</span>'
-                : '<span class="badge bg-danger" title="'+escapeHtml(m.error||'')+'">Lỗi</span>';
+                ? '<span class="badge bg-success">'+t('ui.sentOk')+'</span>'
+                : '<span class="badge bg-danger" title="'+escapeHtml(m.error||'')+'">'+t('ui.sentFail')+'</span>';
             return '<tr>' +
                 '<td class="text-muted" style="white-space:nowrap;">'+escapeHtml(m.time)+'</td>' +
                 '<td>'+escapeHtml(m.to)+'</td>' +
                 '<td>'+escapeHtml(m.subject)+'</td>' +
                 '<td>'+st+'</td>' +
-                '<td><button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:1px 6px;" onclick="toggleSentBody(\''+m.id+'\')" title="Xem nội dung">👁</button></td>' +
-                '<td><button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 6px;" onclick="deleteSentEmail(\''+m.id+'\')" title="Xóa bản ghi">🗑</button></td>' +
+                '<td><button class="btn btn-sm btn-outline-secondary" style="font-size:10px;padding:1px 6px;" onclick="toggleSentBody(\''+m.id+'\')" title='+t('tt.viewContent')+'>👁</button></td>' +
+                '<td><button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 6px;" onclick="deleteSentEmail(\''+m.id+'\')" title='+t('tt.deleteRecord')+'>🗑</button></td>' +
                 '</tr>' +
                 '<tr id="sentBody_'+m.id+'" style="display:none;"><td colspan="6" style="background:#0a0f14;border-top:none;white-space:pre-wrap;font-size:11px;color:#a8b4c0;">'+escapeHtml(m.body||'')+'</td></tr>';
         }).join('');
     }).catch(function(){
-        document.getElementById('sentEmailList').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Lỗi tải danh sách mail đã gửi.</td></tr>';
+        document.getElementById('sentEmailList').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">'+t('ui.loadSentErr')+'</td></tr>';
     });
 }
 function toggleSentBody(id){
@@ -3000,7 +3000,7 @@ function toggleSentBody(id){
     if(el) el.style.display = (el.style.display==='none') ? '' : 'none';
 }
 function deleteSentEmail(id){
-    if(!confirm('Xóa bản ghi mail đã gửi này?')) return;
+    if(!confirm(t('ui.confirmDelMailRecord'))) return;
     fetch('/api/email/sent/'+encodeURIComponent(id), {method:'DELETE'})
         .then(r=>r.json()).then(d=>{
             if(d.success){ showToast('🗑 Đã xóa bản ghi'); loadEmailLog(); }
@@ -3008,7 +3008,7 @@ function deleteSentEmail(id){
         }).catch(function(){ showToast('❌ Lỗi kết nối'); });
 }
 function clearSentEmails(){
-    if(!confirm('Xóa TOÀN BỘ log mail đã gửi?')) return;
+    if(!confirm(t('ui.confirmClearMailLog'))) return;
     fetch('/api/email/sent/clear', {method:'POST'})
         .then(r=>r.json()).then(d=>{
             if(d.success){ showToast('🗑 Đã xóa '+(d.deleted||0)+' bản ghi'); loadEmailLog(); }
@@ -3027,7 +3027,7 @@ function loadAttackOverview() {
         if (data.error) { el.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(data.error) + '</div>'; return; }
         attackData = data;
         renderAttackOverview(data);
-    }).catch(e => { el.innerHTML = '<div class="alert alert-danger m-3">Lỗi tải dữ liệu: ' + escapeHtml(e.message) + '</div>'; });
+    }).catch(e => { el.innerHTML = '<div class="alert alert-danger m-3">'+t('ui.loadErr')+': ' + escapeHtml(e.message) + '</div>'; });
 }
 
 function renderAttackOverview(data) {
@@ -3448,7 +3448,7 @@ function showReportModal() {
     body += '<label class="form-check-label" for="rptUser"><strong>' + t('dash.userInfo') + '</strong><br><small class="text-muted">' + t('dash.userInfoSub') + '</small></label>';
     body += '</div>';
     body += '</div>';
-    body += '<div class="alert alert-info py-2 mb-2" style="background:#1a3a5a;color:#88ccff;font-size:11px;"><i class="bi bi-info-circle"></i> Định dạng: <strong>' + fmtLabel + '</strong>. Chọn định dạng khác ở dropdown bên ngoài.</div>';
+    body += '<div class="alert alert-info py-2 mb-2" style="background:#1a3a5a;color:#88ccff;font-size:11px;"><i class="bi bi-info-circle"></i> '+t('ui.formatInfo',[fmtLabel])+'</div>';
     body += '<div class="text-end"><button class="btn btn-sm btn-success" onclick="exportReport()"><i class="bi bi-download"></i> ' + t('dash.downloadReport') + '</button></div>';
     body += '</div>';
     showDetailModal(t('dash.exportTitle'), body);
@@ -3488,7 +3488,7 @@ function exportReport() {
         detailModal.hide();
     }).catch(e => {
         showToast(t('dash.reportError', [e.message]));
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-download"></i> 📥 Tải báo cáo'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-download"></i> '+t('ui.downloadReport')+''; }
     });
 }
 
@@ -3504,7 +3504,7 @@ function exportReport() {
     dlg.classList.toggle('active');
     document.getElementById('floatAiHistoryMenu').classList.remove('active');
     if(dlg.classList.contains('active')&&document.getElementById('floatAiBody').children.length===0){
-      addBotBubble('Xin chào! Tôi là trợ lý AI GIAM-SAT. Tôi có thể giúp bạn:\n• Phân tích dữ liệu bảo mật\n• Đánh giá hệ thống\n• Đề xuất cải thiện\n• Tự động giám sát (bấm ⏱)\n\nHãy hỏi tôi bất cứ điều gì!');
+      addBotBubble(t('ui.greeting'));
     }
   };
 
@@ -3554,13 +3554,13 @@ function exportReport() {
     const msg=input.value.trim(); if(!msg)return;
     input.value='';
     addUserBubble(msg);
-    addSysBubble('⏳ Đang suy nghĩ...');
+    addSysBubble(t('ai.thinking'));
     fetch('/api/float_ai_chat',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:[{role:'system',content:'Ban la tro ly AI.'},{role:'user',content:msg}]})
     }).then(r=>r.json()).then(data=>{
       document.getElementById('floatAiBody').lastChild.remove();
-      if(data.success){addBotBubble(data.content);}else{addBotBubble('⚠ Lỗi: '+(data.error||''));}
+      if(data.success){addBotBubble(data.content);}else{addBotBubble(t('ui.errPrefix')+(data.error||''));}
     }).catch(err=>{
       document.getElementById('floatAiBody').lastChild.remove();
       addBotBubble('⚠ Loi ket noi: '+err.message);
@@ -3612,13 +3612,13 @@ function exportReport() {
       let msg=result;
       if(msg.length>maxLen)msg=msg.substring(0,maxLen)+'\n...(da cat bot)';
       await fetch('/api/telegram/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:header+msg})});
-      addSysBubble('📨 Đã gửi kết quả đến Telegram Bot');
+      addSysBubble(t('ai.sentToTelegram'));
     }catch(e){}
   }
 
   async function runAutoMonitor(){
     const mins=parseInt(document.getElementById('autoMonInterval').value)||30;
-    addSysBubble('⏱ Đang thu thập dữ liệu ('+mins+' phút)...');
+    addSysBubble(t('ai.collecting',[mins]));
     const loadingEl=document.getElementById('floatAiBody').lastChild;
     try{
       const logJson=await fetchAllLogs(mins);
@@ -3628,9 +3628,9 @@ function exportReport() {
       const a=document.createElement('a');a.href=url;a.download=filename+'.json';
       document.body.appendChild(a);a.click();document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      addSysBubble('📥 Đã tải file: '+filename+'.json ('+Math.round(logJson.length/1024)+' KB)');
+      addSysBubble(t('ai.fileDownloaded',[filename,Math.round(logJson.length/1024)]));
       if(loadingEl&&loadingEl.parentNode)loadingEl.remove();
-      addBotBubble('⏱ Da gui du lieu ('+Math.round(logJson.length/1024)+' KB) đến AI, đang chờ đánh giá...');
+      addBotBubble(t('ai.fileSent',[Math.round(logJson.length/1024)]));
       const MAX_PROMPT=28000;
       const prompt='FILE ĐÍNH KÈM: '+filename+'.json (dữ liệu giám sát '+mins+' phút gần nhất). Hãy phân tích và đánh giá tình trạng bảo mật hệ thống. Đưa ra: 1. Danh gia tong quan; 2. Cac moi de doa va lo hong moi dang chu y; 3. De xuat cai thien cu the. DU LIEU:\n'+(logJson.length>MAX_PROMPT?logJson.substring(0,MAX_PROMPT)+'\n...(da cat bot)':logJson);
       fetch('/api/float_ai_chat',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -3638,14 +3638,14 @@ function exportReport() {
       }).then(r=>r.json()).then(data=>{
         if(data.success){
           lastAutoResponse=data.content;
-          addBotBubble('📊 KẾT QUẢ ĐÁNH GIÁ:\n'+data.content);
+          addBotBubble(t('ai.evalResult')+'\n'+data.content);
           saveAutoToHistory('Auto-monitor: '+mins+' phut - '+Math.round(logJson.length/1024)+' KB - AI analyzed');
           sendToTelegram(data.content);
         }else{addBotBubble(t('dash.aiError', [data.error||t('dash.noResponse')]));}
-      }).catch(err=>{addBotBubble('⚠ Lỗi kết nối AI: '+err.message);});
+      }).catch(err=>{addBotBubble(t('ai.aiConnErr')+err.message);});
     }catch(err){
       if(loadingEl&&loadingEl.parentNode)loadingEl.remove();
-      addBotBubble('⚠ Lỗi thu thập dữ liệu: '+err.message);
+      addBotBubble(t('ai.collectErr')+err.message);
     }
   }
 
@@ -3717,7 +3717,7 @@ function loadAnomaly() {
                 return '<tr><td style="font-size:10px;">' + (a.timestamp || '').substring(0,19) + '</td><td>' + (a.hostname || '-') + '</td><td><span style="color:' + sevColor + ';font-weight:bold;">' + (a.severity || '?') + '</span></td><td><span class="badge bg-warning text-dark">' + score + '</span></td><td style="font-size:10px;">' + reasons + '</td></tr>';
             })
         );
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
 }
 
 // ===== v3.2: IOC SWEEP =====
@@ -3725,14 +3725,14 @@ function sweepIoc() {
     const jsonText = document.getElementById('iocJsonInput').value.trim();
     const fileInput = document.getElementById('iocFileInput');
     const el = document.getElementById('iocResults');
-    el.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-success spinner-border-sm"></div> Đang quét IOC...</div>';
+    el.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-success spinner-border-sm"></div> '+t('ioc.scanning')+'</div>';
 
     if (fileInput && fileInput.files && fileInput.files.length > 0) {
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         fetch('/api/ioc/sweep', { method: 'POST', body: formData })
             .then(r => r.json()).then(d => renderIocResults(d))
-            .catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi quét IOC</div>'; });
+            .catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.scanErr')+'</div>'; });
     } else if (jsonText) {
         try {
             const iocs = JSON.parse(jsonText);
@@ -3741,12 +3741,12 @@ function sweepIoc() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ iocs })
             }).then(r => r.json()).then(d => renderIocResults(d))
-              .catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi quét IOC</div>'; });
+              .catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.scanErr')+'</div>'; });
         } catch(e) {
-            el.innerHTML = '<div class="text-center text-muted py-3">❌ JSON không hợp lệ: ' + e.message + '</div>';
+            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.jsonInvalid')+'' + e.message + '</div>';
         }
     } else {
-        el.innerHTML = '<div class="text-center text-muted py-3">⚠ Nhập IOC JSON hoặc upload file.</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.enterJson')+'</div>';
     }
 }
 
@@ -3754,7 +3754,7 @@ function renderIocResults(data) {
     const el = document.getElementById('iocResults');
     document.getElementById('iocStats').textContent = data.matches ? data.matches + ' matches' : '';
     if (!data.results || !data.results.length) {
-        el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> Không tìm thấy IOC match nào trong dữ liệu.</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> '+t('ioc.noMatch')+'</div>';
         return;
     }
     el.innerHTML = tableWrap(['IOC Type', 'IOC Value', 'Table', 'Column', 'Matched', 'Time', 'Hostname', 'Confidence'],
@@ -3770,17 +3770,17 @@ function renderIocResults(data) {
 // ===== v3.2: DATA CLEANUP =====
 function loadCleanupSummary() {
     const el = document.getElementById('cleanupContent');
-    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> Đang tải...</div>';
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
     fetch('/api/cleanup/summary').then(r => r.json()).then(data => {
-        if (!data.success) { el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>'; return; }
+        if (!data.success) { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; return; }
         const summary = data.data || {};
         let html = '<div class="p-3">';
-        html += '<p class="text-muted mb-3" style="font-size:12px;"><i class="bi bi-info-circle"></i> Chọn loại dữ liệu và số ngày giữ lại để dọn dẹp. Threat/Vuln alerts sẽ được giữ lại (bảo mật).</p>';
+        html += '<p class="text-muted mb-3" style="font-size:12px;"><i class="bi bi-info-circle"></i> '+t('cleanup.hint')+'</p>';
         
         // Config row
         html += '<div class="row g-2 mb-3">';
-        html += '<div class="col-md-3"><label class="text-muted" style="font-size:11px;">Giữ log trong (ngày)</label><input class="search-box" type="number" id="cleanupDays" value="30" min="1" max="365" style="width:100%;"></div>';
-        html += '<div class="col-md-3 d-flex align-items-end"><button class="btn btn-danger btn-sm" onclick="runCleanup()"><i class="bi bi-trash3"></i> Thực hiện dọn dẹp</button></div>';
+        html += '<div class="col-md-3"><label class="text-muted" style="font-size:11px;">'+t('cleanup.keepDays')+'</label><input class="search-box" type="number" id="cleanupDays" value="30" min="1" max="365" style="width:100%;"></div>';
+        html += '<div class="col-md-3 d-flex align-items-end"><button class="btn btn-danger btn-sm" onclick="runCleanup()"><i class="bi bi-trash3"></i> '+t('cleanup.run')+'</button></div>';
         html += '<div class="col-md-6"></div>';
         html += '</div>';
         
@@ -3805,7 +3805,7 @@ function loadCleanupSummary() {
         html += '<div id="cleanupResult"></div>';
         html += '</div>';
         el.innerHTML = html;
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">Lỗi tải dữ liệu</div>'; });
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
 }
 
 function runCleanup() {
@@ -3816,7 +3816,7 @@ function runCleanup() {
     if (types.length === 0) { showToast('⚠ Chọn ít nhất 1 loại dữ liệu'); return; }
     if (!confirm(t('dash.cleanupConfirm2', [days, types.length]))) return;
     
-    resultEl.innerHTML = '<div class="text-center py-2"><div class="spinner-border text-warning spinner-border-sm"></div> Đang dọn dẹp...</div>';
+    resultEl.innerHTML = '<div class="text-center py-2"><div class="spinner-border text-warning spinner-border-sm"></div> '+t('cleanup.running')+'</div>';
     
     fetch('/api/cleanup', {
         method: 'POST',
@@ -3837,9 +3837,9 @@ function runCleanup() {
             // Refresh summary
             setTimeout(loadCleanupSummary, 2000);
         } else {
-            resultEl.innerHTML = '<div class="alert alert-danger py-2">❌ ' + (data.error || 'Lỗi') + '</div>';
+            resultEl.innerHTML = '<div class="alert alert-danger py-2">'+t('ui.errPrefix') + (data.error || t('ui.errGeneric')) + '</div>';
         }
-    }).catch(e => { resultEl.innerHTML = '<div class="alert alert-danger py-2">❌ Lỗi: ' + e.message + '</div>'; });
+    }).catch(e => { resultEl.innerHTML = '<div class="alert alert-danger py-2">'+t('ui.errPrefix') + e.message + '</div>'; });
 }
 
 // ===== v3.2: THREAT HUNTING (AI-Powered) =====
@@ -3854,7 +3854,7 @@ function startHunting() {
 
     if (!hypothesis) { showToast('⚠ Vui lòng nhập giả thuyết săn mối nguy'); return; }
 
-    el.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">🤖 AI đang phân tích giả thuyết...<br><small style="font-size:11px;">DeepSeek đang chuyển câu hỏi thành truy vấn</small></p></div>';
+    el.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">'+t('ai.investigating')+'<br><small style="font-size:11px;">'+t('ai.deepseekParsing')+'</small></p></div>';
     campaignEl.textContent = '';
 
     fetch('/api/hunt/start', {
@@ -3871,14 +3871,14 @@ function startHunting() {
             el.innerHTML = '<div class="text-center text-muted py-3">❌ ' + data.error + '</div>';
             return;
         }
-        campaignEl.textContent = 'Campaign: ' + data.campaign_id + ' | Đã hiểu: ' + (data.parsed_query || 'đang xử lý...');
+        campaignEl.textContent = 'Campaign: ' + data.campaign_id + ' | ' + t('hunt.parsedStatus') + (data.parsed_query || t('hunt.parsing'));
         // Start polling for results
         if (huntPollInterval) clearInterval(huntPollInterval);
         huntPollInterval = setInterval(function() {
             loadHunting(data.campaign_id);
         }, 2000);
     }).catch(function(e) {
-        el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi kết nối: ' + e.message + '</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.connErr')+'' + e.message + '</div>';
     });
 }
 
@@ -3902,7 +3902,7 @@ function loadHunting(campaignId) {
             renderHuntResults(data);
         })
         .catch(function(e) {
-            el.innerHTML = '<div class="text-center text-muted py-3">❌ Lỗi: ' + e.message + '</div>';
+            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.errPrefix') + e.message + '</div>';
             if (huntPollInterval) { clearInterval(huntPollInterval); huntPollInterval = null; }
         });
 }
@@ -3913,7 +3913,7 @@ function loadIncidentView() {
     // Load sidebar list
     const sidebar = document.getElementById('incidentSidebar');
     if (!sidebar) return;
-    sidebar.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> Đang tải...</div>';
+    sidebar.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> '+t('ui.loading')+'</div>';
 
     fetch('/api/incident/list?limit=100')
         .then(r => r.json())
@@ -3955,7 +3955,7 @@ function loadIncidentTimeline(threatId) {
     const timeWindowEl = document.getElementById('incidentTimeWindow');
     const countEl = document.getElementById('incidentEvidenceCount');
 
-    timelineEl.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-success"></div><p class="text-muted mt-2">Đang tổng hợp dữ liệu điều tra...</p></div>';
+    timelineEl.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-success"></div><p class="text-muted mt-2">'+t('ui.loadingInvestigation')+'</p></div>';
 
     fetch('/api/incident/' + threatId)
         .then(r => r.json())
@@ -3974,7 +3974,7 @@ function loadIncidentTimeline(threatId) {
 
             // Update header
             titleEl.textContent = ' — ' + (threat.rule_name || threat.rule_id || 'Unknown');
-            timeWindowEl.textContent = '±' + (tw.minutes || 15) + ' phút';
+            timeWindowEl.textContent = t('incident.minutes',[tw.minutes || 15]);
             countEl.textContent = data.total_events + ' events';
 
             // Build evidence summary
@@ -4043,7 +4043,7 @@ function loadIncidentTimeline(threatId) {
             document.querySelectorAll('#incidentSidebar > div').forEach(d => d.style.background = d.style.background.replace('rgba(0,212,170,0.12)','').replace('rgba(255,255,255,0.04)',''));
         })
         .catch(e => {
-            timelineEl.innerHTML = '<div class="text-center text-muted py-5">❌ Lỗi: ' + e.message + '</div>';
+            timelineEl.innerHTML = '<div class="text-center text-muted py-5">'+t('ui.errPrefix') + e.message + '</div>';
         });
 }
 
@@ -4095,7 +4095,7 @@ function renderHuntResults(data) {
                    '<td style="font-size:10px;max-width:400px;word-break:break-all;">' + detail + '</td></tr>';
         })
     );
-    html += '<div class="text-center text-muted mt-1" style="font-size:10px;">Hiển thị ' + Math.min(results.length, 100) + ' / ' + data.match_count + ' kết quả</div>';
+    html += '<div class="text-center text-muted mt-1" style="font-size:10px;">' + t('ui.showingResults',[Math.min(results.length,100), data.match_count]) + '</div>';
     el.innerHTML = html;
     showToast('✅ Hunt hoàn tất: ' + data.match_count + ' matches');
 }
@@ -4108,7 +4108,7 @@ function loadDashboardList() {
             var sel = document.getElementById('dashTemplateSelect');
             if (!sel) return;
             var templates = data.templates || [];
-            sel.innerHTML = '<option value="">-- Chọn template --</option>' +
+            sel.innerHTML = '<option value="">'+t('ui.selectTemplate')+'</option>' +
                 templates.map(function(t) {
                     return '<option value="' + t.name + '">' + t.name + ' (' + t.panel_count + ' panels, ' + t.refresh_interval + 's) - ' + (t.category || '') + '</option>';
                 }).join('');
@@ -4129,7 +4129,7 @@ function loadDashboardTemplate() {
             area.innerHTML = html;
         })
         .catch(function() {
-            area.innerHTML = '<div class="alert alert-danger">Lỗi tải dashboard</div>';
+            area.innerHTML = '<div class="alert alert-danger">'+t('ui.loadDashErr')+'</div>';
         });
 }
 
@@ -4179,7 +4179,7 @@ function showPendingList() {
             if (pending.length === 0) {
                 html += '<div class="text-center text-muted py-3">' + t('dash.noPendingApprovals') + '</div>';
             } else {
-                html += '<p class="text-muted mb-2">' + pending.length + ' yêu cầu đang chờ SOC phê duyệt:</p>';
+                html += '<p class="text-muted mb-2">' + t('ui.pendingApprovalCount',[pending.length]) + '</p>';
                 pending.forEach(function(p) {
                     var actionLabel = p.action === 'isolate_network' ? t('dash.isolateNetwork') :
                                       p.action === 'lock_account' ? t('dash.lockAccount') :
@@ -4218,17 +4218,17 @@ function showApprovalModal(approval) {
                       approval.action === 'quarantine_file' ? t('dash.quarantineFile') : approval.action;
 
     var html = '<div class="alert alert-danger py-2 mb-2" style="font-size:12px;">';
-    html += '<i class="bi bi-exclamation-triangle-fill"></i> <strong>YÊU CẦU PHÊ DUYỆT</strong> — Cần SOC xác nhận trước khi thực thi';
+    html += '<i class="bi bi-exclamation-triangle-fill"></i> <strong>'+t('ui.approvalRequired')+'</strong> '+t('ui.approvalHint');
     html += '</div>';
     html += '<table class="table table-sm table-dark" style="font-size:12px;">';
-    html += '<tr><td style="width:120px;">Máy</td><td><strong>' + (approval.hostname || approval.machine_id) + '</strong></td></tr>';
-    html += '<tr><td>Hành động</td><td><span class="badge bg-danger">' + actionLabel + '</span></td></tr>';
+    html += '<tr><td style="width:120px;">'+t('ui.machineRow')+'</td><td><strong>' + (approval.hostname || approval.machine_id) + '</strong></td></tr>';
+    html += '<tr><td>'+t('ui.action')+'</td><td><span class="badge bg-danger">' + actionLabel + '</span></td></tr>';
     html += '<tr><td>Rule</td><td>' + (approval.rule_id || '?') + '</td></tr>';
-    html += '<tr><td>Mô tả</td><td>' + (approval.description || '') + '</td></tr>';
+    html += '<tr><td>'+t('ui.description')+'</td><td>' + (approval.description || '') + '</td></tr>';
     html += '</table>';
     html += '<div class="d-flex gap-2">';
-    html += '<button class="btn btn-success btn-sm flex-grow-1" onclick="approvePending(\'' + approval.id + '\', \'approve\')"><i class="bi bi-check-lg"></i> Phê duyệt</button>';
-    html += '<button class="btn btn-danger btn-sm flex-grow-1" onclick="approvePending(\'' + approval.id + '\', \'deny\')"><i class="bi bi-x-lg"></i> Từ chối</button>';
+    html += '<button class="btn btn-success btn-sm flex-grow-1" onclick="approvePending(\'' + approval.id + '\', \'approve\')"><i class="bi bi-check-lg"></i>'+t('ui.approve')+'</button>';
+    html += '<button class="btn btn-danger btn-sm flex-grow-1" onclick="approvePending(\'' + approval.id + '\', \'deny\')"><i class="bi bi-x-lg"></i>'+t('ui.deny')+'</button>';
     html += '</div>';
 
     document.getElementById('detailModalTitle').textContent = '⚠️ SOC Approval Required';
@@ -4261,7 +4261,7 @@ document.addEventListener('DOMContentLoaded', startPendingApprovalPoll);
 // ======== END SOC Approval ========
 
 function showImportDashboardModal() {
-    var body = '<textarea class="search-box" id="dashImportJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder=\'Dán JSON dashboard template vào đây...\'></textarea>';
+    var body = '<textarea class="search-box" id="dashImportJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder=\'' + t('ph.pasteDashJson') + '\'></textarea>';
     body += '<button class="btn btn-sm btn-success mt-2" onclick="importDashboard()"><i class="bi bi-upload"></i> Import</button>';
     showDetailModal('Import Dashboard Template', body);
 }
@@ -4272,7 +4272,7 @@ function importDashboard() {
     try {
         var data = JSON.parse(jsonText);
     } catch(e) {
-        showToast('❌ JSON không hợp lệ: ' + e.message);
+        showToast(''+t('ioc.jsonInvalid')+'' + e.message);
         return;
     }
     fetch('/api/dashboard/import', {
