@@ -1273,38 +1273,66 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
         print(f"[🔄] Agent update command received: version {server_version}")
         response = None
 
+        # v4.13 FIX: use the unified IPC client with http_fallback=True so the
+        # HTTP path carries X-Updater-Token (sha256(command_key + ':updater')).
+        # The previous raw HTTP fallback omitted the token, so the v4.10+
+        # updater (fail-closed) rejected it with HTTP 401 Unauthorized.
         if _HAS_NAMED_PIPE_IPC:
             try:
-                ipc = UpdaterIPCClient(http_fallback=False)
+                ipc = UpdaterIPCClient(http_fallback=True)
                 response = ipc.send({"action": "update", "version": server_version, "exec_id": exec_id})
-                if response.get("status") == "accepted":
-                    print(f"[✓] Forwarded to Updater via Named Pipe")
-                    self._report_update_to_server(AGENT_VERSION, server_version, "accepted",
-                        "Forwarded to Updater daemon via Named Pipe", "push")
-                    return
             except Exception as e:
-                print(f"[-] Named Pipe IPC failed: {e}")
+                print(f"[-] Updater IPC error: {e}")
+                response = None
 
-        try:
-            import urllib.request as urlreq
-            req = urlreq.Request(
-                "http://127.0.0.1:5999/update",
-                data=json.dumps({"version": server_version, "exec_id": exec_id}).encode(),
-                headers={"Content-Type": "application/json"})
-            resp = urlreq.urlopen(req, timeout=5)
-            print(f"[✓] Forwarded to Updater via HTTP: {resp.read().decode()}")
+        if response and response.get("status") == "accepted":
+            print("[✓] Forwarded to Updater via IPC (pipe or HTTP)")
             self._report_update_to_server(AGENT_VERSION, server_version, "accepted",
-                "Forwarded to Updater daemon via HTTP", "push")
-        except Exception as e:
-            print(f"[-] Updater unreachable (pipe + HTTP): {e}")
-            result = {
-                "machine_id": self.machine_id, "hostname": self.hostname,
-                "type": "response_result", "action": "agent_update",
-                "exec_id": exec_id, "status": "error",
-                "error": f"Updater unreachable: {str(e)[:300]}",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            self._real_send(result)
+                "Forwarded to Updater daemon", "push")
+            return
+
+        # Final fallback: raw HTTP only when the IPC client module is unavailable.
+        # Send the same X-Updater-Token the FallbackHttpClient would send.
+        if not _HAS_NAMED_PIPE_IPC:
+            try:
+                import urllib.request as urlreq
+                import hashlib as _hashlib
+                _tok = ""
+                try:
+                    _cfg_path = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                                             "GIAM-SAT", "Agent", "agent_config.json")
+                    if os.path.exists(_cfg_path):
+                        with open(_cfg_path, "r", encoding="utf-8") as _f:
+                            _key = (json.load(_f).get("command_key") or "").strip()
+                        if _key:
+                            _tok = _hashlib.sha256((_key + ":updater").encode()).hexdigest()
+                except Exception:
+                    pass
+                _hdr = {"Content-Type": "application/json"}
+                if _tok:
+                    _hdr["X-Updater-Token"] = _tok
+                req = urlreq.Request(
+                    "http://127.0.0.1:5999/update",
+                    data=json.dumps({"version": server_version, "exec_id": exec_id}).encode(),
+                    headers=_hdr)
+                resp = urlreq.urlopen(req, timeout=5)
+                print(f"[✓] Forwarded to Updater via HTTP: {resp.read().decode()}")
+                self._report_update_to_server(AGENT_VERSION, server_version, "accepted",
+                    "Forwarded to Updater daemon via HTTP", "push")
+                return
+            except Exception as e:
+                print(f"[-] Updater unreachable (pipe + HTTP): {e}")
+
+        err = (response or {}).get("error", "updater not reachable") if response else "updater not reachable"
+        print(f"[-] Updater unreachable (pipe + HTTP): {err}")
+        result = {
+            "machine_id": self.machine_id, "hostname": self.hostname,
+            "type": "response_result", "action": "agent_update",
+            "exec_id": exec_id, "status": "error",
+            "error": f"Updater unreachable: {str(err)[:300]}",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        self._real_send(result)
 
     def _auto_update_check_loop(self):
         while self.running:
