@@ -36,10 +36,10 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 
 - **VI:** Màn hình đầu tiên sau khi đăng nhập.
   - Bên trái: bảng **toàn cảnh Server Health & Security** (tự làm mới mỗi 15 giây).
-  - Bên phải: thẻ **Tổng máy trạm / Đang online / Sự kiện / Syslog**; bảng **Máy trạm đã đăng ký** (bấm tiêu đề để mở/đóng; có nút **Dọn log cũ** và **Xóa offline**); biểu đồ **Phân loại sự kiện**; thẻ **📊 Báo cáo** (xem mục *Báo cáo tổng hợp* ở cuối tài liệu).
+  - Bên phải: thẻ **Tổng máy trạm / Đang online / Sự kiện / Syslog**; bảng **Máy trạm đã đăng ký** (bấm tiêu đề để mở/đóng; có nút **Dọn log cũ** và **Xóa offline**); biểu đồ **Phân loại sự kiện**; thẻ **📊 Báo Cáo Tài Sản** (đường tắt mở cửa sổ xuất báo cáo — xem mục *Báo Cáo Tài Sản* bên dưới).
 - **EN:** First screen after login.
   - Left: **Server Health & Security panorama** (auto-refresh every 15s).
-  - Right: **Total machines / Online / Events / Syslog** stat cards; **Registered machines** table (click header to expand — buttons **Clean old logs**, **Delete offline**); **Event types** chart; **📊 Reports** card (see *Summary Reports* at the end).
+  - Right: **Total machines / Online / Events / Syslog** stat cards; **Registered machines** table (click header to expand — buttons **Clean old logs**, **Delete offline**); **Event types** chart; **📊 Asset Report** card (shortcut to the export dialog — see *Asset Report* below).
 
 ### Dashboard (Custom Dashboards)
 
@@ -443,6 +443,29 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   4. Columns: **Time, User, Action** (badge), **Details, IP**.
   - *Tip:* important actions (add/remove suppression, generate report, toggle AI, delete dashboard, update rules...) are all logged here — use it to verify who changed what.
 
+### 🆕 Quản lý người dùng & phân quyền (User Management)
+
+- **VI:** Tạo/xóa tài khoản và phân quyền trực tiếp trên dashboard (menu **👥 Quản lý người dùng** — **chỉ hiển thị với tài khoản Admin**).
+  1. **Tạo tài khoản:** nhập **Tên đăng nhập** + **Mật khẩu** (tối thiểu 12 ký tự gồm chữ hoa, chữ thường, số, ký tự đặc biệt) → chọn **Vai trò** → **Tạo tài khoản**.
+     - **Viewer (chỉ xem):** chỉ xem dữ liệu, không gửi lệnh, không đổi cấu hình — *vai trò mặc định (an toàn nhất)*.
+     - **Operator (điều hành):** xem + gửi hành động phản hồi, lệnh SSH, dùng AI.
+     - **Admin (toàn quyền):** mọi thứ kể cả quản lý người dùng, xóa dữ liệu, bật/tắt AI.
+  2. **Đổi vai trò:** ở bảng danh sách, chọn vai trò mới trong dropdown của từng tài khoản.
+  3. **Đặt lại mật khẩu:** nút **Đặt lại mật khẩu** → nhập mật khẩu mới → người dùng sẽ **phải đổi mật khẩu** ở lần đăng nhập kế tiếp.
+  4. **Xóa tài khoản:** nút **Xóa** → xác nhận. Tài khoản `admin` **không thể xóa hoặc hạ quyền** (bảo vệ chống khóa hệ thống).
+  5. **Đổi mật khẩu của tôi + Đăng xuất:** góc trên phải → nút 👤 tên tài khoản → **Đổi mật khẩu** (nhập mật khẩu cũ + mới + xác nhận) hoặc **Đăng xuất**.
+  - *Bảo mật:* mọi thao tác (tạo/xóa/đổi vai trò/reset mật khẩu) đều được ghi vào **Nhật ký kiểm toán**.
+- **EN:** Create/delete accounts and assign roles right in the dashboard (menu **👥 User Management** — **only visible to Admin accounts**).
+  1. **Add a user:** enter **Username** + **Password** (min 12 chars with upper, lower, digit, special) → pick **Role** → **Add User**.
+     - **Viewer (read-only):** view-only, no commands, no config — *default role (safest)*.
+     - **Operator (operate):** view + response actions, SSH commands, AI.
+     - **Admin (full access):** everything including user management, data cleanup, AI toggle.
+  2. **Change role:** in the user list, pick the new role in each account's dropdown.
+  3. **Reset password:** click **Reset Password** → enter a new password → the user **must change it** at their next login.
+  4. **Delete account:** click **Delete** → confirm. The `admin` account **cannot be deleted or demoted** (prevents locking yourself out).
+  5. **Change my password + Logout:** top-right 👤 button → **Change Password** (old + new + confirm) or **Logout**.
+  - *Security:* all actions (create/delete/role/reset) are recorded in the **Audit Log**.
+
 ---
 
 ## NHÓM 4: HỆ THỐNG — SYSTEM
@@ -460,41 +483,48 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   3. Select tables and click **Clean** (removes data older than the retention days; threat-related data is kept by default).
   - *Warning:* deleted data **cannot be recovered**. Run it after exporting/archiving reports.
 
-### 🆕 Báo cáo tổng hợp (Summary Reports)
+### 🆕 Báo Cáo Tài Sản (Asset Report)
 
-- **VI:** Xuất **báo cáo HTML tổng hợp** tự động (thống kê máy, sự kiện, mối đe dọa, lỗ hổng, SCA, YARA...) — dùng cho báo cáo cuối ngày/tuần cho cấp trên hoặc lưu hồ sơ.
+- **VI:** Xuất **báo cáo chi tiết cấu hình máy trạm** (phần cứng, phần mềm đã cài, thông tin người dùng) dạng **Excel (.xlsx)** hoặc **HTML (.html)** — hồ sơ quản lý tài sản/máy trạm.
+  1. Menu sidebar → **📊 Báo Cáo Tài Sản** (nằm ngay dưới mục Tổng quan).
+  2. Chọn **Định dạng** (Excel hoặc HTML).
+  3. Tích/bỏ các mục muốn xuất: **Cấu hình máy / Danh sách phần mềm / Thông tin người dùng**.
+  4. Nhấn **Xuất Báo Cáo Tài Sản** → file tự tải về (VD `GIAM-SAT_Config_Report.xlsx`).
+  - *Mẹo:* thẻ **"📊 Báo Cáo Tài Sản"** trên trang Tổng quan vẫn mở cửa sổ cấu hình tương tự — đường tắt nhanh.
+- **EN:** Export a **detailed machine configuration report** (hardware, installed software, user info) as **Excel (.xlsx)** or **HTML (.html)** — for asset/machine records.
+  1. Sidebar → **📊 Asset Report** (right below Overview).
+  2. Pick **Format** (Excel or HTML).
+  3. Tick the sections to include: **Machine config / Software list / User info**.
+  4. Click **Export Asset Report** → the file downloads automatically (e.g. `GIAM-SAT_Config_Report.xlsx`).
+  - *Tip:* the **"📊 Asset Report"** card on Overview opens the same configuration dialog as a shortcut.
 
-  **Báo cáo tổng hợp (Báo cáo ngày / Báo cáo tuần):**
-  1. Trên trang **Tổng quan**, trong thẻ **📊 Báo cáo**, nhấn **Xuất báo cáo** → cửa sổ cấu hình mở ra.
-  2. (Tùy chọn) chọn định dạng **Excel (.xlsx)** hoặc **HTML (.html)** và các mục trong **cấu hình máy** (Cấu hình / Phần mềm / Thông tin người dùng) cho báo cáo chi tiết máy.
-  3. Trong phần **Báo cáo tổng hợp**, nhấn **Báo cáo ngày** (daily) hoặc **Báo cáo tuần** (weekly).
-  4. Xác nhận → server tạo file HTML trong vài giây → trình duyệt **tự tải file về** ngay lập tức (VD `giamsat_report_daily_20260820_110423.html`).
-  5. Mở file bằng trình duyệt: báo cáo có cấu trúc (tổng quan, mối đe dọa, lỗ hổng, khuyến nghị) — sẵn sàng in PDF/chia sẻ.
+### 🆕 Báo Cáo Tổng Hợp (Summary Report)
 
-  *Lưu ý:* nút **Xuất báo cáo** (Excel/HTML cấu hình máy) và **Báo cáo ngày/tuần** (báo cáo tổng hợp) là **hai chức năng khác nhau** — cái trước là chi tiết 1 máy, cái sau là báo cáo toàn hệ thống.
-- **EN:** Generate an automated **summary HTML report** (machines, events, threats, vulnerabilities, SCA, YARA stats...) — for end-of-day/week reporting to management or record-keeping.
-
-  **Summary report (Daily / Weekly):**
-  1. On **Overview**, in the **📊 Reports** card, click **Export report** → the configuration dialog opens.
-  2. (Optional) choose **Excel (.xlsx)** or **HTML (.html)** and the machine-config sections (Config / Software / User info) for the per-machine detail report.
-  3. In the **Summary report** area, click **Daily report** or **Weekly report**.
-  4. Confirm → the server builds the HTML file in seconds → the browser **downloads it automatically** (e.g. `giamsat_report_daily_20260820_110423.html`).
-  5. Open it in a browser: the report is structured (overview, threats, vulnerabilities, recommendations) — ready to print to PDF or share.
-
-  *Note:* **Export report** (per-machine Excel/HTML) and **Daily/Weekly report** (system summary) are **two different features** — the former is one machine's detail, the latter is a system-wide report.
+- **VI:** Xuất **báo cáo HTML tổng hợp toàn hệ thống** (máy, sự kiện, mối đe dọa, lỗ hổng, SCA, YARA...) — cho báo cáo cuối ngày/tuần hoặc lưu hồ sơ.
+  1. Menu sidebar → **📊 Báo Cáo Tổng Hợp** (nằm ngay dưới Báo Cáo Tài Sản).
+  2. Nhấn **📅 Báo cáo ngày** (daily) hoặc **📅 Báo cáo tuần** (weekly).
+  3. Xác nhận → server tạo file HTML trong vài giây → trình duyệt **tự tải về** (VD `giamsat_report_daily_20260820_110423.html`).
+  4. Mở bằng trình duyệt: báo cáo có cấu trúc (tổng quan, mối đe dọa, lỗ hổng, khuyến nghị) — sẵn sàng in PDF/chia sẻ.
+  - *Phân biệt:* **Báo Cáo Tài Sản** = chi tiết 1 máy; **Báo Cáo Tổng Hợp** = toàn hệ thống.
+- **EN:** Generate an automated **system-wide summary HTML report** (machines, events, threats, vulnerabilities, SCA, YARA...) — for end-of-day/week reporting or records.
+  1. Sidebar → **📊 Summary Report** (right below Asset Report).
+  2. Click **📅 Daily report** or **📅 Weekly report**.
+  3. Confirm → the server builds the HTML file in seconds → the browser **downloads it automatically** (e.g. `giamsat_report_daily_20260820_110423.html`).
+  4. Open it in a browser: structured report (overview, threats, vulnerabilities, recommendations) — ready to print to PDF or share.
+  - *Difference:* **Asset Report** = one machine's detail; **Summary Report** = the whole system.
 
 ---
 
 ## Bảng quyền nhanh — Quick permission reference
 
-- **VI:** Một số hành động nhạy cảm yêu cầu quyền nâng cao:
+- **VI:** Một số hành động nhạy cảm yêu cầu quyền nâng cao (xem/quản lý tại menu **👥 Quản lý người dùng** — chỉ admin):
   - **Viewer:** xem tất cả (không gửi lệnh điều khiển, không đổi cấu hình).
   - **Operator (+):** gửi hành động phản hồi, gửi lệnh SSH, dùng AI.
-  - **Admin:** mọi thứ — quản lý rule, suppression, xóa dữ liệu, bật/tắt AI, xóa dashboard, cấu hình.
-- **EN:** Some sensitive actions require elevated permissions:
+  - **Admin:** mọi thứ — quản lý rule, suppression, người dùng, xóa dữ liệu, bật/tắt AI, xóa dashboard, cấu hình.
+- **EN:** Some sensitive actions require elevated permissions (view/manage them under **👥 User Management** — admin only):
   - **Viewer:** read-only (no response/control commands, no config changes).
   - **Operator (+):** send response actions, SSH commands, use AI.
-  - **Admin:** everything — rules, suppression, data cleanup, AI toggle, dashboard delete, config.
+  - **Admin:** everything — rules, suppression, users, data cleanup, AI toggle, dashboard delete, config.
 
 ---
 

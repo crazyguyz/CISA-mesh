@@ -114,6 +114,34 @@ def register(app, core):
             return jsonify({"success": True})
         return jsonify({"success": False, "error": "Cannot delete admin or user not found"}), 400
 
+    @app.route("/api/users/<username>/role", methods=["PUT"])
+    def api_set_user_role(username):
+        """v4.13: Change a user's role (admin-only, audit logged)."""
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        data = request.json or {}
+        role = data.get("role", "")
+        result = core.auth.set_user_role(username, role)
+        if result and result.get("success"):
+            core.db.insert_audit_log(admin, "set_user_role",
+                f"Changed role of {username} to {role}", request.remote_addr)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": result.get("error", "Failed to change role")}), 400
+
+    @app.route("/api/users/<username>/reset-password", methods=["POST"])
+    def api_reset_user_password(username):
+        """v4.13: Admin resets another user's password (forces change at next login)."""
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        data = request.json or {}
+        new_password = data.get("new_password", "")
+        result = core.auth.admin_reset_password(username, new_password)
+        if result and result.get("success"):
+            core.db.insert_audit_log(admin, "reset_password",
+                f"Admin reset password for {username}", request.remote_addr)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": result.get("error", "Failed to reset password")}), 400
+
     @app.route("/api/users/password", methods=["POST"])
     def api_change_password():
         username, err, code = check_auth("api")

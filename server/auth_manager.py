@@ -533,6 +533,37 @@ class AuthManager:
     def get_users(self):
         return {u: {"username": u, "role": d["role"], "must_change_password": d.get("must_change_password", False)} for u, d in self.users.items()}
 
+    def set_user_role(self, username, role):
+        """v4.13: Change a user's role (admin-only route). Protects the last admin."""
+        if role not in USER_ROLES:
+            return {"success": False, "error": f"Vai trò không hợp lệ: {role}"}
+        with self.lock:
+            if username not in self.users:
+                return {"success": False, "error": "Người dùng không tồn tại."}
+            # Never demote/downgrade the only admin (prevents locking out the system)
+            if username == "admin" and role != "admin":
+                return {"success": False, "error": "Không thể hạ quyền tài khoản admin cuối cùng."}
+            self.users[username]["role"] = role
+            self._save_users()
+        return {"success": True}
+
+    def admin_reset_password(self, username, new_password):
+        """v4.13: Admin resets another user's password (no old_password needed).
+        Forces must_change_password on next login."""
+        with self.lock:
+            if username not in self.users:
+                return {"success": False, "error": "Người dùng không tồn tại."}
+        valid, error = self.validate_password_policy(new_password)
+        if not valid:
+            return {"success": False, "error": error}
+        pw_hash, salt = self._hash_password(new_password)
+        with self.lock:
+            self.users[username]["password"] = pw_hash
+            self.users[username]["salt"] = salt
+            self.users[username]["must_change_password"] = True
+            self._save_users()
+        return {"success": True, "must_change_password": True}
+
     @staticmethod
     def require_permission(permission):
         """Decorator for Flask routes to check permission."""

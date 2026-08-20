@@ -53,7 +53,10 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             audit: { el: 'viewAudit', container: 'auditList', load: function() { loadAudit(); } },
             cluster: { el: 'viewCluster', container: 'clusterContent', load: function() { loadCluster(); } },
             dashboards: { el: 'viewDashboards', container: null, load: function() { if (typeof DbBuilder !== 'undefined') DbBuilder.init(); else setTimeout(function() { DbBuilder.init(); }, 200); } },
-            assets: { el: 'viewAssets', container: null, load: function() { if (typeof Assets !== 'undefined') Assets.init(); else setTimeout(function() { Assets.init(); }, 200); } }
+            assets: { el: 'viewAssets', container: null, load: function() { if (typeof Assets !== 'undefined') Assets.init(); else setTimeout(function() { Assets.init(); }, 200); } },
+            'report-asset': { el: 'viewReportAsset', container: null, load: function() {} },
+            'report-summary': { el: 'viewReportSummary', container: null, load: function() {} },
+            users: { el: 'viewUsers', container: null, load: function() { loadUsers(); } }
         };
         var v = viewMap[view];
         if (v) {
@@ -70,7 +73,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         if (view === "agentupdate") { document.getElementById("viewAgentUpdate").style.display = ""; loadAgentUpdateView(); }
         if (view === "messages") { document.getElementById("viewMessages").style.display = ""; if (window.messageChat) messageChat.init(); }
         currentView = view;
-        const iconMap = {'overview':'speedometer2','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','suppression':'funnel','audit':'journal-text','cluster':'diagram-2','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','cleanup':'trash3'};
+        const iconMap = {'overview':'speedometer2','report-asset':'clipboard-data','report-summary':'bar-chart','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','suppression':'funnel','audit':'journal-text','cluster':'diagram-2','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','cleanup':'trash3','users':'person-gear'};
         document.getElementById('pageTitle').innerHTML = `<i class="bi bi-${iconMap[view]||'speedometer2'}"></i> ${this.textContent.trim()}`;
     });
 });
@@ -3609,9 +3612,13 @@ function generateSummaryReport(type) {
         }).catch(() => { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
-function exportReport() {
+function exportReport(fmtId, cfgId, swId, uidId) {
+    fmtId = fmtId || 'reportFormat';
+    cfgId = cfgId || 'rptConfig';
+    swId = swId || 'rptSoftware';
+    uidId = uidId || 'rptUser';
     const btn = document.querySelector('#detailModal .btn-success');
-    const fmt = document.getElementById('reportFormat')?.value || 'xlsx';
+    const fmt = document.getElementById(fmtId)?.value || 'xlsx';
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> ' + t('ao.generating') + ''; }
 
     const url = fmt === 'html' ? '/api/reports/machine-config-html' : '/api/reports/machine-config-export';
@@ -3620,9 +3627,9 @@ function exportReport() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            include_config: document.getElementById('rptConfig')?.checked,
-            include_software: document.getElementById('rptSoftware')?.checked,
-            include_user: document.getElementById('rptUser')?.checked
+            include_config: document.getElementById(cfgId)?.checked,
+            include_software: document.getElementById(swId)?.checked,
+            include_user: document.getElementById(uidId)?.checked
         })
     }).then(r => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -3640,7 +3647,8 @@ function exportReport() {
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url2);
         showToast(t('dash.reportDownloaded', [filename]));
-        detailModal.hide();
+        const modal = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
+        if (modal && modal._isShown) modal.hide();
     }).catch(e => {
         showToast(t('dash.reportError', [e.message]));
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-download"></i> '+t('ui.downloadReport')+''; }
@@ -4414,6 +4422,133 @@ function approvePending(approvalId, action) {
 document.addEventListener('DOMContentLoaded', startPendingApprovalPoll);
 
 // ======== END SOC Approval ========
+
+// ======== v4.13: USER & ROLE MANAGEMENT ========
+let currentUser = null;
+
+function initCurrentUser() {
+    fetch('/api/auth/check').then(function(r) { return r.json(); }).then(function(d) {
+        if (!d.authenticated) return;
+        currentUser = d;
+        const nameEl = document.getElementById('accountName');
+        if (nameEl) nameEl.textContent = d.username;
+        const roleEl = document.getElementById('accountRole');
+        if (roleEl) roleEl.textContent = t('users.myAccount') + ' · ' + (d.role || 'viewer');
+        const nav = document.getElementById('navUsers');
+        if (nav) nav.style.display = (d.role === 'admin') ? '' : 'none';
+    }).catch(function() {});
+}
+
+function loadUsers() {
+    const el = document.getElementById('usersList');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
+    fetch('/api/users').then(function(r) { return r.json(); }).then(function(users) {
+        const names = Object.keys(users || {});
+        if (!names.length) { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.noData')+'</div>'; return; }
+        let html = '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>'+t('users.username')+'</th><th>'+t('users.role')+'</th><th>'+t('ui.status')+'</th><th></th></tr></thead><tbody>';
+        html += names.map(function(u) {
+            const usr = users[u] || {};
+            const cur = usr.role === 'admin' ? 'admin' : (usr.role === 'operator' ? 'operator' : 'viewer');
+            let roleSel = '<select class="form-select form-select-sm" style="width:auto;display:inline-block;font-size:10px;padding:1px 4px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);" onchange="changeUserRole(\'' + u.replace(/'/g, "\\'") + '\', this.value)">';
+            ['viewer','operator','admin'].forEach(function(r) {
+                roleSel += '<option value="'+r+'"'+(cur === r ? ' selected' : '')+'>'+t('users.role'+r.charAt(0).toUpperCase()+r.slice(1))+'</option>';
+            });
+            roleSel += '</select>';
+            const statusCell = usr.must_change_password
+                ? '<span class="badge bg-warning text-dark">'+t('users.mustChange')+'</span>'
+                : '<span class="badge bg-success">'+t('ui.active')+'</span>';
+            return '<tr><td><strong style="color:#ffcc66;">'+escapeHtml(u)+'</strong></td><td>'+roleSel+'</td><td>'+statusCell+'</td><td class="text-end">'+
+                '<button class="btn btn-sm btn-outline-warning me-1" style="font-size:10px;padding:0 6px;" onclick="resetUserPassword(\'' + u.replace(/'/g, "\\'") + '\')">'+t('users.resetPw')+'</button>'+
+                (u !== 'admin' ? '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:0 6px;" onclick="deleteUser(\'' + u.replace(/'/g, "\\'") + '\')">'+t('btn.delete')+'</button>' : '')+
+                '</td></tr>';
+        }).join('') + '</tbody></table>';
+        el.innerHTML = html;
+    }).catch(function() { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
+}
+
+function addUser() {
+    const username = document.getElementById('newUserUsername').value.trim();
+    const password = document.getElementById('newUserPassword').value;
+    const role = document.getElementById('newUserRole').value;
+    if (!username) { showToast('⚠ ' + t('users.usernameReq')); return; }
+    if (!password) { showToast('⚠ ' + t('users.pwReq')); return; }
+    fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username: username, password: password, role: role})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('users.added'));
+                document.getElementById('newUserUsername').value = '';
+                document.getElementById('newUserPassword').value = '';
+                loadUsers();
+            } else {
+                showToast('❌ ' + (d.error || t('ui.errGeneric')));
+            }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function deleteUser(username) {
+    if (!confirm(t('users.deleteConfirm', [username]))) return;
+    fetch('/api/users/' + encodeURIComponent(username), {method:'DELETE'})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ ' + t('users.deleted')); loadUsers(); }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function changeUserRole(username, role) {
+    fetch('/api/users/' + encodeURIComponent(username) + '/role', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role: role})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ ' + t('users.roleUpdated')); }
+            else { showToast('❌ ' + (d.error || '')); loadUsers(); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function resetUserPassword(username) {
+    if (!confirm(t('users.resetPwConfirm', [username]))) return;
+    const newPw = prompt(t('users.newPw') + ' (≥12)');
+    if (!newPw) return;
+    fetch('/api/users/' + encodeURIComponent(username) + '/reset-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({new_password: newPw})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ ' + t('users.resetPwDone')); }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function showChangeMyPassword() {
+    const body = '<div style="font-size:13px;">' +
+        '<div class="mb-2"><label class="text-muted" style="font-size:11px;">'+t('users.oldPw')+'</label><input class="search-box" id="myOldPw" type="password" style="width:100%;"></div>' +
+        '<div class="mb-2"><label class="text-muted" style="font-size:11px;">'+t('users.newPw')+'</label><input class="search-box" id="myNewPw" type="password" style="width:100%;"></div>' +
+        '<div class="mb-2"><label class="text-muted" style="font-size:11px;">'+t('users.newPwConfirm')+'</label><input class="search-box" id="myNewPw2" type="password" style="width:100%;"></div>' +
+        '<p class="text-muted" style="font-size:10px;">'+t('users.pwPolicy')+'</p>' +
+        '<button class="btn btn-success btn-sm" onclick="changeMyPassword()"><i class="bi bi-check-lg"></i> '+t('users.changePw')+'</button>' +
+        '</div>';
+    showDetailModal(t('users.changePwTitle'), body);
+}
+
+function changeMyPassword() {
+    const oldPw = document.getElementById('myOldPw').value;
+    const newPw = document.getElementById('myNewPw').value;
+    const newPw2 = document.getElementById('myNewPw2').value;
+    if (newPw !== newPw2) { showToast('⚠ ' + t('users.pwMismatch')); return; }
+    fetch('/api/users/password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({old_password: oldPw, new_password: newPw})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('users.changedPw'));
+                const modal = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
+                if (modal && modal._isShown) modal.hide();
+            } else {
+                showToast('❌ ' + (d.error || ''));
+            }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function doLogout() {
+    fetch('/api/logout', {method:'POST'}).catch(function() {}).finally(function() { window.location.href = '/login'; });
+}
+
+// Auto-start user session on page load
+document.addEventListener('DOMContentLoaded', initCurrentUser);
+// ======== END USER & ROLE MANAGEMENT ========
 
 function showImportDashboardModal() {
     var body = '<textarea class="search-box" id="dashImportJson" style="width:100%;height:300px;font-family:monospace;font-size:10px;" placeholder=\'' + t('ph.pasteDashJson') + '\'></textarea>';

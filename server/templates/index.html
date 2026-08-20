@@ -123,6 +123,8 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <nav class="nav flex-column">
                 <small class="text-muted px-2" data-i18n="group.monitoring">GIÁM SÁT</small>
                 <a class="nav-link active" href="#" data-view="overview"><i class="bi bi-speedometer2"></i> <span data-i18n="nav.overview">Tổng quan</span></a>
+                <a class="nav-link" href="#" data-view="report-asset"><i class="bi bi-clipboard-data"></i> <span data-i18n="nav.reportAsset">Báo Cáo Tài Sản</span></a>
+                <a class="nav-link" href="#" data-view="report-summary"><i class="bi bi-bar-chart"></i> <span data-i18n="nav.reportSummary">Báo Cáo Tổng Hợp</span></a>
                 <a class="nav-link" href="#" data-view="dashboards"><i class="bi bi-grid-1x2"></i> <span data-i18n="nav.dashboard">Bảng điều khiển</span> <span class="badge bg-success ms-1" style="font-size:9px;" data-i18n="common.new">MỚI</span><span id="pendingBadge" class="badge bg-danger ms-1 pulse-badge" style="font-size:9px;display:none;" onclick="event.stopPropagation();event.preventDefault();showPendingList()" title="Nhấn để xem danh sách chờ duyệt" data-i18n-title="tt.pendingApprovals">0</span></a>
                 <a class="nav-link" href="#" data-view="events"><i class="bi bi-list-ul"></i> <span data-i18n="nav.events">Nhật ký sự kiện</span></a>
                 <a class="nav-link" href="#" data-view="fim"><i class="bi bi-folder2-open"></i> <span data-i18n="nav.fim">FIM</span></a>
@@ -155,6 +157,7 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                 <a class="nav-link" href="#" data-view="suppression"><i class="bi bi-funnel"></i> <span data-i18n="nav.suppression">Chặn cảnh báo giả</span></a>
                 <a class="nav-link" href="#" data-view="email"><i class="bi bi-envelope"></i> <span data-i18n="nav.email">Cảnh báo Email</span></a>
                 <a class="nav-link" href="#" data-view="assets"><i class="bi bi-pc-display-horizontal"></i> <span data-i18n="nav.assets">Tài sản</span> <span id="assetsBadge" class="badge bg-danger ms-1" style="font-size:9px;display:none;">0</span></a>
+                <a class="nav-link" href="#" data-view="users" id="navUsers" style="display:none;"><i class="bi bi-person-gear"></i> <span data-i18n="nav.users">Quản lý người dùng</span></a>
                 <hr style="border-color:var(--border-color);margin:4px 8px;">
                 <small class="text-muted px-2" data-i18n="group.system">HỆ THỐNG</small>
                 <a class="nav-link" href="#" data-view="cleanup"><i class="bi bi-trash3"></i> <span data-i18n="nav.cleanup">Dọn dẹp dữ liệu</span></a>
@@ -168,6 +171,17 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
             <h4 class="mb-0" id="pageTitle"><i class="bi bi-speedometer2"></i> <span data-i18n="overview.title">Tổng quan</span></h4>
             <div class="d-flex align-items-center">
                 <span class="text-muted me-3"><i class="bi bi-hdd-network"></i> TCP:6666 | Syslog:514</span>
+                <div class="dropdown me-2">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" id="accountBtn" title="Tài khoản">
+                        <i class="bi bi-person-circle"></i> <span id="accountName">...</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><span class="dropdown-item-text" id="accountRole" style="font-size:11px;color:#6a8aaa;"></span></li>
+                        <li><a class="dropdown-item" href="#" onclick="showChangeMyPassword();return false;"><i class="bi bi-key"></i> <span data-i18n="users.changePw">Đổi mật khẩu</span></a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="doLogout();return false;"><i class="bi bi-box-arrow-right"></i> <span data-i18n="users.logout">Đăng xuất</span></a></li>
+                    </ul>
+                </div>
                 <div class="dropdown me-2">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
                         <i class="bi bi-globe2"></i> <span id="langLabel">Tiếng Việt</span>
@@ -231,6 +245,72 @@ body { background: var(--bg-dark); color: var(--text-bright); font-family: 'Sego
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <div id="viewReportAsset" style="display:none;">
+            <div class="card mb-3"><div class="card-header"><i class="bi bi-clipboard-data"></i> <span data-i18n="reports.assetTitle">Báo Cáo Tài Sản (Cấu hình máy trạm)</span></div>
+                <div class="card-body">
+                    <p class="text-muted" style="font-size:12px;"><span data-i18n="reports.assetSub">Xuất báo cáo chi tiết cấu hình, phần mềm và thông tin người dùng của máy trạm dưới dạng Excel hoặc HTML.</span></p>
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="reports.format">Định dạng</span></label>
+                            <select class="form-select form-select-sm" id="rptAssetFormat" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
+                                <option value="xlsx">📗 Excel (.xlsx)</option>
+                                <option value="html">🌐 HTML (.html)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2 p-2" style="background:#0a1a1a;border-radius:6px;">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="rptAssetCfg" checked>
+                            <label class="form-check-label" for="rptAssetCfg"><span data-i18n="dash.machineConfig">Cấu hình máy</span></label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="rptAssetSw" checked>
+                            <label class="form-check-label" for="rptAssetSw"><span data-i18n="dash.softwareList">Danh sách phần mềm</span></label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rptAssetUser" checked>
+                            <label class="form-check-label" for="rptAssetUser"><span data-i18n="dash.userInfo">Thông tin người dùng</span></label>
+                        </div>
+                    </div>
+                    <button class="btn btn-success btn-sm" onclick="exportReport('rptAssetFormat','rptAssetCfg','rptAssetSw','rptAssetUser')"><i class="bi bi-download"></i> <span data-i18n="reports.assetExportBtn">Xuất Báo Cáo Tài Sản</span></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewReportSummary" style="display:none;">
+            <div class="card mb-3"><div class="card-header"><i class="bi bi-bar-chart"></i> <span data-i18n="reports.summaryTitle">Báo Cáo Tổng Hợp</span></div>
+                <div class="card-body">
+                    <p class="text-muted" style="font-size:12px;"><span data-i18n="reports.summaryDesc">Tạo báo cáo tổng hợp toàn hệ thống (máy, sự kiện, mối đe dọa, lỗ hổng) dạng HTML — trình duyệt tự tải về sau vài giây.</span></p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-info" onclick="generateSummaryReport('daily')"><i class="bi bi-calendar-day"></i> <span data-i18n="reports.daily">Báo cáo ngày</span></button>
+                        <button class="btn btn-outline-info" onclick="generateSummaryReport('weekly')"><i class="bi bi-calendar-week"></i> <span data-i18n="reports.weekly">Báo cáo tuần</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewUsers" style="display:none;">
+            <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-person-plus"></i> <span data-i18n="users.addTitle">Tạo tài khoản</span></span><button class="btn btn-sm export-btn" onclick="loadUsers()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
+                <div class="card-body">
+                    <p class="text-muted" style="font-size:11px;"><i class="bi bi-info-circle"></i> <span data-i18n="users.pwPolicy">Mật khẩu tối thiểu 12 ký tự gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</span></p>
+                    <div class="row g-2">
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="users.username">Tên đăng nhập</span></label><input class="search-box" id="newUserUsername" style="width:100%;"></div>
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="users.password">Mật khẩu</span></label><input class="search-box" id="newUserPassword" type="password" style="width:100%;"></div>
+                        <div class="col-md-3"><label class="text-muted" style="font-size:11px;"><span data-i18n="users.role">Vai trò</span></label>
+                            <select class="form-select form-select-sm" id="newUserRole" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);">
+                                <option value="viewer" selected data-i18n="users.roleViewer">Viewer (chỉ xem)</option>
+                                <option value="operator" data-i18n="users.roleOperator">Operator (điều hành)</option>
+                                <option value="admin" data-i18n="users.roleAdmin">Admin (toàn quyền)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end"><button class="btn btn-success btn-sm" onclick="addUser()"><i class="bi bi-plus-circle"></i> <span data-i18n="users.addUser">Tạo tài khoản</span></button></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card"><div class="card-header"><i class="bi bi-people"></i> <span data-i18n="users.list">Danh sách tài khoản</span></div>
+                <div class="card-body p-0" id="usersList" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> <span data-i18n="ui.loading">Đang tải...</span></div></div>
             </div>
         </div>
 
