@@ -34,7 +34,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             sca: { el: 'viewSca', container: 'scaList', load: function() { loadSca(); } },
             agentless: { el: 'viewAgentless', container: 'agentlessList', load: function() { loadAgentless(); } },
             attack: { el: 'viewAttack', container: 'attackContent', load: function() { loadAttackOverview(); } },
-            assistant: { el: 'viewAssistant', container: null, load: function() { loadAssistScope(); } },
+            assistant: { el: 'viewAssistant', container: null, load: function() { loadAssistScope(); loadAiStatus(); } },
             groups: { el: 'viewGroups', container: 'groupsContent', load: function() { loadGroups(); } },
             fimbaseline: { el: 'viewFimBaseline', container: 'fimBaselineMachineList', load: function() { loadFimBaselineMachines(); } },
             rules: { el: 'viewRules', container: 'rulesList', load: function() { loadRules(); } },
@@ -70,7 +70,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         if (view === "agentupdate") { document.getElementById("viewAgentUpdate").style.display = ""; loadAgentUpdateView(); }
         if (view === "messages") { document.getElementById("viewMessages").style.display = ""; if (window.messageChat) messageChat.init(); }
         currentView = view;
-        const iconMap = {'overview':'speedometer2','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','cleanup':'trash3'};
+        const iconMap = {'overview':'speedometer2','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','suppression':'funnel','audit':'journal-text','cluster':'diagram-2','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','cleanup':'trash3'};
         document.getElementById('pageTitle').innerHTML = `<i class="bi bi-${iconMap[view]||'speedometer2'}"></i> ${this.textContent.trim()}`;
     });
 });
@@ -2591,6 +2591,33 @@ function loadCluster() {
         }
         el.innerHTML = html;
     }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
+}
+
+// ===== AI ENABLE/STATUS =====
+function loadAiStatus() {
+    fetch('/api/ai/status').then(r => r.json()).then(function(d) {
+        const badge = document.getElementById('aiStatusBadge');
+        if (!badge) return;
+        if (d.ai_disabled) {
+            badge.className = 'badge bg-danger me-2';
+            badge.style.fontSize = '10px';
+            badge.textContent = t('assist.disabled');
+        } else {
+            badge.className = 'badge bg-success me-2';
+            badge.style.fontSize = '10px';
+            badge.textContent = t('assist.enabled');
+        }
+    }).catch(function(){});
+}
+
+function toggleAi() {
+    if (!confirm(t('assist.confirmToggle'))) return;
+    const badge = document.getElementById('aiStatusBadge');
+    const current = badge && badge.classList.contains('bg-danger');
+    fetch('/api/ai/toggle', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({disabled: !current})})
+        .then(r => r.json()).then(function(d) {
+            if (d.success) { showToast(d.ai_disabled ? '⛔ ' + t('assist.disabled') : '✅ ' + t('assist.enabled')); loadAiStatus(); }
+        }).catch(() => { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
 // ===== TABLE SORT (Excel-style: date, number, text; persistent per-table per-column state) =====

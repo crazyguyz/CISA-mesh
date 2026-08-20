@@ -464,12 +464,23 @@ var DbBuilder = {
                 var ds = data.dashboards || [];
                 if (!ds.length) { alert(t('db.noDashboards')); return; }
                 var list = ds.map(function (d) {
-                    return '<div class="p-2" style="border-bottom:1px solid #2a3a4a;cursor:pointer;" onclick="DbBuilder._loadDashboard(\'' + d.name.replace(/'/g, "\\'") + '\')">' +
-                        '<strong style="color:#eef4f8;">' + d.name + '</strong> ' +
-                        '<span style="float:right;font-size:10px;color:#6a8aaa;">' + (d.updated_at || '') + '</span></div>';
+                    return '<div class="p-2 d-flex justify-content-between align-items-center" style="border-bottom:1px solid #2a3a4a;">' +
+                        '<span style="cursor:pointer;" onclick="DbBuilder._loadDashboard(\'' + d.name.replace(/'/g, "\\'") + '\')"><strong style="color:#eef4f8;">' + d.name + '</strong> <span style="font-size:10px;color:#6a8aaa;">' + (d.updated_at || '') + '</span></span>' +
+                        '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:0 6px;" onclick="DbBuilder._deleteDashboard(\'' + d.name.replace(/'/g, "\\'") + '\')">' + t('btn.delete') + '</button></div>';
                 }).join('');
                 showDetailModal(t('db.openTitle'), '<div>' + list + '</div>');
             });
+    },
+
+    _deleteDashboard: function (name) {
+        if (!confirm(t('db.confirmDelete', [name]))) return;
+        fetch('/api/custom-dashboard/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name: name})})
+            .then(function (r) { return r.json(); })
+            .then(function () {
+                showToast('✅ ' + t('db.deleted'));
+                DbBuilder.loadList();
+            })
+            .catch(function () { showToast('❌ ' + t('ui.connErrShort')); });
     },
 
     _loadDashboard: function (name) {

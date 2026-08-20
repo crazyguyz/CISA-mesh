@@ -15,6 +15,12 @@
 
   var DICT = {
     vi: {
+      'db.confirmDelete': ('Xóa dashboard {0}?', 'Delete dashboard {0}?'),
+      'db.deleted': ('Đã xóa dashboard', 'Dashboard deleted'),
+      'assist.confirmToggle': ('Bật/tắt AI Assistant?', 'Enable/disable the AI Assistant?'),
+      'assist.disabled': ('AI đã tắt', 'AI disabled'),
+      'assist.enabled': ('AI đang bật', 'AI enabled'),
+      'assist.toggle': ('Bật/Tắt AI', 'Toggle AI'),
       'cluster.agentCount': ('Số Agent', 'Agents'),
       'cluster.lastSeen': ('Cập nhật cuối', 'Last seen'),
       'cluster.master': ('Master', 'Master'),
@@ -901,6 +907,12 @@
       'reports.weekly': ('Báo cáo tuần', 'Weekly report'),
     },
     en: {
+      'db.confirmDelete': 'Delete dashboard {0}?',
+      'db.deleted': 'Dashboard deleted',
+      'assist.confirmToggle': 'Enable/disable the AI Assistant?',
+      'assist.disabled': 'AI disabled',
+      'assist.enabled': 'AI enabled',
+      'assist.toggle': 'Toggle AI',
       'cluster.agentCount': 'Agents',
       'cluster.lastSeen': 'Last seen',
       'cluster.master': 'Master',
