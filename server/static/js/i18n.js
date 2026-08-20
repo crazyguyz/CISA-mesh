@@ -871,6 +871,14 @@
       'supp.reason': ('Lý do', 'Reason'),
       'supp.ruleId': ('Rule ID', 'Rule ID'),
       'supp.title': ('Chặn cảnh báo giả (False Positive)', 'False-Positive Suppression'),
+      'audit.action': ('Hành động', 'Action'),
+      'audit.details': ('Chi tiết', 'Details'),
+      'audit.none': ('Chưa có bản ghi nào', 'No records yet'),
+      'audit.searchPh': ('Tìm user / hành động / chi tiết...', 'Search user / action / details...'),
+      'audit.time': ('Thời gian', 'Time'),
+      'audit.title': ('Nhật ký kiểm toán (Audit Trail)', 'Audit Trail Log'),
+      'audit.user': ('Người dùng', 'User'),
+      'nav.audit': ('Nhật ký kiểm toán', 'Audit Log'),
     },
     en: {
       // Sidebar groups
@@ -1729,6 +1737,14 @@
       'supp.reason': 'Reason',
       'supp.ruleId': 'Rule ID',
       'supp.title': 'False-Positive Suppression',
+      'audit.action': 'Action',
+      'audit.details': 'Details',
+      'audit.none': 'No records yet',
+      'audit.searchPh': 'Search user / action / details...',
+      'audit.time': 'Time',
+      'audit.title': 'Audit Trail Log',
+      'audit.user': 'User',
+      'nav.audit': 'Audit Log',
     }
   };
 

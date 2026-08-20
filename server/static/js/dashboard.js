@@ -50,6 +50,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             incident: { el: 'viewIncident', container: 'incidentSidebar', load: function() { loadIncidentView(); } },
             mitre: { el: 'viewMitre', container: 'mitre-matrix-container', load: function() { if (window.loadMITREMatrix) loadMITREMatrix('mitre-matrix-container'); } },
             cleanup: { el: 'viewCleanup', container: 'cleanupContent', load: function() { loadCleanupSummary(); } },
+            audit: { el: 'viewAudit', container: 'auditList', load: function() { loadAudit(); } },
             dashboards: { el: 'viewDashboards', container: null, load: function() { if (typeof DbBuilder !== 'undefined') DbBuilder.init(); else setTimeout(function() { DbBuilder.init(); }, 200); } },
             assets: { el: 'viewAssets', container: null, load: function() { if (typeof Assets !== 'undefined') Assets.init(); else setTimeout(function() { Assets.init(); }, 200); } }
         };
@@ -2535,6 +2536,34 @@ function deleteSuppression(id) {
     fetch('/api/suppression/remove/' + id, {method:'POST'}).then(r => r.json()).then(d => {
         if (d.success) { showToast('✅ '+t('supp.deleted')); loadSuppressions(); }
     }).catch(() => { showToast('❌ '+t('ui.connErrShort')); });
+}
+
+// ===== AUDIT LOG =====
+let auditData = [];
+function loadAudit() {
+    const el = document.getElementById('auditList');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> '+t('ui.loading')+'</div>';
+    const limit = document.getElementById('auditLimit') ? document.getElementById('auditLimit').value : 100;
+    fetch('/api/audit?limit=' + limit).then(r => r.json()).then(data => {
+        auditData = Array.isArray(data) ? data : [];
+        renderAudit();
+    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErr')+'</div>'; });
+}
+
+function renderAudit() {
+    const el = document.getElementById('auditList');
+    if (!el) return;
+    const q = (document.getElementById('auditSearch') ? document.getElementById('auditSearch').value : '').toLowerCase();
+    const items = auditData.filter(function(r) {
+        if (!q) return true;
+        return (r.username||'').toLowerCase().includes(q) || (r.action||'').toLowerCase().includes(q) || (r.details||'').toLowerCase().includes(q) || (r.ip_address||'').includes(q);
+    });
+    if (!items.length) { el.innerHTML = '<div class="text-center text-muted py-3">'+t('audit.none')+'</div>'; return; }
+    el.innerHTML = '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>'+t('audit.time')+'</th><th>'+t('audit.user')+'</th><th>'+t('audit.action')+'</th><th>'+t('audit.details')+'</th><th>IP</th></tr></thead><tbody>'
+        + items.map(function(r) {
+            return '<tr><td style="white-space:nowrap;">'+escapeHtml(r.timestamp||'')+'</td><td>'+escapeHtml(r.username||'')+'</td><td><span class="badge bg-info">'+escapeHtml(r.action||'')+'</span></td><td>'+escapeHtml(r.details||'')+'</td><td>'+escapeHtml(r.ip_address||'-')+'</td></tr>';
+        }).join('') + '</tbody></table>';
 }
 
 // ===== TABLE SORT (Excel-style: date, number, text; persistent per-table per-column state) =====
