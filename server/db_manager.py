@@ -123,6 +123,16 @@ class DatabaseManager:
             # Audit log for admin actions
             c.execute("""CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT,action TEXT,details TEXT,ip_address TEXT,timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # v4.13 (P2): NetFlow flows (edge switch/router exports) - C2 beaconing / exfil / lateral
+            c.execute("""CREATE TABLE IF NOT EXISTS netflow_flows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exporter_ip TEXT, src_ip TEXT, dst_ip TEXT,
+                src_port INTEGER, dst_port INTEGER, protocol INTEGER, tcp_flags INTEGER,
+                packets INTEGER, bytes INTEGER, first REAL, last REAL,
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_netflow_dst ON netflow_flows(dst_ip)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_netflow_time ON netflow_flows(received_at)")
+
             # v2.1.0: Agent Groups for per-group policy management
             c.execute("""CREATE TABLE IF NOT EXISTS agent_groups (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,description TEXT,config_json TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("""CREATE TABLE IF NOT EXISTS agent_group_members (id INTEGER PRIMARY KEY AUTOINCREMENT,group_id INTEGER,machine_id TEXT UNIQUE,FOREIGN KEY(group_id) REFERENCES agent_groups(id) ON DELETE CASCADE)""")
@@ -1055,6 +1065,33 @@ class DatabaseManager:
     def get_audit_log(self, limit=100):
         with self.lock:
             c = self.conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
+            return [dict(row) for row in c.fetchall()]
+
+    # ---- v4.13 (P2): NetFlow ----
+    def insert_netflow_flow(self, f):
+        """Insert one NetFlow conversation record."""
+        with self.lock:
+            self.conn.execute(
+                """INSERT INTO netflow_flows (exporter_ip, src_ip, dst_ip, src_port, dst_port,
+                   protocol, tcp_flags, packets, bytes, first, last)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (f.get("exporter_ip", ""), f.get("src_ip", ""), f.get("dst_ip", ""),
+                 f.get("src_port", 0), f.get("dst_port", 0), f.get("protocol", 0),
+                 f.get("tcp_flags", 0), f.get("packets", 0), f.get("bytes", 0),
+                 f.get("first", 0), f.get("last", 0))
+            )
+            self.conn.commit()
+
+    def get_netflow_flows(self, limit=100, since_hours=None):
+        q = "SELECT * FROM netflow_flows WHERE 1=1"
+        p = []
+        if since_hours:
+            q += " AND received_at >= datetime('now', ?)"
+            p.append(f"-{since_hours} hours")
+        q += " ORDER BY id DESC LIMIT ?"
+        p.append(limit)
+        with self.lock:
+            c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
 
     # ---- NEW v1.6.0: Retention Policy ----

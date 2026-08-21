@@ -195,6 +195,15 @@ class ServerCore:
             message_callback=on_message
         )
 
+        # v4.13 (P2): NetFlow collector (v5/v9 from edge switches) - C2/exfil detection
+        self.netflow = None
+        try:
+            from netflow_collector import NetflowCollector
+            self.netflow = NetflowCollector(db_manager=self.db)
+            print(f"[*] NetFlow Collector ready (UDP :{self.netflow.port})")
+        except Exception as e:
+            print(f"[!] NetFlow Collector init failed: {e}")
+
         # v3.0: Cross-machine correlation engine (lateral movement, multi-host)
         self.correlation = ServerCorrelationEngine(db_manager=self.db, alerting_engine=self.alerting)
 
@@ -247,7 +256,12 @@ class ServerCore:
     def start(self):
         self.tcp_server.start()
         self.syslog_server.start()
-        print("[*] Background servers started (TCP:6666, Syslog:514)")
+        if self.netflow:
+            try:
+                self.netflow.start()
+            except Exception as e:
+                print(f"[!] NetFlow Collector start failed: {e}")
+        print("[*] Background servers started (TCP:6666, Syslog:514, NetFlow:2055)")
         # v4.5.5 SECURITY: agent HTTP endpoints (pending-commands/heartbeat/command-result/download)
         # transmit the agent PSK in plaintext over HTTP. Warn admins to use a TLS reverse proxy.
         # v4.11 (HIGH-7): banner made prominent - this is a real exposure, not a suggestion.
@@ -607,6 +621,11 @@ class ServerCore:
         self._retention_running = False
         self.tcp_server.stop()
         self.syslog_server.stop()
+        if self.netflow:
+            try:
+                self.netflow.stop()
+            except Exception:
+                pass
         self.agentless.stop()
         self.cluster.stop()
         self.event_worker_pool.stop()
