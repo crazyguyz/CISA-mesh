@@ -288,6 +288,10 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
         """Convert a raw Sysmon PowerShell event to GIAM-SAT standard format."""
         try:
             event_id = sysmon_event.get("EventID", 0)
+            # v4.13 (P2): drop events without an EventID - they carry no data and
+            # only spam the server console as 'EID 0' entries.
+            if not event_id:
+                return None
             event_type = EVENT_TYPE_MAP.get(event_id, "sysmon_event")
             event_data = sysmon_event.get("EventData", {})
             time_created = sysmon_event.get("TimeCreated", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"))

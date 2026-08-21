@@ -104,10 +104,16 @@ def _updater_auth_token():
 def _check_updater_auth(handler):
     expected = _updater_auth_token()
     if not expected:
+        _log("[!] HTTP auth: command_key not configured on this machine - updater IPC rejected (fail-closed). "
+             "Set 'command_key' in agent_config.json (same as server GIAMSAT_COMMAND_KEY).")
         return False
     got = handler.headers.get("X-Updater-Token", "")
     import hmac
-    return hmac.compare_digest(got, expected)
+    if not hmac.compare_digest(got, expected):
+        _log("[!] HTTP auth: X-Updater-Token mismatch - rejected. agent_config.json command_key differs "
+             "from the value the updater was configured with.")
+        return False
+    return True
 
 
 def _server_port():
@@ -220,7 +226,9 @@ def download_exe(version, host=None, port=None):
         version = _re.sub(r"[^A-Za-z0-9._-]", "", str(version))[:64] or "unknown"
         # v4.10 (CRITICAL-1): PSK via header, never in URL/query string
         req = urllib.request.Request(url, headers={"X-Agent-PSK": (_cfg("psk") or "")})
-        resp = urllib.request.urlopen(req, timeout=120)
+        # v4.13 (P2): use _web_open (TLS-aware) - plain urlopen would skip the
+        # pinned-CA verification and fail when the server web port is HTTPS.
+        resp = _web_open(req, timeout=120)
         total = int(resp.headers.get("Content-Length", 0))
         expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
         expected_sig = (resp.headers.get("X-File-Sig") or "").strip().lower()
@@ -340,7 +348,7 @@ def check_and_update(host=None, port=None):
         req = urllib.request.Request(url, method="POST",
             data=json.dumps({"version": current}).encode(),
             headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=15)
+        resp = _web_open(req, timeout=15)
         data = json.loads(resp.read().decode())
         if data.get("update_available"):
             new_ver = data.get("server_version")
@@ -496,12 +504,15 @@ class UpdaterHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         # v4.10 (CRIT-2): localhost HTTP fallback requires the updater auth token.
         # Any local process without the token is rejected (fail-closed).
+        # v4.13 (P2): read the request body BEFORE the auth check so the client
+        # always receives a clean 401 response (never a connection RST / WinError
+        # 10054 caused by closing a socket with an unread body).
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length > 0 else {}
         if not _check_updater_auth(self):
             _log("[!] HTTP / rejected: missing or invalid X-Updater-Token")
             self._json({"error": "unauthorized"}, 401)
             return
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length)) if length > 0 else {}
 
         if self.path.startswith("/update"):
             version = body.get("version", "0.0.0")
@@ -685,7 +696,7 @@ def _send_telegram_alert(msg):
         url = f"{_web_base(host, port, None)}/api/alerts/telegram"
         data = json.dumps({"message": msg, "source": "updater_watchdog"}).encode()
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        urllib.request.urlopen(req, timeout=10)
+        _web_open(req, timeout=10)
     except Exception:
         pass
 

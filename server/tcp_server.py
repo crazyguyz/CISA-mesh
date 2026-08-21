@@ -623,7 +623,11 @@ class TCPServer(threading.Thread):
         evt_id = msg.get("sysmon_event_id", 0)
         sev = msg.get("severity", "INFO")
         desc = msg.get("description", msg.get("suspicion_reason", ""))
-        print(f"[SYSMON] EID {evt_id} [{sev}] {msg.get('process_name','?')} - {desc}")
+        proc = msg.get("process_name", "")
+        # v4.13 (P2): don't spam the console with empty sysmon messages
+        # (no EID, no process name, no description - typically junk/legacy).
+        if evt_id or proc or desc:
+            print(f"[SYSMON] EID {evt_id} [{sev}] {proc or '?'} - {desc}")
 
     def _handle_user_info(self, msg):
         """v2.2.0: Save user info reported by agent."""
