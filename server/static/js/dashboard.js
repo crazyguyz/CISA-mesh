@@ -3223,12 +3223,16 @@ function clearSentEmails(){
 
 function loadAttackOverview() {
     const el = document.getElementById("attackContent");
-    el.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border text-success spinner-border-sm" role="status"></div> Dang phan tich du lieu tan cong...</div>';
+    el.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border text-success spinner-border-sm" role="status"></div> ' + t('ao.analyzing') + '</div>';
     fetch("/api/attack/overview").then(r => r.json()).then(data => {
         if (data.error) { el.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(data.error) + '</div>'; return; }
         attackData = data;
-        renderAttackOverview(data);
-    }).catch(e => { el.innerHTML = '<div class="alert alert-danger m-3">'+t('ui.loadErr')+': ' + escapeHtml(e.message) + '</div>'; });
+        // v4.13 (P2): kill-chain risk triage -> Incident jump (card rendered inside renderAttackOverview)
+        fetch("/api/risk/killchain?since_hours=24&min_tactics=3").then(r => r.json()).then(kc => {
+            _killchainData = kc && !kc.error ? kc : null;
+            renderAttackOverview(data);
+        }).catch(() => { _killchainData = null; renderAttackOverview(data); });
+    }).catch(e => { el.innerHTML = '<div class="alert alert-danger m-3">' + t('ui.loadErr') + ': ' + escapeHtml(e.message) + '</div>'; });
 }
 
 function renderAttackOverview(data) {
@@ -3243,20 +3247,43 @@ function renderAttackOverview(data) {
     _attackData = data;
     _timelineData = timeline;
 
+    // v4.13 (P2): kill-chain risk card (triage) - rendered even when no attack chains
+    const kc = _killchainData || null;
+    let kcHtml = '';
+    if (kc) {
+        const kcInc = kc.incidents || [];
+        kcHtml += '<div style="background:#0d1117;border-bottom:1px solid #2a3a4a;padding:10px 12px;">';
+        kcHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+        kcHtml += '<h6 style="color:#ffcc66;font-size:12px;margin:0;"><i class="bi bi-diagram-3"></i> ' + t('kc.title') + '</h6>';
+        kcHtml += '<span style="font-size:10px;color:#5a6a7a;">' + t('kc.window', [kc.since_hours || 24, kc.min_tactics || 3]) + '</span></div>';
+        if (!kcInc.length) {
+            kcHtml += '<div class="text-muted py-1" style="font-size:11px;"><i class="bi bi-check-circle text-success"></i> ' + t('kc.none') + '</div>';
+        } else {
+            kcInc.forEach(function(m) {
+                kcHtml += '<div style="background:#2a1a1a;border:1px solid #5a2a2a;border-radius:4px;padding:6px 8px;margin-top:6px;display:flex;justify-content:space-between;align-items:center;">';
+                kcHtml += '<div><strong style="color:#ff9966;">' + escapeHtml(m.hostname) + '</strong> <span class="badge bg-danger" style="font-size:9px;">' + t('kc.incident') + '</span>';
+                kcHtml += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + t('kc.tactics', [m.tactic_count]) + ': ' + m.tactics.map(escapeHtml).join(', ') + '</div></div>';
+                kcHtml += '<div style="display:flex;align-items:center;gap:6px;"><span class="badge bg-danger" style="font-size:12px;">' + m.tactic_count + '</span>';
+                kcHtml += '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 8px;" onclick="openIncidentForMachine(\'' + escapeHtml(m.machine_id) + '\',\'' + escapeHtml(m.hostname) + '\')">🔍 ' + t('kc.investigate') + '</button></div></div>';
+            });
+        }
+        kcHtml += '</div>';
+    }
+
     if (!chains.length && !timeline.length) {
-        el.innerHTML = '<div class="text-center py-5"><i class="bi bi-check-circle text-success" style="font-size:48px;"></i><h5 class="mt-2">Khong phat hien dau hieu tan cong</h5><p class="text-muted">He thong hien khong co chi bao tan cong nao.</p></div>';
+        el.innerHTML = kcHtml + '<div class="text-center py-5"><i class="bi bi-check-circle text-success" style="font-size:48px;"></i><h5 class="mt-2">' + t('ao.noAttack') + '</h5><p class="text-muted">' + t('ao.noAttackSub') + '</p></div>';
         return;
     }
 
     // Build layout: Stats bar + [Attack Map (left) | Chains (right)] + Timeline (bottom)
-    let html = '';
+    let html = kcHtml;
 
     // === STATS BAR ===
     html += '<div class="row g-2 p-2 text-center" style="background:#0f1923;border-bottom:1px solid #2a3a4a;position:sticky;top:0;z-index:10;">';
-    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ff4444;font-weight:700;">' + (stats.total_chains || 0) + '</span><div style="font-size:9px;color:#888;">Attack Chains</div></div></div>';
+    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ff4444;font-weight:700;">' + (stats.total_chains || 0) + '</span><div style="font-size:9px;color:#888;">' + t('ao.chainsTitle') + '</div></div></div>';
     html += '<div class="col-2"><div style="background:#3a1a1a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ff4444;font-weight:700;">' + (stats.critical_chains || 0) + '</span><div style="font-size:9px;color:#888;">CRITICAL</div></div></div>';
-    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ffcc66;font-weight:700;">' + (stats.compromised_count || 0) + '</span><div style="font-size:9px;color:#888;">Compromised</div></div></div>';
-    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#888;font-weight:700;">' + (stats.c2_count || 0) + '</span><div style="font-size:9px;color:#888;">C2 Servers</div></div></div>';
+    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ffcc66;font-weight:700;">' + (stats.compromised_count || 0) + '</span><div style="font-size:9px;color:#888;">' + t('ao.legendCompromised') + '</div></div></div>';
+    html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#888;font-weight:700;">' + (stats.c2_count || 0) + '</span><div style="font-size:9px;color:#888;">' + t('ao.legendC2') + '</div></div></div>';
     html += '<div class="col-4 text-end" style="font-size:9px;color:#5a6a7a;padding-top:8px;">' + (stats.generated_at || '') + '</div>';
     html += '</div>';
 
@@ -3266,32 +3293,32 @@ function renderAttackOverview(data) {
     // Left: Attack Map Canvas
     html += '<div class="col-md-7 p-2 position-relative" style="background:#0a0f1a;">';
     html += '<canvas id="attackMapCanvas" style="width:100%;height:100%;min-height:480px;cursor:grab;"></canvas>';
-    html += '<div style="position:absolute;top:8px;right:12px;font-size:9px;color:#5a6a7a;">Drag to pan | Scroll to zoom</div>';
+    html += '<div style="position:absolute;top:8px;right:12px;font-size:9px;color:#5a6a7a;">' + t('ao.mapHint') + '</div>';
     html += '<div style="position:absolute;bottom:8px;left:12px;font-size:10px;">';
-    html += '<span class="badge bg-danger" style="font-size:9px;">Compromised</span> ';
-    html += '<span class="badge bg-info" style="font-size:9px;">Machine</span> ';
-    html += '<span class="badge bg-dark" style="font-size:9px;">C2 Server</span>';
+    html += '<span class="badge bg-danger" style="font-size:9px;">' + t('ao.legendCompromised') + '</span> ';
+    html += '<span class="badge bg-info" style="font-size:9px;">' + t('ao.legendMachine') + '</span> ';
+    html += '<span class="badge bg-dark" style="font-size:9px;">' + t('ao.legendC2') + '</span>';
     html += '</div>';
     html += '</div>';
 
     // Right: Attack Chains
     html += '<div class="col-md-5 p-2" style="background:#0d1117;max-height:520px;overflow-y:auto;">';
-    html += '<h6 style="color:#ffcc66;font-size:12px;"><i class="bi bi-link-45deg"></i> Attack Chains</h6>';
+    html += '<h6 style="color:#ffcc66;font-size:12px;"><i class="bi bi-link-45deg"></i> ' + t('ao.chainsTitle') + '</h6>';
     if (chains.length === 0) {
         html += '<div class="text-muted py-2" style="font-size:11px;">' + t('dash.noChains') + '</div>';
     } else {
         chains.forEach((chain, idx) => {
             const sevColor = chain.severity === 'CRITICAL' ? '#ff4444' : '#ff9966';
             const sevBg = chain.severity === 'CRITICAL' ? '#3a1a1a' : '#3a2a1a';
-            html += '<div style="background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:8px 10px;margin-bottom:6px;border-radius:4px;cursor:pointer;" onclick="highlightChain(\'' + chain.id + '\')" ondblclick="showChainDetail(\'' + chain.id + '\')" title="Click de highlight - Double-click de xem chi tiet">';
+            html += '<div style="background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:8px 10px;margin-bottom:6px;border-radius:4px;cursor:pointer;" onclick="highlightChain(\'' + chain.id + '\')" ondblclick="showChainDetail(\'' + chain.id + '\')" title="' + t('ao.chainHint') + '">';
             html += '<div style="font-size:12px;color:' + sevColor + ';font-weight:600;">' + chain.id + ' - ' + chain.root_hostname + '</div>';
-            html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + chain.steps.length + ' steps | ' + chain.severity + '</div>';
+            html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + chain.steps.length + ' ' + t('ao.steps') + ' | ' + chain.severity + '</div>';
             // Steps preview
             chain.steps.slice(0, 4).forEach(step => {
                 const icon = step.type === 'beaconing' ? '\\ud83d\\udce1' : '\\u26a0';
                 html += '<div style="font-size:10px;color:#c0d4e0;margin-top:2px;">' + icon + ' ' + (step.command || step.rule_name || step.description || '').substring(0, 60) + '</div>';
             });
-            if (chain.steps.length > 4) html += '<div style="font-size:9px;color:#5a6a7a;">... and ' + (chain.steps.length - 4) + ' more steps</div>';
+            if (chain.steps.length > 4) html += '<div style="font-size:9px;color:#5a6a7a;">' + t('ao.moreSteps', [chain.steps.length - 4]) + '</div>';
             html += '</div>';
         });
     }
@@ -3300,7 +3327,7 @@ function renderAttackOverview(data) {
 
     // === TIMELINE BAR ===
     html += '<div style="background:#0d1117;border-top:1px solid #2a3a4a;padding:8px 12px;overflow-x:auto;white-space:nowrap;">';
-    html += '<h6 style="color:#ffcc66;font-size:11px;margin-bottom:6px;"><i class="bi bi-clock-history"></i> Attack Timeline</h6>';
+    html += '<h6 style="color:#ffcc66;font-size:11px;margin-bottom:6px;"><i class="bi bi-clock-history"></i> ' + t('ao.timelineTitle') + '</h6>';
     if (timeline.length === 0) {
         html += '<span class="text-muted" style="font-size:11px;">' + t('dash.noEventsAny') + '</span>';
     } else {
@@ -3561,6 +3588,7 @@ function initAttackMap(data) {
 
 // Store attack data globally for chain detail
 let _attackData = null;
+let _killchainData = null; // v4.13 (P2): /api/risk/killchain -> Incident jump
 
 // ===== CHAIN HIGHLIGHT + CLICK FOR FULL DETAIL =====
 function highlightChain(chainId) {
@@ -3947,6 +3975,14 @@ function loadAnomaly() {
 }
 
 // ===== v3.2: IOC SWEEP =====
+function loadIoc() {
+    // Reload button: restore the default empty state (no scan history API)
+    const res = document.getElementById('iocResults');
+    const stats = document.getElementById('iocStats');
+    if (res) res.innerHTML = '<div class="text-center text-muted py-3"><span>' + t('ioc.hint') + '</span></div>';
+    if (stats) stats.textContent = '';
+}
+
 function sweepIoc() {
     const jsonText = document.getElementById('iocJsonInput').value.trim();
     const fileInput = document.getElementById('iocFileInput');
@@ -4221,7 +4257,7 @@ function loadIncidentTimeline(threatId) {
             // Update header
             titleEl.textContent = ' — ' + (threat.rule_name || threat.rule_id || 'Unknown');
             timeWindowEl.textContent = t('incident.minutes',[tw.minutes || 15]);
-            countEl.textContent = data.total_events + ' events';
+            countEl.textContent = t('incident.eventsCount', [data.total_events]);
 
             // Build evidence summary
             let evSummary = '';
