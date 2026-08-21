@@ -39,6 +39,12 @@ def register(app, core):
         result = core.auth.authenticate(username, password, request.remote_addr or "")
         if result and result.get("success"):
             core.db.insert_audit_log(username, "login", "User logged in", request.remote_addr)
+            # v4.13 (P2): TOTP 2FA gate - no cookie until code verified
+            if result.get("require_2fa"):
+                return jsonify({
+                    "success": True, "require_2fa": True,
+                    "pending": result["pending"], "role": result.get("role", "viewer")
+                })
             resp = jsonify({
                 "success": True,
                 "token": result["token"],
@@ -65,6 +71,56 @@ def register(app, core):
                 pass
         
         return jsonify({"success": False, "error": error_msg, "code": error_code}), status
+
+    @app.route("/api/login/2fa", methods=["POST"])
+    def api_login_2fa():
+        """v4.13 (P2): verify TOTP code for a pending login -> real token."""
+        data = request.json or {}
+        pending = data.get("pending", "")
+        code = data.get("code", "")
+        result = core.auth.complete_2fa_login(pending, code)
+        if result and result.get("success"):
+            core.db.insert_audit_log(result["role"] and data.get("pending", "2fa"), "login_2fa", "2FA verified", request.remote_addr)
+            resp = jsonify({
+                "success": True, "token": result["token"], "role": result["role"],
+                "must_change_password": result.get("must_change_password", False)
+            })
+            resp.set_cookie("giamsat_token", result["token"], httponly=True, samesite="Strict")
+            return resp
+        return jsonify({"success": False, "error": result.get("error", "Mã xác thực không đúng.") if result else "Lỗi"}), 401
+
+    @app.route("/api/users/<username>/2fa/enroll", methods=["POST"])
+    def api_user_enroll_2fa(username):
+        """v4.13 (P2): generate TOTP secret (admin, or self)."""
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        result = core.auth.enable_totp(username)
+        if result.get("success"):
+            core.db.insert_audit_log(admin, "totp_enroll", f"Enrolled 2FA for {username}", request.remote_addr)
+            return jsonify({"success": True, "secret": result["secret"], "otpauth_uri": result["otpauth_uri"]})
+        return jsonify({"success": False, "error": result.get("error", "Failed")}), 400
+
+    @app.route("/api/users/<username>/2fa/confirm", methods=["POST"])
+    def api_user_confirm_2fa(username):
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        data = request.json or {}
+        result = core.auth.confirm_totp(username, data.get("code", ""))
+        if result.get("success"):
+            core.db.insert_audit_log(admin, "totp_confirm", f"Activated 2FA for {username}", request.remote_addr)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": result.get("error", "Mã xác thực không đúng.")}), 400
+
+    @app.route("/api/users/<username>/2fa/disable", methods=["POST"])
+    def api_user_disable_2fa(username):
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        data = request.json or {}
+        result = core.auth.disable_totp(username, data.get("code", ""))
+        if result.get("success"):
+            core.db.insert_audit_log(admin, "totp_disable", f"Disabled 2FA for {username}", request.remote_addr)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": result.get("error", "Mã xác thực không đúng.")}), 400
 
     @app.route("/api/logout", methods=["POST"])
     def api_logout():

@@ -8,6 +8,7 @@ import hashlib
 import secrets
 import threading
 import re
+import time
 import json as _json
 from datetime import datetime, timedelta
 
@@ -116,6 +117,8 @@ class AuthManager:
         self.token_blacklist = {}
         self.brute_force = {}  # {username: {"attempts": N, "locked_until": datetime}}
         self._brute_lock = threading.Lock()
+        # v4.13 (P2): pending 2FA logins {token: {username, expires}}
+        self.pending_2fa = {}
 
         # v2.5.3: File encryption key (persists across restarts)
         self._file_key = self._get_or_create_file_key()
@@ -413,6 +416,15 @@ class AuthManager:
             print(f"[*] AUTH: Auto-migrated {username}'s password to PBKDF2 salted hash")
 
         must_change = user.get("must_change_password", False)
+
+        # v4.13 (P2): TOTP 2FA gate - do NOT issue a usable token until the code
+        # is verified via /api/login/2fa (short-lived pending token).
+        if user.get("totp_enabled"):
+            import secrets as _secrets
+            pending = _secrets.token_hex(16)
+            self.pending_2fa[pending] = {"username": username, "expires": time.time() + 120}
+            return {"success": True, "require_2fa": True, "pending": pending, "role": user.get("role", "viewer")}
+
         token = self._generate_token(username, user.get("role", "viewer"), must_change)
         result = {"success": True, "token": token, "role": user.get("role", "viewer")}
 
@@ -531,7 +543,86 @@ class AuthManager:
         return {"success": True, "token": new_token}
 
     def get_users(self):
-        return {u: {"username": u, "role": d["role"], "must_change_password": d.get("must_change_password", False)} for u, d in self.users.items()}
+        return {u: {"username": u, "role": d["role"], "must_change_password": d.get("must_change_password", False),
+                    "totp_enabled": bool(d.get("totp_enabled"))} for u, d in self.users.items()}
+
+    # ---- v4.13 (P2): TOTP 2FA (RFC 6238, pure Python, no deps) ----
+    def totp_verify(self, username, code):
+        user = self.users.get(username)
+        if not user or not user.get("totp_secret"):
+            return False
+        try:
+            code = str(code).strip()
+            if not code.isdigit() or len(code) != 6:
+                return False
+            import hmac, hashlib, base64, struct
+            secret = user["totp_secret"]
+            key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8))
+            counter = int(time.time()) // 30
+            for i in range(-1, 2):
+                msg = struct.pack(">Q", counter + i)
+                h = hmac.new(key, msg, hashlib.sha1).digest()
+                o = h[-1] & 0x0F
+                val = (struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 1000000
+                if f"{val:06d}" == code:
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def enable_totp(self, username):
+        """Generate a TOTP secret (2FA activates only after confirm_totp)."""
+        with self.lock:
+            if username not in self.users:
+                return {"success": False, "error": "Người dùng không tồn tại."}
+            import base64 as _b64
+            secret = _b64.b32encode(os.urandom(20)).decode().rstrip("=")
+            self.users[username]["totp_secret"] = secret
+            self.users[username]["totp_pending"] = True
+            self._save_users()
+        uri = f"otpauth://totp/GIAM-SAT:{username}?secret={secret}&issuer=GIAM-SAT"
+        return {"success": True, "secret": secret, "otpauth_uri": uri}
+
+    def confirm_totp(self, username, code):
+        with self.lock:
+            if username not in self.users:
+                return {"success": False, "error": "Người dùng không tồn tại."}
+        if not self.totp_verify(username, code):
+            return {"success": False, "error": "Mã xác thực không đúng."}
+        with self.lock:
+            self.users[username]["totp_enabled"] = True
+            self.users[username]["totp_pending"] = False
+            self._save_users()
+        return {"success": True}
+
+    def disable_totp(self, username, code):
+        if not self.totp_verify(username, code):
+            return {"success": False, "error": "Mã xác thực không đúng."}
+        with self.lock:
+            self.users[username]["totp_enabled"] = False
+            self.users[username]["totp_secret"] = ""
+            self.users[username]["totp_pending"] = False
+            self._save_users()
+        return {"success": True}
+
+    def complete_2fa_login(self, pending, code):
+        """Finalize login with a verified TOTP code -> issues the real token."""
+        p = self.pending_2fa.get(pending)
+        if not p or time.time() > p.get("expires", 0):
+            return {"success": False, "error": "Phiên xác thực hết hạn. Vui lòng đăng nhập lại.", "code": "INVALID_TOKEN"}
+        username = p["username"]
+        user = self.users.get(username)
+        if not user or not user.get("totp_enabled"):
+            return {"success": False, "error": "2FA chưa được kích hoạt.", "code": "INVALID_TOKEN"}
+        if not self.totp_verify(username, code):
+            return {"success": False, "error": "Mã xác thực không đúng.", "code": "INVALID_CODE"}
+        self.pending_2fa.pop(pending, None)
+        must_change = user.get("must_change_password", False)
+        token = self._generate_token(username, user.get("role", "viewer"), must_change)
+        result = {"success": True, "token": token, "role": user.get("role", "viewer")}
+        if must_change:
+            result["must_change_password"] = True
+        return result
 
     def set_user_role(self, username, role):
         """v4.13: Change a user's role (admin-only route). Protects the last admin."""

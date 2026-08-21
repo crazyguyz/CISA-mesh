@@ -4459,6 +4459,7 @@ function loadUsers() {
                 ? '<span class="badge bg-warning text-dark">'+t('users.mustChange')+'</span>'
                 : '<span class="badge bg-success">'+t('ui.active')+'</span>';
             return '<tr><td><strong style="color:#ffcc66;">'+escapeHtml(u)+'</strong></td><td>'+roleSel+'</td><td>'+statusCell+'</td><td class="text-end">'+
+                '<button class="btn btn-sm btn-outline-info me-1" style="font-size:10px;padding:0 6px;" onclick="manage2fa(\'' + u.replace(/'/g, "\\'") + '\', ' + (usr.totp_enabled ? 'true' : 'false') + ')">🔐 '+t('users.twofa')+(usr.totp_enabled ? ' ✓' : '')+'</button>'+
                 '<button class="btn btn-sm btn-outline-warning me-1" style="font-size:10px;padding:0 6px;" onclick="resetUserPassword(\'' + u.replace(/'/g, "\\'") + '\')">'+t('users.resetPw')+'</button>'+
                 (u !== 'admin' ? '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:0 6px;" onclick="deleteUser(\'' + u.replace(/'/g, "\\'") + '\')">'+t('btn.delete')+'</button>' : '')+
                 '</td></tr>';
@@ -4511,6 +4512,58 @@ function resetUserPassword(username) {
         .then(function(r) { return r.json(); }).then(function(d) {
             if (d.success) { showToast('✅ ' + t('users.resetPwDone')); }
             else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function manage2fa(username, currentlyEnabled) {
+    if (!currentlyEnabled) {
+        fetch('/api/users/' + encodeURIComponent(username) + '/2fa/enroll', {method:'POST'})
+            .then(function(r) { return r.json(); }).then(function(d) {
+                if (!d.success) { showToast('❌ ' + (d.error || '')); return; }
+                const body = '<div style="font-size:12px;">' +
+                    '<p class="text-muted">' + t('users.twofaStep') + '</p>' +
+                    '<div class="mb-2"><strong>' + t('users.twofaSecret') + '</strong><br>' +
+                    '<code style="word-break:break-all;">' + escapeHtml(d.secret) + '</code></div>' +
+                    '<div class="mb-2"><a href="' + escapeHtml(d.otpauth_uri) + '" target="_blank" class="btn btn-sm btn-outline-info">' + t('users.twofaUri') + '</a></div>' +
+                    '<div class="mb-2"><label class="text-muted">' + t('users.twofaEnterCode') + '</label>' +
+                    '<input class="search-box" id="twofaConfirmCode" maxlength="6" style="width:120px;"></div>' +
+                    '<button class="btn btn-success btn-sm" onclick="confirm2fa(\'' + username.replace(/'/g, "\\'") + '\')">' + t('users.twofaConfirm') + '</button>' +
+                    '</div>';
+                showDetailModal(t('users.twofaTitle'), body);
+            }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+    } else {
+        const body = '<div style="font-size:12px;">' +
+            '<p class="text-muted">' + t('users.twofaDisableHint') + '</p>' +
+            '<div class="mb-2"><label class="text-muted">' + t('users.twofaEnterCode') + '</label>' +
+            '<input class="search-box" id="twofaDisableCode" maxlength="6" style="width:120px;"></div>' +
+            '<button class="btn btn-danger btn-sm" onclick="disable2fa(\'' + username.replace(/'/g, "\\'") + '\')">' + t('users.twofaDisableBtn') + '</button></div>';
+        showDetailModal(t('users.twofaTitle'), body);
+    }
+}
+
+function confirm2fa(username) {
+    const code = document.getElementById('twofaConfirmCode').value.trim();
+    fetch('/api/users/' + encodeURIComponent(username) + '/2fa/confirm', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code: code})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('users.twofaEnabled'));
+                const m = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
+                if (m) m.hide();
+                loadUsers();
+            } else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function disable2fa(username) {
+    const code = document.getElementById('twofaDisableCode').value.trim();
+    fetch('/api/users/' + encodeURIComponent(username) + '/2fa/disable', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code: code})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('users.twofaDisabled'));
+                const m = bootstrap.Modal.getInstance(document.getElementById('detailModal'));
+                if (m) m.hide();
+                loadUsers();
+            } else { showToast('❌ ' + (d.error || '')); }
         }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 

@@ -429,6 +429,30 @@ class ServerCore:
             response.headers["X-XSS-Protection"] = "1; mode=block"
             return response
 
+        # v4.13 (P2): global API rate limit per IP (in-memory sliding window).
+        # Agent-facing endpoints, SSE and health are exempt (they authenticate via PSK).
+        _api_rate = {}
+        _api_rate_lock = threading.Lock()
+        _API_RATE_LIMIT = int(os.environ.get("GIAMSAT_API_RATE_LIMIT", "600"))
+        _API_RATE_WINDOW = 60
+        _API_RATE_EXEMPT = ("/api/events/stream", "/api/agent/", "/api/health", "/api/login")
+
+        @app.before_request
+        def api_rate_limit():
+            path = request.path
+            if not path.startswith("/api/") or any(path.startswith(p) for p in _API_RATE_EXEMPT):
+                return None
+            ip = request.remote_addr or "?"
+            now = time.time()
+            with _api_rate_lock:
+                lst = [t for t in _api_rate.get(ip, []) if now - t < _API_RATE_WINDOW]
+                if len(lst) >= _API_RATE_LIMIT:
+                    _api_rate[ip] = lst
+                    return jsonify({"error": "Rate limit exceeded", "code": "RATE_LIMITED"}), 429
+                lst.append(now)
+                _api_rate[ip] = lst
+            return None
+
         # Server Self-Monitor middleware
         app.before_request(self.server_monitor.create_middleware())
         app.register_error_handler(404, self.server_monitor.create_404_handler())

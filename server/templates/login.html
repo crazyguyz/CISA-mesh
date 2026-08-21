@@ -243,6 +243,13 @@ body {
           <input type="password" id="password" data-i18n-placeholder="login.passwordPh" placeholder="Nhập mật khẩu" autocomplete="current-password" required>
         </div>
       </div>
+      <div class="form-group" id="twofaGroup" style="display:none;">
+        <label data-i18n="login.twofa">Mã xác thực 2 bước (Authenticator)</label>
+        <div class="input-wrapper">
+          <i class="bi bi-shield-lock"></i>
+          <input type="text" id="twofaCode" data-i18n-placeholder="login.twofaPh" placeholder="Nhập mã 6 số từ app Authenticator" autocomplete="one-time-code" inputmode="numeric" maxlength="6">
+        </div>
+      </div>
       <button type="submit" class="btn-login" id="loginBtn">
         <i class="bi bi-box-arrow-in-right"></i> <span data-i18n="login.submit">Đăng nhập</span>
       </button>
@@ -304,7 +311,11 @@ body {
     }
   }
 
-  // Handle login
+  // Handle login (v4.13 P2: TOTP 2FA second step)
+  let _pending2fa = '';
+  const twofaGroup = document.getElementById('twofaGroup');
+  const twofaCode = document.getElementById('twofaCode');
+
   loginForm.addEventListener('submit', async function(e) {
     e.preventDefault();
     hideAlert();
@@ -312,24 +323,42 @@ body {
     const username = usernameInput.value.trim();
     const password = passwordInput.value;
 
-    if (!username || !password) {
-      showAlert('Vui lòng nhập tên đăng nhập và mật khẩu.', 'warning');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const resp = await fetch('/api/login', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: username, password: password})
-      });
+      let resp;
+      if (_pending2fa) {
+        // Step 2: submit TOTP code
+        resp = await fetch('/api/login/2fa', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({pending: _pending2fa, code: twofaCode.value.trim()})
+        });
+      } else {
+        if (!username || !password) {
+          setLoading(false);
+          showAlert('Vui lòng nhập tên đăng nhập và mật khẩu.', 'warning');
+          return;
+        }
+        resp = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({username: username, password: password})
+        });
+      }
 
       const data = await resp.json();
 
       if (data.success) {
-        // v2.0.2 FIX: Store token for password change request
+        if (data.require_2fa) {
+          // Step 1 done - ask for the TOTP code
+          _pending2fa = data.pending || '';
+          twofaGroup.style.display = '';
+          setLoading(false);
+          loginBtn.innerHTML = '<i class="bi bi-shield-lock"></i> ' + (window.t ? t('login.verify') : 'Xác thực 2 bước');
+          twofaCode.focus();
+          return;
+        }
         _giamsatToken = data.token || '';
         if (data.must_change_password) {
           showChangePasswordModal(username);
@@ -337,11 +366,14 @@ body {
           window.location.href = '/';
         }
       } else {
+        _pending2fa = '';
+        twofaGroup.style.display = 'none';
+        setLoading(false);
         showAlert(data.error || 'Đăng nhập thất bại. Vui lòng thử lại.', 'danger');
-        passwordInput.value = '';
-        passwordInput.focus();
+        if (!_pending2fa) { passwordInput.value = ''; passwordInput.focus(); }
       }
     } catch(err) {
+      setLoading(false);
       showAlert('Lỗi kết nối đến máy chủ. Vui lòng thử lại.', 'danger');
     } finally {
       setLoading(false);
