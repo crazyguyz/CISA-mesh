@@ -22,7 +22,13 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Version,
 
-    [switch]$RestartServer
+    [switch]$RestartServer,
+
+    # v4.6.2 (FIX): stop agent/updater BEFORE building so the watchdog cannot
+    # auto-restart the agent from dist\ while PyInstaller is overwriting the EXE
+    # (that race produced a half-written bundle missing _ssl.pyd -> agent crashed
+    # with "No module named '_ssl'" at startup, boots 11x/12x at 16:37:52).
+    [switch]$RestartAgent
 )
 
 $ErrorActionPreference = "Continue"
@@ -48,6 +54,20 @@ Write-Host "============================================================" -Foreg
 Write-STEP "STEP 1: Checking environment..."
 try { $pyVer = python --version 2>&1; Write-OK "Python: $pyVer" } catch { Write-FAIL "Python not found!"; exit 1 }
 try { $piVer = python -m PyInstaller --version 2>&1; Write-OK "PyInstaller: $piVer" } catch { Write-INFO "Installing PyInstaller..."; pip install pyinstaller; Write-OK "Done" }
+
+# STEP 1.5: Stop agent/updater before build (prevents watchdog race on dist\ EXE)
+if ($RestartAgent) {
+    Write-STEP "STEP 1.5: Stopping GiamSatAgent + GiamSatUpdater..."
+    Get-Process -Name "GiamSatAgent","GiamSatUpdater" -ErrorAction SilentlyContinue |
+        ForEach-Object { Write-INFO "Stopping $($_.ProcessName) (PID $($_.Id))"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+    # Disable the watchdog scheduled task so it cannot relaunch the agent mid-build
+    try {
+        schtasks /Change /TN "GIAM-SAT Agent Monitor" /DISABLE 2>&1 | Out-Null
+        Write-OK "Watchdog task disabled (re-enabled after build)"
+    } catch { Write-INFO "Watchdog task not found - skip" }
+    Write-OK "Agents stopped"
+}
 
 # STEP 2: Update version
 Write-STEP "STEP 2: Updating version to $Version..."
@@ -82,6 +102,22 @@ try {
     $exe = "$DIST_DIR\GiamSatAgent.exe"
     if (Test-Path $exe) { try { Write-OK "GiamSatAgent.exe: $([math]::Round((Get-Item $exe).Length/1MB,1)) MB" } catch { Write-OK "GiamSatAgent.exe: built" } }
     else { Write-FAIL "Output not found!"; Pop-Location; exit 1 }
+    # v4.6.2 (FIX): verify the bundle actually contains the OpenSSL chain BEFORE it
+    # ships - a build that loses _ssl.pyd would only crash at agent runtime.
+    try {
+        $missing = @()
+        foreach ($needle in '_ssl.pyd', '_hashlib.pyd', 'libssl-3-x64.dll', 'libcrypto-3-x64.dll') {
+            $hit = python -m PyInstaller.utils.cliutils.archive_viewer -l $exe 2>&1 | Select-String -SimpleMatch $needle
+            if (-not $hit) { $missing += $needle }
+        }
+        if ($missing.Count -gt 0) {
+            Write-FAIL "BUNDLE VERIFY FAILED - missing: $($missing -join ', ')"
+            Pop-Location; exit 1
+        }
+        Write-OK "Bundle verify: _ssl.pyd + OpenSSL DLLs present"
+    } catch {
+        Write-INFO "Bundle verify skipped (PyInstaller archive_viewer unavailable): $_"
+    }
     try { Write-INFO "Build time: $([math]::Round(((Get-Date)-$s).TotalSeconds,0))s" } catch { Write-INFO "Build done" }
 } finally { Pop-Location }
 
@@ -109,6 +145,21 @@ if ($RestartServer) {
     Start-Sleep -Seconds 2
     Start-Process python -ArgumentList "$SERVER_DIR\main.py" -WorkingDirectory $SERVER_DIR -WindowStyle Hidden
     Write-OK "Server restarted"
+}
+
+# STEP 7.5: Re-enable watchdog + restart agent/updater (with -RestartAgent)
+if ($RestartAgent) {
+    Write-STEP "STEP 7.5: Restarting GiamSatAgent + GiamSatUpdater..."
+    try {
+        schtasks /Change /TN "GIAM-SAT Agent Monitor" /ENABLE 2>&1 | Out-Null
+        Write-OK "Watchdog task re-enabled"
+    } catch { Write-INFO "Watchdog task not found - skip" }
+    $agentExe = "$DIST_DIR\GiamSatAgent.exe"
+    $updaterExe = "$DIST_DIR\GiamSatUpdater.exe"
+    if (Test-Path $agentExe) { Start-Process $agentExe -WorkingDirectory $DIST_DIR; Write-OK "GiamSatAgent.exe started" }
+    else { Write-FAIL "GiamSatAgent.exe not found - skip" }
+    if (Test-Path $updaterExe) { Start-Process $updaterExe -WorkingDirectory $DIST_DIR; Write-OK "GiamSatUpdater.exe started" }
+    else { Write-FAIL "GiamSatUpdater.exe not found - skip" }
 }
 
 # SUMMARY
