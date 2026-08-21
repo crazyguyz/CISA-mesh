@@ -347,7 +347,10 @@ def check_and_update(host=None, port=None):
     try:
         req = urllib.request.Request(url, method="POST",
             data=json.dumps({"version": current}).encode(),
-            headers={"Content-Type": "application/json"})
+            # v4.14 (FIX): the version endpoint is PSK-gated (check_agent_psk fail-closed)
+            # - without X-Agent-PSK the server returns 401 and auto-update never runs.
+            headers={"Content-Type": "application/json",
+                     "X-Agent-PSK": (_cfg("psk") or "")})
         resp = _web_open(req, timeout=15)
         data = json.loads(resp.read().decode())
         if data.get("update_available"):
