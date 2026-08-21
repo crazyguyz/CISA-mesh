@@ -280,18 +280,29 @@ class CorrelationEngine:
         # v4.11 (P2): a NOT/filter match inside the window suppresses the rule
         if self._is_excluded(rule["id"], now):
             return None
+        checked_any = False
         for i, cond in enumerate(conditions):
-            if cond.get("NOT"):
+            # v4.6.4: only pure suppressors (NOT without threshold) are skipped -
+            # a merged NOT+threshold condition (e.g. THREAT-044/045/057) is a real
+            # counter whose buffered events are filtered by the inner NOT.
+            if cond.get("NOT") and cond.get("threshold") in (None, 0):
                 continue
+            checked_any = True
             if not self._check_condition_threshold(rule["id"], i, cond, now):
                 return None
+        # v4.6.4: never fire a rule whose conditions were all suppressors - the old
+        # code skipped every NOT condition and then fired unconditionally, so rules
+        # like THREAT-045 ('Network Connection NOT to Private IP') alerted on EVERY
+        # event regardless of type/threshold.
+        if not checked_any:
+            return None
         return self._fire_alert(rule, event_data, conditions)
 
     def _evaluate_or(self, rule, conditions, event_data, now):
         if self._is_excluded(rule["id"], now):
             return None
         for i, cond in enumerate(conditions):
-            if cond.get("NOT"):
+            if cond.get("NOT") and cond.get("threshold") in (None, 0):
                 continue
             if self._check_condition_threshold(rule["id"], i, cond, now):
                 return self._fire_alert(rule, event_data, conditions)
@@ -302,6 +313,14 @@ class CorrelationEngine:
         # suppresses the rule for the window instead (the sigma parser emits flat
         # {..., "NOT": True} filters; threshold=0 would otherwise fire always).
         if cond.get("NOT"):
+            # v4.6.4: a NOT condition that ALSO carries a threshold is a merged
+            # counter+filter (e.g. THREAT-045 'network_traffic NOT private dst') -
+            # buffer the events that satisfy the OUTER criteria AND fail the inner
+            # filter, so the threshold counts only non-filtered events.
+            if cond.get("threshold") not in (None, 0):
+                if self._event_matches_condition(event_data, cond):
+                    self.event_buffers[f"{rule_id}:{cond_index}"].append((now, event_data))
+                return
             positive = {k: v for k, v in cond.items()
                         if k not in ("NOT", "threshold", "within_seconds")}
             if self._event_matches_condition(event_data, positive):

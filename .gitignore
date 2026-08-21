@@ -51,3 +51,4 @@ agent/data/nvd_*.json
 agent/data/nvd_*.txt
 agent/config.json
 server/agent_update/*.exe
+tests/test_report.json
