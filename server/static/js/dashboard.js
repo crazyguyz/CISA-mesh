@@ -307,7 +307,7 @@ function autoFetchAndExportAssistContext() {
         if (completed >= types.length) {
             lastExportedData = allData;
             downloadJSON(allData, 'assist_context');
-            showToast(`✅ Đã xuất dữ liệu từ ${types.length} loại log ra file JSON`);
+            showToast(t('dash.jsonExported', [types.length]));
         }
     }
 }

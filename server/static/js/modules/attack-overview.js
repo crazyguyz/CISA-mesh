@@ -12,6 +12,7 @@ window.attackMapNodes = [];
 window.attackMapAnimId = null;
 window._attackData = null;
 window._timelineData = [];
+window._killchainData = null;  // v4.13 (P2): /api/risk/killchain
 
 window.loadAttackOverview = function() {
     var el = document.getElementById("attackContent");
@@ -19,7 +20,11 @@ window.loadAttackOverview = function() {
     fetch("/api/attack/overview").then(function(r) { return r.json(); }).then(function(data) {
         if (data.error) { el.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(data.error) + '</div>'; return; }
         window.attackData = data;
-        window.renderAttackOverview(data);
+        // v4.13 (P2): kill-chain risk scoring for triage (>=3 MITRE tactics in 24h = incident)
+        fetch("/api/risk/killchain?since_hours=24&min_tactics=3").then(function(r) { return r.json(); }).then(function(kc) {
+            window._killchainData = kc && !kc.error ? kc : null;
+            window.renderAttackOverview(data);
+        }).catch(function() { window._killchainData = null; window.renderAttackOverview(data); });
     }).catch(function(e) { el.innerHTML = '<div class="alert alert-danger m-3">' + t('ao.loadErr', [escapeHtml(e.message)]) + '</div>'; });
 };
 
@@ -34,12 +39,33 @@ window.renderAttackOverview = function(data) {
     window._attackData = data;
     window._timelineData = timeline;
 
+    // v4.13 (P2): kill-chain risk card (triage) - rendered even when no attack chains
+    var kc = window._killchainData || null;
+    var html = '';
+    if (kc) {
+        var kcInc = kc.incidents || [];
+        html += '<div style="background:#0d1117;border-bottom:1px solid #2a3a4a;padding:10px 12px;">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+        html += '<h6 style="color:#ffcc66;font-size:12px;margin:0;"><i class="bi bi-diagram-3"></i> ' + t('kc.title') + '</h6>';
+        html += '<span style="font-size:10px;color:#5a6a7a;">' + t('kc.window', [kc.since_hours || 24, kc.min_tactics || 3]) + '</span></div>';
+        if (!kcInc.length) {
+            html += '<div class="text-muted py-1" style="font-size:11px;"><i class="bi bi-check-circle text-success"></i> ' + t('kc.none') + '</div>';
+        } else {
+            kcInc.forEach(function(m) {
+                html += '<div style="background:#2a1a1a;border:1px solid #5a2a2a;border-radius:4px;padding:6px 8px;margin-top:6px;display:flex;justify-content:space-between;align-items:center;">';
+                html += '<div><strong style="color:#ff9966;">' + escapeHtml(m.hostname) + '</strong> <span class="badge bg-danger" style="font-size:9px;">' + t('kc.incident') + '</span>';
+                html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + t('kc.tactics', [m.tactic_count]) + ': ' + m.tactics.map(escapeHtml).join(', ') + '</div></div>';
+                html += '<span class="badge bg-danger" style="font-size:12px;">' + m.tactic_count + '</span></div>';
+            });
+        }
+        html += '</div>';
+    }
+
     if (!chains.length && !timeline.length) {
-        el.innerHTML = '<div class="text-center py-5"><i class="bi bi-check-circle text-success" style="font-size:48px;"></i><h5 class="mt-2">' + t('ao.noAttack') + '</h5><p class="text-muted">' + t('ao.noAttackSub') + '</p></div>';
+        el.innerHTML = html + '<div class="text-center py-5"><i class="bi bi-check-circle text-success" style="font-size:48px;"></i><h5 class="mt-2">' + t('ao.noAttack') + '</h5><p class="text-muted">' + t('ao.noAttackSub') + '</p></div>';
         return;
     }
 
-    var html = '';
     html += '<div class="row g-2 p-2 text-center" style="background:#0f1923;border-bottom:1px solid #2a3a4a;position:sticky;top:0;z-index:10;">';
     html += '<div class="col-2"><div style="background:#1a1a2a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ff4444;font-weight:700;">' + (stats.total_chains || 0) + '</span><div style="font-size:9px;color:#888;">Attack Chains</div></div></div>';
     html += '<div class="col-2"><div style="background:#3a1a1a;border-radius:4px;padding:6px;"><span style="font-size:20px;color:#ff4444;font-weight:700;">' + (stats.critical_chains || 0) + '</span><div style="font-size:9px;color:#888;">CRITICAL</div></div></div>';

@@ -129,7 +129,7 @@
     }
     if (otherCol) {
       html += '<th style="min-width:100px; background:rgba(55,71,79,0.4); vertical-align:top; padding:6px;">';
-      html += '<small style="font-size:10px;">Khác / Other</small>';
+      html += '<small style="font-size:10px;">' + t('mitre.other') + '</small>';
       html += '<br><span class="badge bg-secondary mt-1">' + otherTechs.length + '</span></th>';
     }
     html += '</tr></thead><tbody>';

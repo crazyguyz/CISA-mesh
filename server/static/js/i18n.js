@@ -15,6 +15,13 @@
 
   var DICT = {
     vi: {
+      'dash.jsonExported': 'Đã xuất dữ liệu từ {0} loại log ra file JSON',
+      'kc.incident': 'SỰ CỐ',
+      'kc.none': 'Chưa có máy nào chạm ngưỡng sự cố trong 24h',
+      'kc.tactics': '{0} tactic MITRE',
+      'kc.title': 'Rủi ro Kill-chain (triage)',
+      'kc.window': 'Cửa sổ {0}h · ngưỡng {1} tactic',
+      'mitre.other': 'Khác',
       'ui.active': 'Hoạt động',
       'nav.reportAsset': 'Báo Cáo Tài Sản',
       'nav.reportSummary': 'Báo Cáo Tổng Hợp',
@@ -946,6 +953,13 @@
       'reports.weekly': 'Báo cáo tuần',
     },
     en: {
+      'dash.jsonExported': 'Exported data from {0} log types to JSON file',
+      'kc.incident': 'INCIDENT',
+      'kc.none': 'No machine reached the incident threshold in 24h',
+      'kc.tactics': '{0} MITRE tactics',
+      'kc.title': 'Kill-chain Risk (triage)',
+      'kc.window': '{0}h window · {1}+ tactics',
+      'mitre.other': 'Other',
       'ui.active': 'Active',
       'nav.reportAsset': 'Asset Report',
       'nav.reportSummary': 'Summary Report',
