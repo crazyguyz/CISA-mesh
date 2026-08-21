@@ -267,10 +267,17 @@ class TCPServer(threading.Thread):
         elif msg_type == "user_info":
             self._handle_user_info(msg)
         # v2.6.2: Sysmon event types from SysmonCollector
+        # v4.6.4: + service_state_change (EID4 tampering), process_terminate (EID5),
+        # driver_load (EID6 BYOVD), config_change (EID16/255), pipe_created/connected
+        # (EID17/18), file_delete (EID23/26 ransomware), process_tampering (EID25
+        # hollowing) - these were falling into 'Unknown message type' and dropped.
         elif msg_type in ("process_event", "network_event", "module_load_event",
                           "process_injection", "process_access", "file_create_event",
                           "dns_query_event", "sysmon_event",
-                          "memory_scan_event", "process_hollowing"):
+                          "memory_scan_event", "process_hollowing",
+                          "service_state_change", "process_terminate", "driver_load",
+                          "config_change", "pipe_created", "pipe_connected",
+                          "file_delete", "process_tampering"):
             self._handle_sysmon_event(msg)
         else:
             if msg.get("action") and (msg.get("status") or msg.get("error")):
