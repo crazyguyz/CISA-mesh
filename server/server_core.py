@@ -497,15 +497,42 @@ class ServerCore:
         import api
         api.register_all_routes(app, self)
 
-        print(f"[*] Web UI: http://localhost:{self.web_port}")
+        # v4.13 (P2): optional HTTPS on the web port - stops plaintext PSK/session
+        # sniffing without an external reverse proxy. Agents must be configured
+        # with server_tls=true + trust the CA to talk to an HTTPS web port.
+        web_tls = os.environ.get("GIAMSAT_WEB_TLS_ENABLED", "false").lower() == "true"
+        web_scheme = "http"
+        web_ssl_ctx = None
+        if web_tls:
+            try:
+                from common.tls_utils import generate_self_signed_cert, create_tls_context
+                certfile, keyfile, cafile = generate_self_signed_cert()
+                web_ssl_ctx = create_tls_context(certfile, keyfile)
+                web_scheme = "https"
+                print(f"[*] Web TLS enabled ({web_scheme}://localhost:{self.web_port})")
+            except Exception as e:
+                print(f"[!] Web TLS setup failed, staying on plaintext HTTP: {e}")
+
+        print(f"[*] Web UI: {web_scheme}://localhost:{self.web_port}")
         # v2.5.22: Waitress production server (multi-threaded) thay Flask dev server
         try:
             import waitress
             print(f"[*] Using Waitress production server (threads=16)")
-            waitress.serve(app, host=self.web_host, port=self.web_port, threads=16)
+            try:
+                waitress.serve(app, host=self.web_host, port=self.web_port, threads=16,
+                               ssl_context=web_ssl_ctx, url_scheme=web_scheme)
+            except TypeError:
+                # Older Waitress without SSL support -> Flask dev server with ssl_context
+                if web_ssl_ctx:
+                    print("[!] Waitress has no SSL support - falling back to Flask dev server (HTTPS)")
+                    app.run(host=self.web_host, port=self.web_port, debug=False, threaded=True,
+                            ssl_context=web_ssl_ctx)
+                else:
+                    waitress.serve(app, host=self.web_host, port=self.web_port, threads=16)
         except ImportError:
             print("[!] Waitress not installed, falling back to Flask dev server")
-            app.run(host=self.web_host, port=self.web_port, debug=False, threaded=True)
+            app.run(host=self.web_host, port=self.web_port, debug=False, threaded=True,
+                    ssl_context=web_ssl_ctx)
 
     # ---- AI Assistant bridge (delegates to ai_providers.py) ----
     def _call_ai_assistant(self, question, provider, api_key, model="deepseek-chat"):

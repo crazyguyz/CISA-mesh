@@ -94,6 +94,16 @@ except ImportError:
     _HAS_NAMED_PIPE_IPC = False
 
 # TLS support
+
+# v4.13 (P2): HTTPS for web API (server web TLS)
+try:
+    from http_client import base as _web_base, _ssl_ctx as _web_ssl_ctx
+except ImportError:
+    def _web_base(host, port, config=None): return 'http://' + str(host) + ':' + str(port)
+    def _web_ssl_ctx(config=None): return None
+def _web_open(req, timeout=15, config=None):
+    import urllib.request as _ur
+    return _ur.urlopen(req, timeout=timeout, context=_web_ssl_ctx(config))
 try:
     from tls_utils import create_tls_client_socket, get_cert_dir, get_pinned_fingerprint_from_config
     _HAS_TLS = True
@@ -201,13 +211,13 @@ def send_user_message():
         if not msg:
             status.config(text="Vui lòng nhập nội dung.", fg="#ffaa88")
             return
-        url = f"http://{server_host}:5000/api/message/from-agent"
+        url = f"{_web_base(server_host, 5000, cfg)}/api/message/from-agent"
         try:
             payload = json.dumps({"machine_id": machine_id, "hostname": hostname,
                                   "message": msg, "psk": cfg.get("psk", "")},
                                  ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=15)
+            _web_open(req, 15, cfg)
             root.destroy()
             _msgbox("IT support", "Đã gửi tin nhắn cho quản trị viên IT.", 0x40)
         except Exception as e:
@@ -1348,11 +1358,11 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             import urllib.request as urlreq
             server_host = self.server_host
             server_web_port = 5000
-            url = f"http://{server_host}:{server_web_port}/api/agent/version"
+            url = f"{_web_base(server_host, server_web_port, self.config)}/api/agent/version"
             req = urlreq.Request(url, method="POST",
                 data=json.dumps({"version": AGENT_VERSION, "psk": self.config.get("psk", "")}).encode("utf-8"),
                 headers={"Content-Type": "application/json"})
-            resp = urlreq.urlopen(req, timeout=15)
+            resp = _web_open(req, 15, self.config)
             data = json.loads(resp.read().decode("utf-8"))
             if data.get("update_available"):
                 server_version = data.get("server_version", "?")
@@ -1392,7 +1402,7 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
 
             # v4.11 (LOW): machine_id moved out of the URL (it leaked into
             # proxy/access logs); sent via X-Machine-ID header instead.
-            download_url = f"http://{server_host}:{server_web_port}/api/agent/download?token=auto"
+            download_url = f"{_web_base(server_host, server_web_port, self.config)}/api/agent/download?token=auto"
             print(f"[📥] Downloading agent update from {server_host}:{server_web_port}/api/agent/download...")
 
             new_exe_path = os.path.join(temp_dir, f"GiamSatAgent_{server_version}.exe")
@@ -1402,7 +1412,7 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                 "X-Agent-PSK": self.config.get('psk', ''),
                 "X-Machine-ID": str(self.machine_id or ""),
             })
-            resp = urlreq.urlopen(req, timeout=120)
+            resp = _web_open(req, 120, self.config)
             total_size = int(resp.headers.get("Content-Length", 0))
             expected_sha = (resp.headers.get("X-File-SHA256") or "").strip().lower()
             expected_sig = (resp.headers.get("X-File-Sig") or "").strip().lower()
@@ -1558,7 +1568,7 @@ del "%~f0"
         try:
             import urllib.request as urlreq
             server_web_port = 5000
-            url = f"http://{self.server_host}:{server_web_port}/api/agent/update-report"
+            url = f"{_web_base(self.server_host, server_web_port, self.config)}/api/agent/update-report"
             data = json.dumps({
                 "machine_id": self.machine_id,
                 "hostname": self.hostname,
@@ -1617,7 +1627,7 @@ del "%~f0"
         import urllib.error as urlerr
 
         server_web_port = 5000
-        url = f"http://{self.server_host}:{server_web_port}/api/agent/heartbeat"
+        url = f"{_web_base(self.server_host, server_web_port, self.config)}/api/agent/heartbeat"
 
         while self.running:
             time.sleep(30)  # Poll every 30s independently
@@ -1769,7 +1779,7 @@ del "%~f0"
             return
 
         server_web_port = 5000
-        url = f"http://{self.server_host}:{server_web_port}/api/agent/command-result"
+        url = f"{_web_base(self.server_host, server_web_port, self.config)}/api/agent/command-result"
 
         try:
             report = {
@@ -1789,7 +1799,7 @@ del "%~f0"
             req_data = json.dumps(report).encode("utf-8")
             req = urlreq.Request(url, data=req_data,
                                   headers={"Content-Type": "application/json"})
-            urlreq.urlopen(req, timeout=15)
+            _web_open(req, 15, self.config)
             print(f"[✓] Reported result: {action} (exec_id={exec_id}) = {result.get('status')}")
         except Exception as e:
             print(f"[-] Failed to report result for {exec_id}: {e}")
@@ -1999,7 +2009,7 @@ del "%~f0"
         print(f"[SOC APPROVAL] Requesting SOC approval for: {action} on {self.hostname}")
         try:
             server_web_port = 5000
-            pending_url = f"http://{self.server_host}:{server_web_port}/api/alert/add-pending"
+            pending_url = f"{_web_base(self.server_host, server_web_port, self.config)}/api/alert/add-pending"
             req_data = json.dumps({
                 "machine_id": self.machine_id,
                 "hostname": self.hostname,

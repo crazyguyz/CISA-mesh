@@ -1,4 +1,4 @@
-"""
+﻿"""
 File Integrity Monitoring (FIM) Collector for GIAM-SAT Agent v1.7.0
 Real-time file change detection using watchdog (inotify/WinAPI).
 Falls back to polling mode when watchdog is not available.
@@ -12,6 +12,17 @@ import hashlib
 import threading
 import getpass
 from datetime import datetime
+try:
+    from http_client import base as _web_base, _ssl_ctx as _web_ssl_ctx
+    def _web_open(req, timeout=15, config=None):
+        import urllib.request as _ur
+        return _ur.urlopen(req, timeout=timeout, context=_web_ssl_ctx(config))
+except ImportError:
+    def _web_base(host, port, config=None): return 'http://' + str(host) + ':' + str(port)
+    def _web_open(req, timeout=15, config=None):
+        import urllib.request as _ur
+        return _ur.urlopen(req, timeout=timeout)
+
 import urllib.request
 import socket
 
@@ -491,7 +502,7 @@ class FIMCollector:
                     "chunk_index": i // self._BASELINE_CHUNK_SIZE,
                     "chunk_total": (total + self._BASELINE_CHUNK_SIZE - 1) // self._BASELINE_CHUNK_SIZE,
                 })
-                url = f"http://{server_host}:5000/api/fim/baseline/{machine_id}/diff"
+                url = f"{_web_base(server_host, 5000, cfg)}/api/fim/baseline/{machine_id}/diff"
                 req = urllib.request.Request(url, data=payload.encode("utf-8"),
                                              headers={"Content-Type": "application/json"})
                 resp = urllib.request.urlopen(req, timeout=30)

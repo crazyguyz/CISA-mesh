@@ -1,4 +1,4 @@
-"""
+﻿"""
 GIAM-SAT Agent Updater v3.5.0 - Background Daemon
 Runs via Task Scheduler ONLOGON (same as Agent), hidden console.
 
@@ -21,6 +21,17 @@ import tempfile
 import urllib.request
 import subprocess
 import threading
+try:
+    from http_client import base as _web_base, _ssl_ctx as _web_ssl_ctx
+    def _web_open(req, timeout=15, config=None):
+        import urllib.request as _ur
+        return _ur.urlopen(req, timeout=timeout, context=_web_ssl_ctx(config))
+except ImportError:
+    def _web_base(host, port, config=None): return 'http://' + str(host) + ':' + str(port)
+    def _web_open(req, timeout=15, config=None):
+        import urllib.request as _ur
+        return _ur.urlopen(req, timeout=timeout)
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 # v3.7.0: Named Pipe IPC (replaces HTTP localhost for internal Agent ↔ Updater comms)
 try:
@@ -200,7 +211,7 @@ def download_exe(version, host=None, port=None):
     """Download GiamSatAgent.exe from server."""
     host = host or _server_host()
     port = port or _server_port()
-    url = f"http://{host}:{port}/api/agent/download"
+    url = f"{_web_base(host, port, None)}/api/agent/download"
     try:
         _log(f"Downloading agent {version}...")
         # v4.10 (HIGH-8): version is used in the EXE filename - sanitize before
@@ -324,7 +335,7 @@ def check_and_update(host=None, port=None):
     except Exception:
         pass
 
-    url = f"http://{host}:{port}/api/agent/version"
+    url = f"{_web_base(host, port, None)}/api/agent/version"
     try:
         req = urllib.request.Request(url, method="POST",
             data=json.dumps({"version": current}).encode(),
@@ -671,7 +682,7 @@ def _send_telegram_alert(msg):
     try:
         host = _server_host()
         port = _server_port()
-        url = f"http://{host}:{port}/api/alerts/telegram"
+        url = f"{_web_base(host, port, None)}/api/alerts/telegram"
         data = json.dumps({"message": msg, "source": "updater_watchdog"}).encode()
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=10)
@@ -750,3 +761,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
