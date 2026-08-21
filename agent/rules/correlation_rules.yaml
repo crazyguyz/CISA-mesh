@@ -63595,3 +63595,98 @@ rules:
     threshold: 1
     within_seconds: 300
 
+
+# ================================================================================
+# v4.6.3 (SEC review phase 2.5): low-and-slow + gap closures
+# - THREAT-081: timestomping via PowerShell (needs 4688 command line from phase 2)
+# - THREAT-082: slow brute force below THREAT-001 fast threshold
+# - THREAT-083: inbound port scan via WFP deny burst (5157; 5156/5158 stay skipped
+#   to protect event volume)
+# - NET-BEACON-001: same external dst_ip seen regularly across aggregation windows
+#   (low-and-slow C2 beaconing), suppressing private/standard-service destinations
+# ================================================================================
+- id: THREAT-081
+  name: Timestomping - File Time Manipulation via PowerShell
+  mitre: T1070.006
+  tactic: Defense Evasion
+  description: 4688 with a command line touching file LastWriteTime/CreationTime
+    (Set-ItemProperty/Get-Item) - manual timestomping that never triggers Sysmon
+    EID 2 (review E22).
+  severity: HIGH
+  conditions:
+  - type: windows_event
+    event_id: '4688'
+    description_contains:
+    - lastwritetime
+    - creationtime
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-082
+  name: Slow Brute Force (Low-and-Slow)
+  mitre: T1110
+  tactic: Credential Access
+  description: 5+ failed logons (4625) from one source within 15 minutes - slow
+    brute force that stays under the fast THREAT-001 threshold (review note 4).
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '4625'
+    group_by: source_ip
+    threshold: 5
+    within_seconds: 900
+- id: THREAT-083
+  name: Inbound Probe / Port Scan (WFP Deny Burst)
+  mitre: T1046
+  tactic: Discovery
+  description: 20+ Windows Firewall blocks (5157) within 60 seconds - inbound port
+    scanning or probing. 5156/5158 stay in SKIP_IDS for volume; 5157 is already
+    collected (review E25).
+  severity: MEDIUM
+  conditions:
+  - type: windows_event
+    event_id: '5157'
+    threshold: 20
+    within_seconds: 60
+- id: NET-BEACON-001
+  name: Periodic C2 Beaconing Pattern
+  mitre: T1071.001
+  tactic: Command and Control
+  description: Same external destination IP observed in 5+ network aggregation
+    windows within 1 hour - a regular beaconing cadence that a single flush count
+    never exposes (review C13). Standard service ports + private ranges suppress.
+  severity: HIGH
+  conditions:
+  - type: network_traffic
+    group_by: dst_ip
+    threshold: 5
+    within_seconds: 3600
+  - NOT: true
+    type: network_traffic
+    dst_port: [53, 67, 68, 80, 123, 135, 139, 389, 443, 445, 636, 853, 3389, 5985, 5986]
+  - NOT: true
+    type: network_traffic
+    field_contains:
+      dst_ip:
+      - 10.
+      - 127.
+      - 192.168.
+      - 169.254.
+      - 172.16.
+      - 172.17.
+      - 172.18.
+      - 172.19.
+      - 172.20.
+      - 172.21.
+      - 172.22.
+      - 172.23.
+      - 172.24.
+      - 172.25.
+      - 172.26.
+      - 172.27.
+      - 172.28.
+      - 172.29.
+      - 172.30.
+      - 172.31.
+      - 224.
+      - 255.
+

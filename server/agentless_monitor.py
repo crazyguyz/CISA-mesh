@@ -40,13 +40,20 @@ class AgentlessMonitor:
 
     def add_device(self, name, ip, device_type="generic", method="ping",
                    snmp_community="public", ssh_user="", ssh_password="",
-                   snmp_oids=None, ssh_commands=None, interval_seconds=300):
+                   snmp_oids=None, ssh_commands=None, interval_seconds=300,
+                   snmpv3_user="", snmpv3_level="authNoPriv",
+                   snmpv3_auth_protocol="SHA", snmpv3_auth_key="",
+                   snmpv3_priv_protocol="AES", snmpv3_priv_key=""):
         device = {
             "name": name, "ip": ip, "device_type": device_type,
             "method": method, "snmp_community": snmp_community,
             "ssh_user": ssh_user, "ssh_password": ssh_password,
             "snmp_oids": snmp_oids or [".1.3.6.1.2.1.1.3.0", ".1.3.6.1.2.1.1.5.0"],
             "ssh_commands": ssh_commands or ["uptime", "df -h", "free -m", "who"],
+            # v4.6.3 (SEC review note 6): optional SNMPv3 credentials
+            "snmpv3_user": snmpv3_user, "snmpv3_level": snmpv3_level,
+            "snmpv3_auth_protocol": snmpv3_auth_protocol, "snmpv3_auth_key": snmpv3_auth_key,
+            "snmpv3_priv_protocol": snmpv3_priv_protocol, "snmpv3_priv_key": snmpv3_priv_key,
             "enabled": True, "interval_seconds": interval_seconds,
         }
         self.devices.append(device)
@@ -86,12 +93,25 @@ class AgentlessMonitor:
         results = {}
         community = device.get("snmp_community", "public")
         oids = device.get("snmp_oids", [])
+        # v4.6.3 (SEC review note 6): default community "public"/"private" is a
+        # credential risk - surface it in the result payload and support SNMPv3.
+        if community in ("public", "private"):
+            results["_warning"] = (f"SNMP community '{community}' is the default - "
+                                   "use a strong community or SNMPv3")
+        base = ["snmpget"]
+        if device.get("snmpv3_user"):
+            base += ["-v3", "-u", device["snmpv3_user"],
+                     "-l", device.get("snmpv3_level", "authNoPriv")]
+            if device.get("snmpv3_auth_protocol") and device.get("snmpv3_auth_key"):
+                base += ["-a", device["snmpv3_auth_protocol"], "-A", device["snmpv3_auth_key"]]
+            if device.get("snmpv3_priv_protocol") and device.get("snmpv3_priv_key"):
+                base += ["-x", device["snmpv3_priv_protocol"], "-X", device["snmpv3_priv_key"]]
+        else:
+            base += ["-v2c", "-c", community]
         for oid in oids:
             try:
-                result = subprocess.run(
-                    ["snmpget", "-v2c", "-c", community, device["ip"], oid],
-                    capture_output=True, text=True, timeout=10
-                )
+                result = subprocess.run(base + [device["ip"], oid],
+                                        capture_output=True, text=True, timeout=10)
                 results[oid] = result.stdout.strip() if result.returncode == 0 else f"Error: {result.stderr}"
             except FileNotFoundError:
                 results[oid] = "snmpget not installed (install net-snmp-utils)"

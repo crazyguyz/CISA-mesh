@@ -62,6 +62,60 @@ def _run_hidden(cmd, **kwargs):
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
+
+# v4.6.3 (SEC review note 5): name-spoofing check - pure function so it is
+# unit-testable. Catches (a) names with 2+ digits that are not a known legit
+# numeric-named process, and (b) a process named like a critical system binary
+# that runs from a NON-system path (classic numeric-free spoof: fake svchost.exe
+# in C:\Users\...).
+_CRITICAL_SYSTEM_NAMES = frozenset({
+    "svchost", "lsass", "csrss", "winlogon", "services", "smss", "wininit",
+    "explorer", "spoolsv", "taskhost", "dwm", "lsm", "conhost", "userinit",
+    "winlogon", "fontdrvhost", "sihost", "dllhost", "wmiprvse", "runtimebroker",
+})
+_LEGIT_SYSTEM_DIRS = ("\\windows\\system32\\", "\\windows\\syswow64\\", "\\windows\\")
+_LEGIT_NUMERIC_NAMES = (
+    "python", "java", "node", "sqlserv", "msdtc", "dwminit", "fontdrvhost",
+    "searchindexer", "runtimebroker", "conhost", "svchost", "lsass", "csrss",
+    "winlogon", "wmiprvse", "dllhost", "vcredist", "userinit", "wininit",
+    "services", "smss", "taskhost", "spoolsv", "explorer", "dwm", "lsm", "sihost",
+)
+
+
+def _check_name_spoofing(proc):
+    """Return a finding dict, or None. proc: {'ProcessName','Id','Path'}."""
+    try:
+        proc_name = str(proc.get("ProcessName", "") or "").lower().strip()
+        if not proc_name:
+            return None
+        proc_path = str(proc.get("Path", "") or "").lower()
+        has_digits = any(ch.isdigit() for ch in proc_name)
+
+        # (a) name matches a critical system binary -> must live in a system dir
+        if proc_name in _CRITICAL_SYSTEM_NAMES:
+            if proc_path and not any(d in proc_path for d in _LEGIT_SYSTEM_DIRS):
+                return {
+                    "process_name": proc.get("ProcessName", ""),
+                    "pid": proc.get("Id", 0),
+                    "path": proc.get("Path", ""),
+                    "description": (f"Possible name spoofing: '{proc_name}' runs from "
+                                   f"non-system path '{proc.get('Path', '')}'"),
+                }
+            return None  # legit system location (or path hidden) -> no flag
+
+        # (b) numeric name that is not a known legit numeric-named process
+        if has_digits and not any(legit in proc_name for legit in _LEGIT_NUMERIC_NAMES):
+            return {
+                "process_name": proc.get("ProcessName", ""),
+                "pid": proc.get("Id", 0),
+                "path": proc.get("Path", ""),
+                "description": "Possible name spoofing: process name contains numbers",
+            }
+    except Exception:
+        pass
+    return None
+
+
 class MemoryScanner:
     """Scans processes for signs of code injection / process hollowing."""
 
@@ -189,28 +243,30 @@ ConvertTo-Json -InputObject $suspicious -Depth 3 -Compress
         # ================================================================
         # PHASE 3: Check for process name spoofing
         # ================================================================
+        # v4.6.3 (SEC review note 5): the old check only flagged names with 2+
+        # digits, trivially bypassed by a numeric-free fake name (e.g. a fake
+        # "svchost" in a user dir). Now ALSO flag any process whose name matches
+        # a critical system binary but runs from a non-system path.
         try:
             r2 = _run_hidden(["powershell", "-NoProfile", "-NonInteractive",
-                "Get-Process | Where-Object { $_.ProcessName -match '[0-9]{2,}' } | "
-                "Select-Object ProcessName,Id,Path | ConvertTo-Json -Compress"], timeout=30)
+                "Get-Process | Select-Object ProcessName,Id,Path | ConvertTo-Json -Compress"], timeout=30)
             if r2.stdout and r2.stdout.strip() not in ("", "[]"):
                 results2 = json.loads(r2.stdout)
                 if isinstance(results2, dict):
                     results2 = [results2]
                 for proc in results2:
-                    proc_name = proc.get("ProcessName", "").lower()
-                    if any(legit in proc_name for legit in ["svchost", "lsass", "csrss", "winlogon"]):
-                        continue
-                    self.findings.append({
-                        "type": "memory_scan_event",
-                        "alert_type": "spoofed_process_name",
-                        "process_name": proc.get("ProcessName", ""),
-                        "pid": proc.get("Id", 0),
-                        "path": proc.get("Path", ""),
-                        "severity": "HIGH",
-                        "description": f"Process name contains numbers (potential name spoofing)",
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    })
+                    finding = _check_name_spoofing(proc)
+                    if finding:
+                        self.findings.append({
+                            "type": "memory_scan_event",
+                            "alert_type": "spoofed_process_name",
+                            "process_name": finding["process_name"],
+                            "pid": finding["pid"],
+                            "path": finding["path"],
+                            "severity": "HIGH",
+                            "description": finding["description"],
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        })
         except Exception:
             pass
 
