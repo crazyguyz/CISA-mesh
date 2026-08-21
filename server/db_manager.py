@@ -104,6 +104,11 @@ class DatabaseManager:
 
             # Threat alerts from correlation engine
             c.execute("""CREATE TABLE IF NOT EXISTS threat_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,rule_id TEXT,rule_name TEXT,description TEXT,severity TEXT,timestamp TEXT,raw_data TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            # v4.13 (E1): triage status column (new / in_progress / resolved / false_positive)
+            try:
+                c.execute("ALTER TABLE threat_alerts ADD COLUMN status TEXT DEFAULT 'new'")
+            except sqlite3.OperationalError:
+                pass
 
             # Vulnerability alerts
             c.execute("""CREATE TABLE IF NOT EXISTS vuln_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,software TEXT,version TEXT,publisher TEXT,cve TEXT,severity TEXT,description TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -910,16 +915,23 @@ class DatabaseManager:
                 self.conn.execute("""INSERT INTO threat_alerts (machine_id,hostname,rule_id,rule_name,description,severity,timestamp,raw_data) VALUES (?,?,?,?,?,?,?,?)""", (machine_id, data.get("hostname",""), rule_id, data.get("rule_name",""), data.get("description",""), data.get("severity",""), data.get("timestamp",""), json.dumps(data, ensure_ascii=False)))
             self.conn.commit()
 
-    def get_threat_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_threat_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         with self.lock:
             q = "SELECT * FROM threat_alerts WHERE 1=1"
             p = []
             if machine_id: q += " AND machine_id=?"; p.append(machine_id)
             if since_hours:
                 q += " AND received_at >= datetime('now', ?)"; p.append(f'-{since_hours} hours')
+            if status: q += " AND status=?"; p.append(status)
             q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
+
+    def set_threat_status(self, threat_id, status):
+        """v4.13 (E1): triage status on a threat alert."""
+        with self.lock:
+            self.conn.execute("UPDATE threat_alerts SET status=? WHERE id=?", (status, threat_id))
+            self.conn.commit()
 
     def insert_vuln_alert(self, data):
         """v2.1.1: UPSERT dedup - same machine + cve + software updates timestamp instead of duplicate."""

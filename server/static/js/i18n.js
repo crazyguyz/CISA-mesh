@@ -15,6 +15,12 @@
 
   var DICT = {
     vi: {
+      'tr.fp': 'Dương tính giả',
+      'tr.inProgress': 'Đang xử lý',
+      'tr.new': 'Mới',
+      'tr.resolved': 'Đã xử lý',
+      'tr.status': 'Phân loại',
+      'tr.updated': 'Đã cập nhật trạng thái',
       'login.twofa': 'Mã xác thực 2 bước (Authenticator)',
       'login.twofaPh': 'Nhập mã 6 số từ app Authenticator',
       'login.verify': 'Xác thực 2 bước',
@@ -968,6 +974,12 @@
       'reports.weekly': 'Báo cáo tuần',
     },
     en: {
+      'tr.fp': 'False positive',
+      'tr.inProgress': 'In progress',
+      'tr.new': 'New',
+      'tr.resolved': 'Resolved',
+      'tr.status': 'Triage',
+      'tr.updated': 'Status updated',
       'login.twofa': 'Two-factor code (Authenticator)',
       'login.twofaPh': 'Enter the 6-digit code from your Authenticator app',
       'login.verify': 'Verify 2FA',

@@ -489,6 +489,20 @@ function loadYara() {
     });
 }
 
+function statusOptions(cur) {
+    var st = cur || 'new';
+    var opts = [['new', t('tr.new')], ['in_progress', t('tr.inProgress')], ['resolved', t('tr.resolved')], ['false_positive', t('tr.fp')]];
+    return opts.map(function(o) { return '<option value="' + o[0] + '"' + (st === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+}
+
+function setThreatStatus(id, status) {
+    fetch('/api/threats/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ ' + t('tr.updated')); }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
 function loadThreats() {
     const el = document.getElementById('threatList');
     fetch('/api/threats?limit=500').then(r => r.json()).then(data => {
@@ -756,9 +770,9 @@ function buildGroupedByMachine(data, type, title) {
         // Expandable detail table
         html += '<div id="grp_' + type + '_' + idx + '" style="display:none;max-height:400px;overflow-y:auto;" onclick="event.stopPropagation();">';
         if (type === 'threats') {
-            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
+            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + (e.rule_id||'-') + '</td><td>' + (e.rule_name||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td>' + _actionButtons('threats', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + (e.rule_id||'-') + '</td><td>' + (e.rule_name||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';

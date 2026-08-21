@@ -161,7 +161,7 @@ EMAIL_TEMPLATES = {
 # SMTP SEND
 # ============================================================
 
-def send_email_smtp(to_email, subject, body, machine_id="", template_id="", source=""):
+def send_email_smtp(to_email, subject, body, machine_id="", template_id="", source="", attachment_path=None):
     """Send email via SMTP. Supports SSL (465) and STARTTLS (587).
     v4.10: every attempt is recorded in the local sent-mail log
     (server/data/sent_emails.json) with status 'sent' or 'failed'."""
@@ -178,7 +178,17 @@ def send_email_smtp(to_email, subject, body, machine_id="", template_id="", sour
         msg["From"] = from_email
         msg["To"] = to_email
         msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        # v4.13 (E3): optional file attachment (e.g. weekly HTML report)
+        if attachment_path and os.path.exists(attachment_path):
+            msg.attach(MIMEText(body, "html", "utf-8"))
+            from email.mime.application import MIMEApplication
+            with open(attachment_path, "rb") as _af:
+                _part = MIMEApplication(_af.read(), _subtype="html")
+            _part.add_header("Content-Disposition", "attachment",
+                             filename=os.path.basename(attachment_path))
+            msg.attach(_part)
+        else:
+            msg.attach(MIMEText(body, "plain", "utf-8"))
         # Port 465 uses implicit SSL; other ports use STARTTLS
         if smtp_port == 465:
             server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=15)

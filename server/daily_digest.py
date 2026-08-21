@@ -128,12 +128,62 @@ def run_digest(core, alerting_cfg):
         return False
 
 
+def run_weekly_report(core, alerting_cfg):
+    """v4.13 (E3): generate the weekly HTML summary report and email it as an
+    attachment. Config: alerting_config.json -> weekly {enabled, day (0=Mon),
+    hour, to}. Once per week."""
+    cfg = (alerting_cfg or {}).get("weekly") or {}
+    if not cfg.get("enabled", True):
+        return False
+    now = datetime.now()
+    if now.weekday() != int(cfg.get("day", 0)) or now.hour < int(cfg.get("hour", 8)):
+        return False
+    state = _load_state()
+    week = now.strftime("%Y-%W")
+    if state.get("last_week") == week:
+        return False
+    recipients = [str(r).strip() for r in (cfg.get("to") or []) if str(r).strip()]
+    if not recipients:
+        self_addr = os.environ.get("GIAMSAT_SMTP_USER", "").strip()
+        if self_addr:
+            recipients = [self_addr]
+    if not recipients:
+        print("[WEEKLY] No recipients configured (weekly.to / GIAMSAT_SMTP_USER) - skip")
+        return False
+    try:
+        filepath = core.reporting.generate_html_report(report_type="weekly")
+        if not filepath or not os.path.exists(filepath):
+            print("[WEEKLY] Report generation failed")
+            return False
+        summary = (
+            "GIAM-SAT: Báo cáo an ninh tuần<br>"
+            "<p>Báo cáo tổng hợp HTML đính kèm (mở bằng trình duyệt để in/chia sẻ).</p>"
+            "<p><em>Weekly security summary - HTML report attached (open in a browser).</em></p>"
+        )
+        from email_alerts import send_email_smtp
+        ok = send_email_smtp(", ".join(recipients),
+                             f"GIAM-SAT: Báo cáo an ninh tuần ({now.strftime('%d/%m/%Y')})",
+                             summary, source="weekly", attachment_path=filepath)
+        if ok:
+            state["last_week"] = week
+            _save_state(state)
+            print(f"[WEEKLY] Sent weekly report to {recipients}")
+        return ok
+    except Exception as e:
+        print(f"[-] WEEKLY failed: {e}")
+        return False
+
+
 def start_digest_thread(core, alerting_cfg, check_every_seconds=300):
-    """Background thread: check periodically whether today's digest is due."""
+    """Background thread: check periodically whether today's digest / weekly report is due."""
     def _loop():
         while True:
             try:
                 run_digest(core, alerting_cfg)
+            except Exception:
+                pass
+            try:
+                run_weekly_report(core, alerting_cfg)
             except Exception:
                 pass
             time.sleep(check_every_seconds)

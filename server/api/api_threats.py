@@ -18,8 +18,26 @@ def register(app, core):
         return jsonify(core.db.get_threat_alerts(
             machine_id=request.args.get("machine_id"),
             limit=request.args.get("limit", 100, type=int),
-            since_hours=since_hours
+            since_hours=since_hours,
+            status=request.args.get("status")
         ))
+
+    @app.route("/api/threats/<int:threat_id>/status", methods=["POST"])
+    def api_threat_status(threat_id):
+        """v4.13 (E1): triage status on a threat alert."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        data = request.json or {}
+        status = data.get("status", "new")
+        if status not in ("new", "in_progress", "resolved", "false_positive"):
+            return jsonify({"success": False, "error": "Invalid status"}), 400
+        try:
+            core.db.set_threat_status(threat_id, status)
+            core.db.insert_audit_log(username, "threat_status",
+                f"Threat #{threat_id} -> {status}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
 
     @app.route("/api/vulns")
     def api_vulns():
