@@ -193,3 +193,20 @@ def register(app, core):
             "pending": pending,
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
+    # v4.14 (P2): updater watchdog Telegram alerts - PSK-gated agent endpoint.
+    # The updater daemon has no user JWT, so it cannot use /api/telegram/send.
+    @app.route("/api/agent/telegram-alert", methods=["POST"])
+    def api_agent_telegram_alert():
+        """Send a Telegram alert on behalf of an agent/updater (watchdog restart etc.)."""
+        data = request.get_json(force=True, silent=True) or {}
+        if not check_agent_psk(data):
+            return jsonify({"error": "invalid psk"}), 401
+        message = (data.get("message") or "").strip()
+        if not message:
+            return jsonify({"success": False, "error": "empty message"}), 400
+        try:
+            success = core._send_telegram_message(message, data.get("chat_id") or core.telegram_chat_id)
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
+        return jsonify({"success": bool(success)})
+

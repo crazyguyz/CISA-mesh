@@ -696,9 +696,14 @@ def _send_telegram_alert(msg):
     try:
         host = _server_host()
         port = _server_port()
-        url = f"{_web_base(host, port, None)}/api/alerts/telegram"
+        # v4.14 (FIX): /api/alerts/telegram never existed (404). The updater has
+        # no user JWT, so it cannot call /api/telegram/send - use the PSK-gated
+        # /api/agent/telegram-alert endpoint instead (server sends via its bot).
+        url = f"{_web_base(host, port, None)}/api/agent/telegram-alert"
         data = json.dumps({"message": msg, "source": "updater_watchdog"}).encode()
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(url, data=data,
+            headers={"Content-Type": "application/json",
+                     "X-Agent-PSK": (_cfg("psk") or "")})
         _web_open(req, timeout=10)
     except Exception:
         pass
