@@ -519,10 +519,16 @@ class ServerCore:
             import waitress
             print(f"[*] Using Waitress production server (threads=16)")
             try:
-                waitress.serve(app, host=self.web_host, port=self.web_port, threads=16,
-                               ssl_context=web_ssl_ctx, url_scheme=web_scheme)
-            except TypeError:
-                # Older Waitress without SSL support -> Flask dev server with ssl_context
+                if web_ssl_ctx:
+                    # v4.14 (FIX): only pass ssl_context when TLS is actually on - some
+                    # Waitress builds raise ValueError 'Unknown adjustment ssl_context'
+                    # even for ssl_context=None.
+                    waitress.serve(app, host=self.web_host, port=self.web_port, threads=16,
+                                   ssl_context=web_ssl_ctx, url_scheme=web_scheme)
+                else:
+                    waitress.serve(app, host=self.web_host, port=self.web_port, threads=16)
+            except (TypeError, ValueError):
+                # Older Waitress without SSL support (TypeError or ValueError) -> Flask dev server
                 if web_ssl_ctx:
                     print("[!] Waitress has no SSL support - falling back to Flask dev server (HTTPS)")
                     app.run(host=self.web_host, port=self.web_port, debug=False, threaded=True,
