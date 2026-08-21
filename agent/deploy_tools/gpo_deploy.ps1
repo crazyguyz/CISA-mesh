@@ -16,7 +16,10 @@ param(
     [Parameter(Mandatory=$false)][string]$AgentExePath = ".\GiamSatAgent.exe",
     [Parameter(Mandatory=$false)][string]$TargetOU = "",  # Empty = entire domain
     [Parameter(Mandatory=$false)][string]$GPOName = "GIAM-SAT Agent Deployment",
-    [Parameter(Mandatory=$false)][string]$DomainNetlogon = "\\$env:USERDNSDOMAIN\NETLOGON"
+    [Parameter(Mandatory=$false)][string]$DomainNetlogon = "\\$env:USERDNSDOMAIN\NETLOGON",
+    # v4.6.2 (SEC review Phase 2): also stage the Windows audit baseline files
+    # (audit_policy.inf for GPO import + enable_windows_audit.ps1 for per-machine runs)
+    [switch]$EnableAudit
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +37,18 @@ $config = @{ server_ip = $ServerIP; server_port = $ServerPort; auto_start = $tru
 Set-Content -Path "$destPath\agent_config.json" -Value $config -Force
 
 Write-Host "[*] Agent copied to NETLOGON successfully" -ForegroundColor Green
+
+# v4.6.2 (SEC review Phase 2): stage audit baseline files for GPO import
+if ($EnableAudit) {
+    $toolDir = Join-Path $PSScriptRoot "deploy_tools"
+    if ($toolDir -eq ".") { $toolDir = (Get-Location).Path }
+    $inf = Join-Path $toolDir "audit_policy.inf"
+    $script = Join-Path $toolDir "enable_windows_audit.ps1"
+    if (Test-Path $inf)  { Copy-Item $inf  "$destPath\audit_policy.inf" -Force;  Write-Host "[*] audit_policy.inf staged" -ForegroundColor Cyan }
+    else { Write-Host "[-] audit_policy.inf not found next to gpo_deploy.ps1" -ForegroundColor Yellow }
+    if (Test-Path $script) { Copy-Item $script "$destPath\enable_windows_audit.ps1" -Force; Write-Host "[*] enable_windows_audit.ps1 staged" -ForegroundColor Cyan }
+    else { Write-Host "[-] enable_windows_audit.ps1 not found next to gpo_deploy.ps1" -ForegroundColor Yellow }
+}
 
 # =========================================================================
 # 2. Create Scheduled Task XML
@@ -110,3 +125,11 @@ try {
 
 Write-Host "`n[*] Deployment preparation complete!" -ForegroundColor Green
 Write-Host "[*] Agent will auto-install on next reboot via GPO startup script" -ForegroundColor Cyan
+
+if ($EnableAudit) {
+    Write-Host "`n=== SECURITY AUDIT BASELINE (Phase 2) ===" -ForegroundColor Yellow
+    Write-Host "1. GPO import: Computer Config > Policies > Windows Settings > Security" -ForegroundColor White
+    Write-Host "   Settings > right-click > Import Policy -> $destPath\audit_policy.inf" -ForegroundColor Cyan
+    Write-Host "2. Per machine (or -Computers):  \\$env:USERDNSDOMAIN\NETLOGON\GiamSat\enable_windows_audit.ps1" -ForegroundColor Cyan
+    Write-Host "   (lsass SACL + PowerShell SBL/Module/Transcription - run as Admin)" -ForegroundColor Gray
+}

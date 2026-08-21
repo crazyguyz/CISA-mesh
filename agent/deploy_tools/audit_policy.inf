@@ -1,0 +1,37 @@
+; =============================================================================
+; GIAM-SAT Windows Advanced Audit Policy baseline (SEC review Phase 2)
+; Import into a GPO: Computer Configuration > Windows Settings > Security
+; Settings > right-click "Security Settings" > Import Policy -> select this INF.
+; GUID-based entries are locale-independent (works on any Windows language).
+;
+; NOTE: this INF only sets the audit categories. The lsass.exe SACL + PowerShell
+; Script Block Logging still need enable_windows_audit.ps1 (or GPP registry
+; preferences): Computer Config > Preferences > Windows Settings > Registry.
+; =============================================================================
+[Unicode]
+Unicode=yes
+[Version]
+signature="$CHICAGO$"
+Revision=1
+[AuditPol]
+; --- Logon/Logoff ---
+Audit{0CCE9215-69AE-11D9-BED3-505054503030} = Success,Failure   ; Logon (4624/4625/4648)
+Audit{0CCE9216-69AE-11D9-BED3-505054503030} = Success           ; Logoff
+Audit{0CCE9217-69AE-11D9-BED3-505054503030} = Failure           ; Account Lockout
+Audit{0CCE921B-69AE-11D9-BED3-505054503030} = Success           ; Special Logon (4964)
+Audit{0CCE921C-69AE-11D9-BED3-505054503030} = Success,Failure   ; Other Logon/Logoff
+; --- Account Logon ---
+Audit{0CCE923F-69AE-11D9-BED3-505054503030} = Success,Failure   ; Credential Validation (4776)
+Audit{0CCE9242-69AE-11D9-BED3-505054503030} = Success,Failure   ; Kerberos Auth Service (4768)
+Audit{0CCE9240-69AE-11D9-BED3-505054503030} = Success,Failure   ; Kerberos Service Ticket Ops (4769/4771)
+; --- Account Management ---
+Audit{0CCE9235-69AE-11D9-BED3-505054503030} = Success,Failure   ; User Account Management
+Audit{0CCE9236-69AE-11D9-BED3-505054503030} = Success           ; Computer Account Management
+Audit{0CCE9237-69AE-11D9-BED3-505054503030} = Success           ; Security Group Management
+; --- Object Access (SACL-driven) ---
+Audit{0CCE921D-69AE-11D9-BED3-505054503030} = Success           ; File System (4663)
+Audit{0CCE9220-69AE-11D9-BED3-505054503030} = Success           ; SAM
+Audit{0CCE9224-69AE-11D9-BED3-505054503030} = Success,Failure   ; File Share (5140/5142)
+Audit{0CCE9244-69AE-11D9-BED3-505054503030} = Success,Failure   ; Detailed File Share (5145)
+; --- Detailed Tracking ---
+Audit{0CCE922B-69AE-11D9-BED3-505054503030} = Success,Failure   ; Process Creation (4688)
