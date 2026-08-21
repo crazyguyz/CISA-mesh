@@ -63524,3 +63524,74 @@ rules:
       - WriteProcessMemory
       - This program cannot be run in DOS mode
       - This program must be run under Win32
+
+# ================================================================================
+# v4.6.2 (SEC review P1-1/4/5/6): rules unlocked by the EID-10 collection fix +
+# expanded pre-filter + _enrich routing. Note: these match the sysmon_collector
+# event types (process_access / registry_event), not windows_event.
+# ================================================================================
+- id: THREAT-077
+  name: LSASS Process Access (Credential Dumping)
+  mitre: T1003.001
+  tactic: Credential Access
+  description: Sysmon EID 10 - a process opened lsass.exe memory with a privileged
+    access mask (mimikatz / procdump / comsvcs.dll). Previously EID 10 was never
+    collected and reached no rule.
+  severity: CRITICAL
+  conditions:
+  - type: process_access
+    event_id: '10'
+    description_contains:
+    - lsass process access
+    threshold: 1
+    within_seconds: 60
+- id: THREAT-078
+  name: COM Hijack Persistence (Registry)
+  mitre: T1546.015
+  tactic: Persistence
+  description: Sysmon registry write under a CLSID InprocServer32/LocalServer32 key
+    - COM object hijacking (T1546.015). Was invisible because the registry
+    pre-filter had no CLSID keyword.
+  severity: HIGH
+  conditions:
+  - type: registry_event
+    field_contains:
+      registry_key:
+      - \clsid\
+    field_regex:
+      registry_key: '(inprocserver32|localserver32)$'
+    threshold: 1
+    within_seconds: 120
+- id: THREAT-079
+  name: WMI Event Subscription Persistence
+  mitre: T1546.003
+  tactic: Persistence
+  description: Sysmon registry write under a WMI Event Subscription key
+    (ROOT\Subscription) - permanent WMI event consumer persistence (T1546.003).
+  severity: HIGH
+  conditions:
+  - type: registry_event
+    field_contains:
+      registry_key:
+      - \subscription
+    threshold: 1
+    within_seconds: 300
+- id: THREAT-080
+  name: PowerShell Logging Disabled (T1562.002)
+  mitre: T1562.002
+  tactic: Defense Evasion
+  description: Sysmon registry write setting PowerShell ScriptBlock/Module/Transcript
+    logging to 0 - attacker disabling the 4104 evidence source.
+  severity: CRITICAL
+  conditions:
+  - type: registry_event
+    field_contains:
+      registry_key:
+      - scriptblocklogging
+      - transcriptlogging
+      - enablemodulelogging
+    field_equals:
+      registry_value: '0'
+    threshold: 1
+    within_seconds: 300
+

@@ -100,6 +100,22 @@ SUSPICIOUS_PARENT_COMBOS = {
     ("cmstp.exe", "powershell.exe"): "CMSTP spawning PowerShell (UAC bypass)",
     ("svchost.exe", "cmd.exe"): "Service Host spawning cmd (highly suspicious)",
     ("svchost.exe", "powershell.exe"): "Service Host spawning PowerShell (highly suspicious)",
+    # v4.6.2 (SEC review E24): additional LOLBins - AppDomain (installutil/regasm/
+    # regsvcs), MSI execution, C# REPL (csi), WSL crossing, WMIC/schtasks persistence
+    ("msiexec.exe", "powershell.exe"): "MSIExec spawning PowerShell (AppX/managed execution)",
+    ("msiexec.exe", "cmd.exe"): "MSIExec spawning cmd",
+    ("installutil.exe", "powershell.exe"): "InstallUtil spawning PowerShell (AppDomain LOLBin)",
+    ("installutil.exe", "cmd.exe"): "InstallUtil spawning cmd (AppDomain LOLBin)",
+    ("regasm.exe", "powershell.exe"): "RegAsm spawning PowerShell (LOLBin)",
+    ("regsvcs.exe", "powershell.exe"): "RegSvcs spawning PowerShell (LOLBin)",
+    ("csi.exe", "powershell.exe"): "C# REPL (csi) spawning PowerShell",
+    ("csi.exe", "cmd.exe"): "C# REPL (csi) spawning cmd",
+    ("wsl.exe", "powershell.exe"): "WSL spawning PowerShell (cross-OS tooling)",
+    ("wsl.exe", "cmd.exe"): "WSL spawning cmd",
+    ("wmic.exe", "powershell.exe"): "WMIC spawning PowerShell (LOLBin)",
+    ("wmic.exe", "cmd.exe"): "WMIC spawning cmd",
+    ("schtasks.exe", "powershell.exe"): "schtasks spawning PowerShell (scheduled persistence)",
+    ("cmd.exe", "powershell.exe"): "cmd spawning PowerShell (nested shell)",
 }
 
 
@@ -556,6 +572,16 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
                     "\\image file execution options",
                     "\\appinit_dlls",
                     "\\session manager\\bootexecute",
+                    # v4.6.2 (SEC review A5/E21): COM hijack, WMI subscription,
+                    # AppCertDLLs, print monitor DLLs, LSA security packages
+                    "\\clsid\\",
+                    "\\subscription",
+                    "\\appcertdlls",
+                    "control\\print\\monitors",
+                    "security packages",
+                    # v4.6.2 (SEC review B9): SBL/transcript being disabled (T1562.002)
+                    "scriptblocklogging",
+                    "transcriptlogging",
                 ]
                 target_lower = target_obj.lower() if target_obj else ""
                 if any(pk in target_lower for pk in persistence_keys):

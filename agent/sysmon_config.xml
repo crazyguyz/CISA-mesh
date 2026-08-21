@@ -20,33 +20,18 @@
     - Microsoft/Azure/CDN IP ranges
 -->
 <Sysmon schemaversion="4.90">
+  <!-- v4.6.2 (SEC review B10): hashes on EID 1/11 so MISP hash-check, YARA hash
+       and IOC sweep actually have data to work with -->
+  <HashAlgorithms>MD5,SHA256</HashAlgorithms>
   <EventFiltering>
     <!-- Log everything by default (no exclude filters) -->
     <ProcessCreate onmatch="include"/>
     <FileCreateTime onmatch="include"/>
-    <!-- NetworkConnect: include all, but exclude browser noise and known CDN/Microsoft ranges -->
-    <NetworkConnect onmatch="include">
-      <!-- Exclude web browser noise -->
-      <Image condition="end with">chrome.exe</Image>
-      <Image condition="end with">msedge.exe</Image>
-      <Image condition="end with">firefox.exe</Image>
-      <Image condition="end with">iexplore.exe</Image>
-      <Image condition="end with">brave.exe</Image>
-      <Image condition="end with">opera.exe</Image>
-      <!-- Microsoft Update / Azure CDN ranges (common noise) -->
-      <DestinationIp condition="begin with">13.</DestinationIp>
-      <DestinationIp condition="begin with">20.</DestinationIp>
-      <DestinationIp condition="begin with">23.</DestinationIp>
-      <DestinationIp condition="begin with">40.</DestinationIp>
-      <DestinationIp condition="begin with">51.</DestinationIp>
-      <DestinationIp condition="begin with">52.</DestinationIp>
-      <DestinationIp condition="begin with">104.</DestinationIp>
-      <DestinationIp condition="begin with">131.</DestinationIp>
-      <DestinationIp condition="begin with">157.</DestinationIp>
-      <DestinationIp condition="begin with">191.</DestinationIp>
-      <DestinationIp condition="begin with">168.63.</DestinationIp>
-      <DestinationIp condition="begin with">169.254.</DestinationIp>
-    </NetworkConnect>
+    <!-- v4.6.2 (SEC review A6): browser/IP excludes removed - they made C2 via
+         Azure/Cloudflare VPS ranges (20.x/104.x/131.x) + headless-browser exfil
+         100% invisible. Raw EID 3 must reach the server; noise filtering belongs
+         server-side, not at the source. -->
+    <NetworkConnect onmatch="include"/>
     <ProcessTerminate onmatch="include"/>
     <DriverLoad onmatch="include"/>
     <ImageLoad onmatch="include"/>

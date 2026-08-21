@@ -156,6 +156,34 @@ def _is_private_ip(ip):
         return True  # APIPA
     return False
 
+# v4.6.2 (SEC review P1-1): EID 1 pre-filter keyword list - previously the EID 1
+# filter read a non-existent field (cmd_line instead of command_line) so every
+# system32 process was dropped, and the "powershell -enc" substring could never
+# match "powershell.exe -enc". Expanded to cover the common LOLBin families +
+# encoded/suspicious PowerShell flags so PowerShell -EncodedCommand, plain
+# scripts, cmd/certutil/mshta/schtasks/curl/msiexec... all reach the server.
+_SUSPICIOUS_CMD_KEYWORDS = (
+    "powershell", "pwsh",  # any PowerShell from system32 is high-signal
+    "certutil", "bitsadmin", "wmic", "mshta", "rundll32", "regsvr32",
+    "cscript", "wscript",
+    "cmd.exe /c", "cmd /c", "schtasks", "forfiles", "pcalua", "curl",
+    "msiexec", "net.exe", "net1.exe", "reg.exe", "sc.exe", "taskkill",
+    "vssadmin", "esentutl", "wevtutil", "bcdedit", "wsl.exe",
+    " -enc", "-encodedcommand", "-windowstyle", "exec bypass", "bypass",
+    "iex(", "frombase64", "downloadstring", "downloadfile", "invoke-",
+    "net user", " /add", "whoami", "systeminfo", "nslookup", "netstat -ano",
+    "arp -a", "route print", "adduser",
+)
+
+# v4.6.2 (SEC review A3): EID 7 pre-filter - signed DLLs loaded by script hosts
+# / LOLBins from non-system directories are logged (module stomping was fully
+# invisible when every signed DLL was dropped).
+_SCRIPT_HOST_LOADERS = (
+    "powershell", "pwsh", "wscript", "cscript", "mshta", "msbuild",
+    "wmic", "regsvr32", "rundll32", "cmd.exe",
+)
+
+
 
 def send_user_message():
     """IT support: open a dialog for the workstation user to send a message to the admin.
@@ -2238,43 +2266,64 @@ del "%~f0"
         # EID 1 (Process Create): Only send if new EXE or from suspicious path
         if eid == 1:
             proc_path = event.get("process_path", "").lower()
-            cmd_line = event.get("cmd_line", "").lower()
+            # v4.6.2 (SEC): field is command_line (cmd_line never existed -> every
+            # system32 process was silently dropped); missing cmdline -> fail-open.
+            cmd_line = event.get("command_line", "").lower()
             # Skip common system processes
             if "\\windows\\system32\\" in proc_path or "\\windows\\syswow64\\" in proc_path:
-                if not any(kw in cmd_line for kw in ("powershell -enc", "certutil", "bitsadmin", "wmic", "mshta", "rundll32", "regsvr32", "cscript", "wscript")):
+                if not cmd_line.strip():
+                    pass  # fail-open: cannot judge an empty command line
+                elif not any(kw in cmd_line for kw in _SUSPICIOUS_CMD_KEYWORDS):
                     return  # Skip routine system32 processes
             # Skip browser/spooler/office noise
             if any(kw in proc_path for kw in ("\\chrome\\", "\\firefox\\", "\\edge\\", "\\spoolsv\\", "\\office\\")):
                 return
 
-        # EID 7 (Image Load): Only send if unsigned DLL from non-standard path
+        # EID 7 (Image Load): Only send if unsigned DLL, or signed DLL loaded by
+        # a script host from a non-system dir (module stomping detection)
         if eid == 7:
-            image_path = event.get("image_path", "").lower()
+            image_path = event.get("dll_path", "").lower() or event.get("image_loaded", "").lower()
             signed = event.get("signed", "true").lower()
+            in_system_dir = "\\windows\\system32\\" in image_path or "\\windows\\syswow64\\" in image_path
             if signed == "true":
-                return  # Skip signed DLLs
-            if "\\windows\\system32\\" in image_path or "\\windows\\syswow64\\" in image_path:
+                # v4.6.2 (SEC): signed third-party DLLs were fully invisible
+                if in_system_dir:
+                    return  # Skip system-signed DLLs from system dirs
+                loader = (event.get("process_name") or "").lower()
+                if not any(ph in loader for ph in _SCRIPT_HOST_LOADERS):
+                    return
+            elif in_system_dir:
                 if signed != "false":
-                    return  # Skip system signed DLLs
+                    return  # Skip system dirs with unknown signing state
 
         # EID 11 (File Create): Only send if in sensitive paths
         if eid == 11:
-            target = event.get("target_filename", "").lower()
-            sensitive_dirs = ("\\windows\\", "\\programdata\\microsoft\\windows\\start menu\\",
-                             "\\temp\\", "\\downloads\\", "\\appdata\\local\\temp\\")
+            target = event.get("file_path", "").lower()
+            sensitive_dirs = ("\\windows\\", "\\inetpub\\", "\\perflogs\\",
+                              "\\programdata\\", "\\users\\public\\",
+                              "\\programdata\\microsoft\\windows\\start menu\\",
+                              "\\temp\\", "\\downloads\\", "\\appdata\\local\\temp\\")
             if not any(d in target for d in sensitive_dirs):
-                return  # Skip non-sensitive file creates
-            # Skip .tmp/.log/.etl files
-            if target.endswith((".tmp", ".log", ".etl", ".pf")):
                 return
+            # v4.6.2 (SEC): noise-extension skip ONLY in genuine temp locations -
+            # a payload named 'x.tmp' dropped into C:\Users\Public, C:\ProgramData
+            # or \windows\ still reaches the server.
+            if any(d in target for d in ("\\appdata\\local\\temp\\", "\\windows\\temp\\", "\\temp\\")):
+                if target.endswith((".tmp", ".log", ".etl", ".pf")):
+                    return
 
         # EID 12/13/14 (Registry): Only send if key is in sensitive paths
         if eid in (12, 13, 14):
-            reg_path = event.get("target_object", "").lower()
+            reg_path = event.get("registry_key", "").lower()
             sensitive_keys = ("run", "runonce", "services", "image file execution",
-                             "winlogon", "bootexecute", "appinit", "shell")
+                              "winlogon", "bootexecute", "appinit", "shell",
+                              # v4.6.2 (SEC): COM hijack, WMI subscription, AppCertDLLs,
+                              # print monitors, LSA security packages, SBL/transcript keys
+                              "clsid", "subscription", "appcertdlls", "monitors",
+                              "security packages", "control\\lsa",
+                              "scriptblocklogging", "transcriptlogging")
             if not any(k in reg_path for k in sensitive_keys):
-                return  # Skip non-sensitive registry changes
+                return
 
         # EID 22 (DNS): Dedup 300s per domain
         if eid == 22:
@@ -2293,7 +2342,10 @@ del "%~f0"
                 return
 
         # Pass through all other events
-        self._real_send(event)
+        # v4.6.2 (SEC): route through _enrich_and_queue so sysmon events (EID 10
+        # ProcessAccess, EID 6 driver, EID 16/255 tampering, EID 2/23/25...) hit the
+        # correlation engine + MITRE mapping instead of going straight to the wire.
+        self._enrich_and_queue(event)
 
     # ================ v3.9.0: NETSTAT POLL WITH AGGREGATION (FALLBACK) ================
 
