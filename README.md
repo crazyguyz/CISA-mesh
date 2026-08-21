@@ -206,7 +206,9 @@ Muốn thêm dropdown mới (VD "Phòng ban"), chỉ cần thêm một đối t�
 - Đặt `GIAMSAT_TLS_ENABLED=true` trong `.env` để bật mTLS (tự sinh self-signed CA).
 - ⚠️ Từ v4.11: nếu bật mà không dựng được TLS, server **từ chối khởi động** (fail-closed) — không bao giờ âm thầm quay về plaintext.
 
-**2. Web/API (cổng 5000) — hiện là HTTP trần:** agent PSK, heartbeat và lệnh điều khiển đi qua đây, **bắt buộc** đặt sau TLS reverse proxy khi triển khai thật:
+**2. Web/API (cổng 5000):**
+- **Tùy chọn A — HTTPS tích hợp sẵn (v4.13):** đặt `GIAMSAT_WEB_TLS_ENABLED=true` trong `.env` để server tự phục vụ HTTPS trên cổng 5000 bằng self-signed CA (không cần reverse proxy). Browser sẽ hiện cảnh báo chứng chỉ (self-signed) — cài `server\certs\ca.crt` vào trusted store để hết cảnh báo. Khi bật, agent cần đặt `"web_tls": true` trong `agent_config.json` (hoặc env `GIAMSAT_SERVER_TLS=true`) để gọi HTTPS bằng kênh này (verify theo CA).
+- **Tùy chọn B — reverse proxy (nginx/Caddy):** agent PSK, heartbeat và lệnh điều khiển đi qua cổng 5000 — nếu không bật A thì **bắt buộc** đặt sau TLS reverse proxy khi triển khai thật:
 ```nginx
 # nginx stream (file có sẵn: server/nginx_tcp_stream.conf)
 stream {
@@ -238,7 +240,7 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
 **5. Lưu trữ phân tầng & mở rộng (v4.13 P2):**
 - **Hot** (SQLite/PG) 30 ngày → **Warm** 90 ngày → **Cold** 12 tháng (archive file/parquet). Hàm `apply_retention_policy` (server_core.py) đã có — chỉ cần cấu hình số ngày phù hợp.
 - Chuyển sang **PostgreSQL** khi EPS > ~1.000 (backend `db_postgres.py` đã có sẵn; đặt `GIAMSAT_DB_BACKEND=postgres`).
-- **NetFlow/sFlow** (phát hiện C2 beaconing/exfil): nguồn phát sinh từ switch edge — mục tiêu P2 tiếp theo (cần bật flow export trên switch trước).
+- **NetFlow (v4.13 — đã có):** collector UDP 2055 (v5+v9), tab NetFlow trên dashboard (stats v5/v9, cảnh báo C2 beaconing, bảng flows). Sửa sFlow (UDP 6343) là mục tiêu nếu switch chỉ export sFlow. Cần bật flow export trên switch edge trước.
 
 ---
 
