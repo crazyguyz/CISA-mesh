@@ -1881,7 +1881,22 @@ class DatabaseManager:
             q += " ORDER BY id DESC LIMIT ?"
             p.append(limit)
             c = self.conn.execute(q, p)
-            return [dict(row) for row in c.fetchall()]
+            rows = [dict(row) for row in c.fetchall()]
+        # v4.13 (P2): memory scan events store alert_type/module_name/module_path/signer etc.
+        # only inside raw_data JSON (not as columns) - surface them so the Memory view
+        # (loadMemory: alert_type/module_name/module_path/signed/signer) can classify correctly.
+        for row in rows:
+            if row.get("event_type") == "memory_scan_event" and row.get("raw_data"):
+                try:
+                    raw = json.loads(row["raw_data"])
+                    if isinstance(raw, dict):
+                        for k in ("alert_type", "module_name", "module_path", "signed", "signer",
+                                  "suspicious_size_kb", "working_set_mb", "start_time", "path"):
+                            if row.get(k) in (None, "") and raw.get(k) is not None:
+                                row[k] = raw[k]
+                except Exception:
+                    pass
+        return rows
 
     # =========================================================================
     # v3.2: DATA RETENTION & CLEANUP

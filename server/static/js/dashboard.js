@@ -889,7 +889,7 @@ function loadAgentlessDevices() {
     fetch('/api/agentless/devices').then(r => r.json()).then(devices => {
         let html = '';
         if (devices && devices.length > 0) {
-            html += tableWrap(['#','Tên','IP',t('dash.type'),'Method','Interval(s)','Thao tác'],
+            html += tableWrap(['#',t('ui.name'),'IP',t('dash.type'),'Method','Interval(s)',t('ui.actions')],
                 devices.map((d,i) => `<tr><td>${i+1}</td><td>${d.name||'-'}</td><td>${d.ip||'-'}</td><td>${d.device_type||'generic'}</td><td>${d.method||'ping'}</td><td>${d.interval_seconds||300}</td><td><button class="btn btn-del btn-sm py-0 px-1" onclick="deleteAgentlessDevice(${i})"><i class="bi bi-trash3"></i></button></td></tr>`)
             );
         } else {
@@ -1377,7 +1377,7 @@ function loadMachines() {
                 sel.value = curVal;
             }
         }
-        document.getElementById('machineTableContainer').innerHTML = tableWrap([t('dash.status'),'Hostname','Người sử dụng','Uptime','IP','Machine ID','Online','Thao tác'], ms.map(m => {
+        document.getElementById('machineTableContainer').innerHTML = tableWrap([t('dash.status'),t('ui.hostname'),t('ui.user'),t('ui.uptime'),'IP',t('ui.machineId'),t('ui.online'),t('ui.actions')], ms.map(m => {
             const userCell = (m.user_name) ? `👤 ${escapeHtml(m.user_name)}${m.employee_id?'<br><small style="font-size:9px;">'+escapeHtml(m.employee_id)+'</small>':''}` : '-';
             const uptimeCell = (m.is_online==1 && m.uptime_hours > 0) ? `<span style="color:${m.uptime_alert_24h?'#ff4444':'#8892a4'};">⏱ ${m.uptime_hours.toFixed(1)}h${m.uptime_alert_24h?' ⚠':''}</span>` : '-';
             return `<tr><td><span class="online-dot ${m.is_online==1?'online':'offline'}"></span></td><td><strong>${m.hostname||'Unknown'}</strong></td><td style="font-size:11px;">${userCell}</td><td style="font-size:11px;">${uptimeCell}</td><td>${m.ip_address||'-'}</td><td style="font-family:monospace;font-size:11px;">${m.machine_id}</td><td>${m.is_online==1?'<span class="badge bg-success">Online</span>':'<span class="badge bg-secondary">Offline</span>'}</td><td class="text-nowrap"><button class="btn btn-stop btn-sm py-0 px-1" onclick="event.stopPropagation();stopMachineById('${m.machine_id}')"><i class="bi bi-stop-circle"></i></button><button class="btn btn-del btn-sm py-0 px-1 ms-1" onclick="event.stopPropagation();deleteMachineById('${m.machine_id}')"><i class="bi bi-trash3"></i></button></td></tr>`;
@@ -1408,33 +1408,33 @@ function stopMachine() { stopMachineById(selectedMachine); }
 function deleteMachine() { deleteMachineById(selectedMachine); }
 // ===== v2.5.0: ISOLATE MACHINE =====
 function isolateMachine() {
-    if (!selectedMachine) { showToast('Chọn máy trạm trước!'); return; }
+    if (!selectedMachine) { showToast(t('mc.selectFirst')); return; }
     if (!confirm(t('ui.confirmIsolate',[selectedMachine]))) return;
-    showToast('Đang gửi lệnh cô lập...');
+    showToast(t('mc.isolating'));
     fetch('/api/machine/' + selectedMachine + '/isolate', {method: 'POST'})
         .then(r => r.json()).then(d => {
             if (d.success) {
-                showToast('Đã cô lập máy ' + (d.message || ''));
+                showToast(t('mc.isolated', [d.message || selectedMachine]));
                 document.getElementById('btnUnisolate').style.display = '';
             } else {
-                showToast('Lỗi: ' + (d.message || 'Agent offline'));
+                showToast('❌ ' + (d.message || t('mc.sendFail')));
             }
-        }).catch(e => showToast('Lỗi kết nối'));
+        }).catch(e => showToast(t('mc.connErr', [e.message])));
 }
 
 function unisolateMachine() {
-    if (!selectedMachine) { showToast('Chọn máy trạm trước!'); return; }
-    if (!confirm('Go co lap may ' + selectedMachine + '?\n\nMay se duoc khoi phuc ket noi mang binh thuong.')) return;
-    showToast('Đang gửi lệnh gỡ cô lập...');
+    if (!selectedMachine) { showToast(t('mc.selectFirst')); return; }
+    if (!confirm(t('mc.unIsolateConfirm', [selectedMachine]))) return;
+    showToast(t('mc.unisolating'));
     fetch('/api/machine/' + selectedMachine + '/unisolate', {method: 'POST'})
         .then(r => r.json()).then(d => {
             if (d.success) {
-                showToast('Đã gỡ cô lập máy ' + (d.message || ''));
+                showToast(t('mc.unisolated', [d.message || selectedMachine]));
                 document.getElementById('btnUnisolate').style.display = 'none';
             } else {
-                showToast('Lỗi: ' + (d.message || 'Agent offline'));
+                showToast('❌ ' + (d.message || t('mc.sendFail')));
             }
-        }).catch(e => showToast('Lỗi kết nối'));
+        }).catch(e => showToast(t('mc.connErr', [e.message])));
 }
 
 function deleteOfflineMachines() {
@@ -3819,6 +3819,30 @@ function exportReport(fmtId, cfgId, swId, uidId) {
       document.getElementById('floatAiBody').lastChild.remove();
       addBotBubble('⚠ Loi ket noi: '+err.message);
     });
+  };
+
+  window.onFloatAiFileSelected = function(){
+    const input=document.getElementById('floatAiFileInput');
+    if(!input||!input.files||!input.files.length)return;
+    const file=input.files[0];
+    const reader=new FileReader();
+    reader.onload=function(e){
+      const content=String(e.target.result||'');
+      const snippet=content.length>4000?content.substring(0,4000)+'...\n['+t('ai.thinking')+']':content;
+      addUserBubble('[📎 '+file.name+']\n'+snippet);
+      addSysBubble(t('ai.thinking'));
+      fetch('/api/float_ai_chat',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({messages:[{role:'system',content:'Ban la tro ly AI.'},{role:'user',content:'File "'+file.name+'" noi dung:\n'+content}]})
+      }).then(r=>r.json()).then(data=>{
+        document.getElementById('floatAiBody').lastChild.remove();
+        if(data.success){addBotBubble(data.content);}else{addBotBubble(t('ui.errPrefix')+(data.error||''));}
+      }).catch(err=>{
+        document.getElementById('floatAiBody').lastChild.remove();
+        addBotBubble('⚠ '+t('ui.errPrefix')+err.message);
+      });
+    };
+    reader.readAsText(file);
   };
 
   window.clearAiChat=function(){document.getElementById('floatAiBody').innerHTML='';addBotBubble(t('dash.clearHistory'));};
