@@ -1,0 +1,59 @@
+# =============================================================================
+# GIAM-SAT Field Aliases - v4.13 (P1.3)
+# Maps SIGMA rule field names (PascalCase, from SigmaHQ) to the snake_case
+# fields the agent actually sends. Revives ~1000 SIGMA rules whose field_contains
+# previously never matched because the agent uses a different naming.
+#
+# Usage: the correlation engine resolves a condition's field name through this
+# map when the raw field is absent from the event.
+# =============================================================================
+aliases:
+  # Process
+  CommandLine: command_line
+  ProcessName: process_name
+  Image: process_path
+  ImagePath: process_path
+  TargetImage: process_path
+  ParentImage: parent_process
+  ParentCommandLine: parent_command_line
+  IntegrityLevel: integrity_level
+  User: user
+  Username: user
+  # Files
+  TargetFilename: file_path
+  FileName: file_name
+  FileExtension: file_extension
+  ImageLoaded: image_loaded
+  # Registry
+  TargetObject: registry_key
+  # Network
+  SourceIp: src_ip
+  DestinationIp: dst_ip
+  SourcePort: src_port
+  DestinationPort: dst_port
+  Protocol: protocol
+  QueryName: dns_query
+  QueryResults: dns_results
+  # Pipes / services
+  PipeName: pipe_name
+  ServiceFileName: service_file
+  ServiceName: service_name
+  # Objects / shares / AD
+  ObjectName: object_name
+  ObjectDN: object_dn
+  ShareName: share_name
+  TargetUsername: target_username
+  TargetDomain: target_domain
+  SubjectUsername: subject_username
+  SubjectDomain: subject_domain
+  AdminUsername: admin_username
+  LogonType: logon_type
+  # Misc
+  Hashes: hashes
+  Details: details
+  Data: raw_data
+  SourceHostname: source_hostname
+  TaskName: task_name
+  TaskContent: task_content
+  AccessMask: access_type
+  ScriptBlockText: scriptblock_text

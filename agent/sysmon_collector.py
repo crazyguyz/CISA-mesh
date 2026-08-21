@@ -51,6 +51,8 @@ EVENT_TYPE_MAP = {
     2:  "process_event",       # v3.1: Process Terminate (Timestomping detection via CreationUtcTime)
     3:  "network_event",       # Network Connect (CÓ PID!)
     4:  "service_state_change",# v3.9.16: Sysmon Service State (stopped/started) → Tampering Detection
+    5:  "process_terminate",   # v4.13 (P1.2): Process Terminate - closes the kill chain
+    6:  "driver_load",         # v4.13 (P1.2): Driver Load - BYOVD detection
     7:  "module_load_event",   # Image/DLL Load
     8:  "process_injection",   # CreateRemoteThread
     10: "process_access",      # Process Access (LSASS dumping)
@@ -63,6 +65,10 @@ EVENT_TYPE_MAP = {
     17: "pipe_created",        # v3.9.16: Named Pipe Created (IPC)
     18: "pipe_connected",      # v3.9.16: Named Pipe Connected (IPC)
     22: "dns_query_event",     # DNS Query
+    23: "file_delete",         # v4.13 (P1.2): File Delete archived - ransomware mass-delete
+    25: "process_tampering",   # v4.13 (P1.2): Process Tampering - ETW/AMSI patching
+    26: "file_delete",         # v4.13 (P1.2): File Delete detected - ransomware mass-delete
+    255: "config_change",      # v4.13 (P1.2): Sysmon Config Change (tampering)
 }
 
 # High-value process names for credential dumping detection
@@ -291,6 +297,9 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
                 "type": event_type,
                 "source": "sysmon",
                 "sysmon_event_id": event_id,
+                # v4.13 (P1.2): also expose event_id so correlation rules can filter
+                # sysmon events by EventID via the standard 'event_id' condition.
+                "event_id": str(event_id),
                 "timestamp": time_created,
                 "hostname": machine_name,
             }
@@ -609,6 +618,89 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
                     "dns_query": query_name,
                     "dns_status": query_status,
                     "dns_results": query_results,
+                })
+
+            # ---- Event ID 5: Process Terminate (v4.13 P1.2) ----
+            elif event_id == 5:
+                image = event_data.get("Image", "")
+                pid = event_data.get("ProcessId", "")
+                user = event_data.get("User", "")
+                base_event.update({
+                    "process_name": os.path.basename(image) if image else "",
+                    "process_path": image,
+                    "pid": pid,
+                    "user": user,
+                    "terminated": True,
+                })
+
+            # ---- Event ID 6: Driver Load / BYOVD (v4.13 P1.2) ----
+            elif event_id == 6:
+                image = event_data.get("Image", "")
+                pid = event_data.get("ProcessId", "")
+                driver = event_data.get("ImageLoaded", "")
+                signed = event_data.get("Signed", "")
+                sig = event_data.get("Signature", "")
+                base_event.update({
+                    "process_name": os.path.basename(image) if image else "",
+                    "process_path": image,
+                    "pid": pid,
+                    "driver_name": os.path.basename(driver) if driver else "",
+                    "driver_path": driver,
+                    "signed": signed,
+                    "signature": sig,
+                })
+
+            # ---- Event ID 16/17/18: Sysmon Config Change / Pipe Created / Pipe Connected (v4.13 P1.2) ----
+            elif event_id in (16, 17, 18):
+                image = event_data.get("Image", "")
+                pid = event_data.get("ProcessId", "")
+                pipe_name = event_data.get("PipeName", "")
+                base_event.update({
+                    "process_name": os.path.basename(image) if image else "",
+                    "process_path": image,
+                    "pid": pid,
+                    "pipe_name": pipe_name,
+                    "pipe_action": "created" if event_id == 17 else ("connected" if event_id == 18 else "config_change"),
+                })
+                if event_id == 16:
+                    base_event["severity"] = "HIGH"
+                    base_event["description"] = "Sysmon configuration was changed - rules may have been deleted or modified"
+
+            # ---- Event ID 23/26: File Delete (ransomware mass-delete) (v4.13 P1.2) ----
+            elif event_id in (23, 26):
+                image = event_data.get("Image", "")
+                pid = event_data.get("ProcessId", "")
+                target_file = event_data.get("TargetFilename", "")
+                hashes = event_data.get("Hashes", "")
+                base_event.update({
+                    "process_name": os.path.basename(image) if image else "",
+                    "process_path": image,
+                    "pid": pid,
+                    "file_path": target_file,
+                    "file_name": os.path.basename(target_file) if target_file else "",
+                    "file_extension": os.path.splitext(target_file)[1] if target_file else "",
+                    "file_hash": (hashes or "").split(",")[0].split("=")[-1].strip() if hashes else "",
+                    "file_delete": True,
+                })
+
+            # ---- Event ID 25: Process Tampering (ETW/AMSI patch) (v4.13 P1.2) ----
+            elif event_id == 25:
+                image = event_data.get("Image", "")
+                pid = event_data.get("ProcessId", "")
+                base_event.update({
+                    "process_name": os.path.basename(image) if image else "",
+                    "process_path": image,
+                    "pid": pid,
+                    "tampering": True,
+                    "severity": "CRITICAL",
+                    "description": f"Process tampering detected: {image} (ETW/AMSI may have been patched)",
+                })
+
+            # ---- Event ID 255: Sysmon Config Change (tampering) (v4.13 P1.2) ----
+            elif event_id == 255:
+                base_event.update({
+                    "severity": "CRITICAL",
+                    "description": "Sysmon configuration change event - verify rules were not tampered with",
                 })
 
             return base_event

@@ -42,6 +42,19 @@ except ImportError:
 
 RULES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules", "correlation_rules.yaml")
 
+# v4.13 (P1.3): SIGMA field-name aliases (PascalCase -> agent snake_case) so the
+# ~1000 SIGMA field_contains rules can actually resolve data. See field_aliases.yaml.
+FIELD_ALIASES = {}
+if HAS_YAML:
+    try:
+        _aliases_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "field_aliases.yaml")
+        if os.path.exists(_aliases_path):
+            with open(_aliases_path, "r", encoding="utf-8") as _f:
+                _alias_data = yaml.safe_load(_f) or {}
+            FIELD_ALIASES = _alias_data.get("aliases", {}) or {}
+    except Exception:
+        FIELD_ALIASES = {}
+
 PROCESS_PARENT_WHITELIST = {
     "powershell.exe": {"explorer.exe", "svchost.exe", "services.exe", "msmpeng.exe", "sppsvc.exe",
                         "taskeng.exe", "ommsync.exe", "onedrive.exe", "teams.exe", "outlook.exe",
@@ -591,6 +604,13 @@ class CorrelationEngine:
             if v is None:
                 pf = event.get("parsed_fields") or {}
                 v = pf.get(field_name)
+            # v4.13 (P1.3): resolve SIGMA PascalCase field names to agent snake_case
+            if v is None and field_name in FIELD_ALIASES:
+                alias = FIELD_ALIASES[field_name]
+                v = event.get(alias)
+                if v is None:
+                    pf = event.get("parsed_fields") or {}
+                    v = pf.get(alias)
             return "" if v is None else v
 
         field_contains = condition.get("field_contains")

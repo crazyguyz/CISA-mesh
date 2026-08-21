@@ -168,6 +168,57 @@ EVENT_STRINGINSERTS_MAP = {
         'task_name': 1,
         'user_context': 0,
     },
+    '1102': {  # v4.13 (P1.3): Audit log cleared
+        'subject_username': 1,
+        'subject_domain': 2,
+        'channel': 4,
+    },
+    '4720': {  # v4.13 (P1.3): User account created
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4722': {  # v4.13 (P1.3): User account enabled
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4723': {  # v4.13 (P1.3): Password change attempted
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4724': {  # v4.13 (P1.3): Password reset attempted
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4725': {  # v4.13 (P1.3): User account disabled
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4726': {  # v4.13 (P1.3): User account deleted
+        'target_username': 0,
+        'target_domain': 1,
+        'admin_username': 6,
+    },
+    '4740': {  # v4.13 (P1.3): Account locked out
+        'target_username': 0,
+        'target_domain': 1,
+    },
+    '4771': {  # v4.13 (P1.3): Kerberos pre-auth failure
+        'target_username': 0,
+        'target_domain': 1,
+        'source_ip': 6,
+        'failure_code': 7,
+    },
+    '5136': {  # v4.13 (P1.3): GPO modified
+        'subject_user': 1,
+        'subject_domain': 2,
+        'object_dn': 3,
+        'attribute': 4,
+    },
     # Sysmon Event IDs (parsed from StringInserts)
     '1': {  # Process Creation
         'process_name': 4,

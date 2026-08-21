@@ -109,6 +109,55 @@ rules:
       - reg.exe save
     threshold: 1
     within_seconds: 60
+- id: SYSMON-UNSIGNED-DRV
+  name: Unsigned Driver Loaded (BYOVD)
+  mitre: T1543.003
+  tactic: Persistence
+  description: Unsigned kernel driver loaded - possible BYOVD (Bring Your Own Vulnerable Driver)
+  severity: HIGH
+  conditions:
+  - type: driver_load
+    event_id: '6'
+    field_contains:
+      signed:
+      - 'false'
+    threshold: 1
+    within_seconds: 60
+- id: SYSMON-CFG-CHANGE
+  name: Sysmon Config Change (Tampering)
+  mitre: T1562.001
+  tactic: Defense Evasion
+  description: Sysmon configuration was changed - rules may have been deleted or modified
+  severity: CRITICAL
+  conditions:
+  - type: config_change
+    event_id: '255'
+    threshold: 1
+    within_seconds: 60
+- id: SYSMON-TAMPER
+  name: Process Tampering (ETW/AMSI Patch)
+  mitre: T1562.001
+  tactic: Defense Evasion
+  description: Sysmon detected process tampering - ETW/AMSI instrumentation may be patched
+  severity: CRITICAL
+  conditions:
+  - type: process_tampering
+    event_id: '25'
+    threshold: 1
+    within_seconds: 60
+- id: SYSMON-MASS-DELETE
+  name: Mass File Delete (Ransomware)
+  mitre: T1486
+  tactic: Impact
+  description: 50+ file deletions detected within 300 seconds - possible ransomware mass-delete
+  severity: HIGH
+  conditions:
+  - type: file_delete
+    event_id:
+    - '23'
+    - '26'
+    threshold: 50
+    within_seconds: 300
 - id: THREAT-002
   name: Ransomware Behavior - Mass File Modification
   mitre: T1486

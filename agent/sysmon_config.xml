@@ -11,6 +11,9 @@
     ID 13 - Registry Set Value
     ID 14 - Registry Rename
     ID 22 - DNS Query (process + domain)
+    ID 23/26 - File Delete (v4.13: ransomware mass-delete detection)
+    ID 25 - Process Tampering (v4.13: ETW/AMSI patch detection)
+    ID 255 - Config Change (v4.13: Sysmon rules tampering detection)
   
   v2.6.5: Added NetworkConnect exclusions to reduce noise:
     - Browser processes (chrome, edge, firefox, etc.)
@@ -56,5 +59,8 @@
     <WmiEvent onmatch="include"/>
     <DnsQuery onmatch="include"/>
     <PipeEvent onmatch="include"/>
+    <FileDelete onmatch="include"/>
+    <ProcessTampering onmatch="include"/>
+    <ConfigChange onmatch="include"/>
   </EventFiltering>
 </Sysmon>

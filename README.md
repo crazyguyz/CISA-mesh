@@ -225,6 +225,16 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
 - Agent **từ chối** file update nếu thiếu chữ ký `X-File-Sig` hoặc thiếu `command_key` — kẻ đứng giữa mạng không thể thay EXE (HMAC-SHA256, fail-closed).
 - Agent phải có `command_key` giống server (cấp lúc enroll / trong config agent).
 
+**4. Đồng bộ thời gian (NTP/UTC) — v4.13 (P1.4):**
+- Mọi host (server + agent + thiết bị mạng) phải đồng bộ **NTP** và lưu log theo **UTC** để correlation window (so sánh thời gian giữa các máy) có ý nghĩa.
+- Windows Server/client: bật service `W32Time`:
+  ```powershell
+  w32tm /config /syncfromflags:manual /manualpeerlist:"time.windows.com,0x8 pool.ntp.org,0x8"
+  w32tm /config /update
+  Restart-Service w32time
+  ```
+- Router/switch/firewall (DrayTek, TP-Link...): cấu hình NTP client trỏ về cùng nguồn thời gian.
+
 ---
 
 ## 📸 Tính năng chính
