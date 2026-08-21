@@ -5,6 +5,33 @@ from flask import request, jsonify
 from .api_common import check_auth
 
 
+def _is_private_ip(ip):
+    """v4.6.3: mirror of the agent's private-range check - internal destinations
+    are normal file-server/print traffic, not C2 beacons."""
+    if not ip:
+        return True
+    if ip in ("127.0.0.1", "::1", "0.0.0.0", "::"):
+        return True
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+    except ValueError:
+        return False
+    if a == 10:
+        return True
+    if a == 172 and 16 <= b <= 31:
+        return True
+    if a == 192 and b == 168:
+        return True
+    if a == 169 and b == 254:
+        return True  # APIPA
+    if a == 224 or a == 255:
+        return True  # multicast / broadcast
+    return False
+
+
 def register(app, core):
     """Register netflow routes."""
 
@@ -22,8 +49,9 @@ def register(app, core):
 
     @app.route("/api/netflow/beaconing")
     def api_netflow_beaconing():
-        """v4.13 (P2): flag repeat connections to the same dst (beaconing heuristic):
-        >= 3 flows to the same dst:port in the window with similar inter-arrival."""
+        """v4.13 (P2): flag repeat connections to the same external dst (beaconing
+        heuristic): >= 3 flows to the same dst:port in the window. Private/internal
+        destinations are excluded (file servers etc. - not C2)."""
         _, err, code = check_auth("api")
         if err: return err, code
         since_hours = request.args.get("since_hours", 24, type=int)
@@ -37,6 +65,8 @@ def register(app, core):
                 agg[key].append(f.get("last", 0))
             beacons = []
             for (src, dst, dport, proto), times in agg.items():
+                if _is_private_ip(dst):
+                    continue  # v4.6.3: internal destinations are not C2 beacons
                 times = sorted(t for t in times if t)
                 if len(times) >= min_flows:
                     beacons.append({

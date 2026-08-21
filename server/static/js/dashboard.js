@@ -1,4 +1,6 @@
-function escapeHtml(s){return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"').replace(/'/g,'&#39;');}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function fmtBytes(b){b=parseInt(b)||0;if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
+
 var selectedMachine = null;
 var configCache = {};
 var configLoadedFor = null;
@@ -472,7 +474,7 @@ function loadNetwork() {
         if (!data.length) { html += '<div class="text-center text-muted py-2">' + t('dash.noNetworkTraffic') + '</div>'; }
         else {
             html += '<h6 class="px-2 pt-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-diagram-3"></i> '+t('ui.networkTraffic')+'</h6>';
-            html += tableWrap([t('dash.time'),t('dash.machine'),t('dash.source'),'Đích','Giao thức','Port','Size','Ứng dụng'],
+            html += tableWrap([t('dash.time'),t('dash.machine'),t('dash.source'),t('dash.dest'),t('dash.protocol'),'Port','Size',t('dash.app')],
                 data.map(e => {
                     const row = Object.assign({}, e, {type: 'network_traffic'});
                     if (e.raw_data) { try {

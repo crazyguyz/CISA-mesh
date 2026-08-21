@@ -20,7 +20,7 @@
             '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_processes\')">' + t('mc.processes') + '</button></div>' +
             '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_services\')">' + t('mc.services') + '</button></div>' +
             '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_connections\')">' + t('mc.connections') + '</button></div>' +
-            '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_scheduled_tasks\')">Scheduled Tasks</button></div>' +
+            '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_scheduled_tasks\')">' + t('mc.scheduledTasks') + '</button></div>' +
             '<div class="col"><button class="btn btn-sm export-btn w-100" onclick="window.machineControlAction(\'get_startup_programs\')">' + t('mc.startup') + '</button></div>' +
             '</div>' +
             '<div id="controlResult" style="max-height:500px;overflow-y:auto;background:#0a0f14;border-radius:4px;padding:8px;font-family:Consolas,monospace;font-size:10px;color:#c8d8e8;white-space:pre-wrap;">' +
