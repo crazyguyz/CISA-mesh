@@ -28,6 +28,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             syslog: { el: 'viewSyslog', container: 'syslogList', load: function() { loadSyslog(); } },
             response: { el: 'viewResponse', container: 'allResponseList', load: function() { loadAllResponses(); } },
             network: { el: 'viewNetwork', container: 'networkList', load: function() { loadNetwork(); } },
+            netflow: { el: 'viewNetflow', load: function() { loadNetflow(); } },
             threats: { el: 'viewThreats', container: 'threatList', load: function() { loadThreats(); } },
             vulns: { el: 'viewVulns', container: 'vulnList', load: function() { loadVulns(); } },
             yara: { el: 'viewYara', container: 'yaraList', load: function() { loadYara(); } },
@@ -416,6 +417,54 @@ function loadAllResponses() {
     });
 }
 
+function loadNetflow() {
+    const tbody = document.querySelector('#netflowTable tbody');
+    const statsRow = document.getElementById('netflowStatsRow');
+    const beaconBody = document.getElementById('netflowBeaconBody');
+    const updatedEl = document.getElementById('netflowUpdated');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> ' + t('ui.loading') + '</td></tr>';
+
+    // Stats
+    fetch('/api/netflow/stats').then(r => r.json()).then(st => {
+        if (statsRow && st) {
+            const cards = [
+                { icon: 'bi-broadcast', label: t('netflow.pkts'), val: st.packets || 0 },
+                { icon: 'bi-arrow-left-right', label: t('netflow.flows'), val: st.flows || 0 },
+                { icon: 'bi-activity', label: 'NetFlow v5', val: st.v5 || 0 },
+                { icon: 'bi-activity', label: 'NetFlow v9', val: st.v9 || 0 }
+            ];
+            statsRow.innerHTML = cards.map(c => `<div class="col-md-3 col-6"><div class="card"><div class="card-body py-2 d-flex align-items-center justify-content-between"><div><div class="text-muted" style="font-size:11px;">${c.label}</div><div style="font-size:20px;font-weight:600;color:#8ee6a8;">${c.val}</div></div><i class="bi ${c.icon} text-success" style="font-size:22px;opacity:.7;"></i></div></div></div>`).join('');
+        }
+    }).catch(() => {});
+
+    // Beaconing
+    const protoName = p => p === 6 ? 'TCP' : p === 17 ? 'UDP' : p === 1 ? 'ICMP' : (p === 0 || p == null ? '?' : String(p));
+    fetch('/api/netflow/beaconing').then(r => r.json()).then(data => {
+        if (!beaconBody) return;
+        const arr = Array.isArray(data) ? data : (data.beacons || data.suspects || []);
+        if (!arr.length) { beaconBody.innerHTML = '<div class="text-muted">' + t('netflow.noBeacon') + '</div>'; return; }
+        beaconBody.innerHTML = arr.map(b => {
+            const interval = b.span_seconds && b.flow_count > 1 ? Math.round(b.span_seconds / (b.flow_count - 1)) : '-';
+            return `<div style="background:#2a0e0e;border-left:4px solid #ff5555;padding:8px 12px;margin-bottom:5px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center flex-wrap"><span><span class="badge bg-danger">⚠ C2?</span> <strong style="color:#ffb3b3;">${escapeHtml(b.src_ip||'?')}</strong> → <strong style="color:#ffb3b3;">${escapeHtml(b.dst_ip||'?')}</strong> <span class="text-muted">:${escapeHtml(b.dst_port||'-')} ${protoName(b.protocol)}</span></span><small class="text-muted">${b.flow_count||0} flows · ${t('ssh.period')} ~${interval}s · ${b.span_seconds||0}s</small></div></div>`;
+        }).join('');
+    }).catch(() => {});
+
+    // Flows
+    fetch('/api/netflow?limit=200').then(r => r.json()).then(data => {
+        const list = Array.isArray(data) ? data : (data.flows || []);
+        if (tbody) {
+            if (!list.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">' + t('dash.noNetworkTraffic') + '</td></tr>'; }
+            else {
+                tbody.innerHTML = list.map(e => {
+                    const sp = e.src_port || '-', dp = e.dst_port || '-';
+                    const proto = protoName(e.protocol);
+                    return `<tr style="font-family:monospace;font-size:11px;"><td style="white-space:nowrap;">${escapeHtml((e.received_at||'').substring(0,19))}</td><td>${escapeHtml(e.src_ip||'-')}</td><td>${escapeHtml(sp)}</td><td>${escapeHtml(e.dst_ip||'-')}</td><td>${escapeHtml(dp)}</td><td><span class="badge ${proto==='TCP'?'bg-info':proto==='UDP'?'bg-warning text-dark':'bg-secondary'}">${proto}</span></td><td>${fmtBytes(e.bytes||0)}</td><td>${e.packets||0}</td><td>${escapeHtml(e.exporter_ip||'-')}</td></tr>`;
+                }).join('');
+            }
+        }
+        if (updatedEl) updatedEl.textContent = t('netflow.updated') + ': ' + new Date().toLocaleTimeString();
+    }).catch(() => { if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">⚠ ' + t('ui.error') + '</td></tr>'; });
+}
 function loadNetwork() {
     const el = document.getElementById('networkList');
     fetch('/api/network?limit=200').then(r => r.json()).then(data => {
@@ -4092,12 +4141,23 @@ function loadIncidentView() {
     if (!sidebar) return;
     sidebar.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> '+t('ui.loading')+'</div>';
 
-    fetch('/api/incident/list?limit=100')
+    // v4.13 (P2): optional machine filter (kill-chain -> Incident jump)
+    const mf = window._incidentMachineFilter || null;
+    let url = '/api/incident/list?limit=100';
+    let banner = '';
+    if (mf) {
+        url += '&machine_id=' + encodeURIComponent(mf);
+        banner = '<div class="d-flex justify-content-between align-items-center p-2" style="background:#2a1a0a;border-bottom:1px solid #5a3a1a;">' +
+            '<span style="font-size:11px;color:#ffcc66;"><i class="bi bi-filter"></i> ' + t('kc.filtering') + ': <strong>' + escapeHtml(window._incidentMachineName || mf) + '</strong></span>' +
+            '<button class="btn btn-sm btn-outline-warning" style="font-size:10px;padding:0 8px;" onclick="window._incidentMachineFilter=null;window._incidentMachineName=null;loadIncidentView();loadIncidentTimeline(0);">✖ ' + t('kc.clearFilter') + '</button></div>';
+    }
+
+    fetch(url)
         .then(r => r.json())
         .then(data => {
             const incidents = data.incidents || [];
             if (!incidents.length) {
-                sidebar.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noAlerts') + '</div>';
+                sidebar.innerHTML = banner + '<div class="text-center text-muted py-3">' + (mf ? t('kc.noIncidentFor') + ' ' + escapeHtml(window._incidentMachineName || mf) : t('dash.noAlerts')) + '</div>';
                 return;
             }
 
@@ -4119,12 +4179,21 @@ function loadIncidentView() {
                 html += '</div>';
             });
 
-            sidebar.innerHTML = html;
+            sidebar.innerHTML = banner + html;
         })
         .catch(() => {
             sidebar.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.loadListErr') + '</div>';
         });
 }
+
+// v4.13 (P2): kill-chain card -> Incident view, filtered to one machine
+window.openIncidentForMachine = function(machineId, hostname) {
+    window._incidentMachineFilter = machineId;
+    window._incidentMachineName = hostname || machineId;
+    const nav = document.querySelector('a[data-view="incident"]');
+    if (nav) nav.click();
+    loadIncidentView();
+};
 
 function loadIncidentTimeline(threatId) {
     const timelineEl = document.getElementById('incidentTimeline');

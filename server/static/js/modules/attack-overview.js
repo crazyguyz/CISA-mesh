@@ -55,7 +55,8 @@ window.renderAttackOverview = function(data) {
                 html += '<div style="background:#2a1a1a;border:1px solid #5a2a2a;border-radius:4px;padding:6px 8px;margin-top:6px;display:flex;justify-content:space-between;align-items:center;">';
                 html += '<div><strong style="color:#ff9966;">' + escapeHtml(m.hostname) + '</strong> <span class="badge bg-danger" style="font-size:9px;">' + t('kc.incident') + '</span>';
                 html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + t('kc.tactics', [m.tactic_count]) + ': ' + m.tactics.map(escapeHtml).join(', ') + '</div></div>';
-                html += '<span class="badge bg-danger" style="font-size:12px;">' + m.tactic_count + '</span></div>';
+                html += '<div style="display:flex;align-items:center;gap:6px;"><span class="badge bg-danger" style="font-size:12px;">' + m.tactic_count + '</span>';
+                html += '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 8px;" onclick="openIncidentForMachine(\'' + escapeHtml(m.machine_id) + '\',\'' + escapeHtml(m.hostname) + '\')">🔍 ' + t('kc.investigate') + '</button></div></div>';
             });
         }
         html += '</div>';
