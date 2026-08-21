@@ -263,7 +263,7 @@ EVENT_STRINGINSERTS_MAP = {
 
 
 class EnhancedEventCollector(threading.Thread):
-    def __init__(self, callback):
+    def __init__(self, callback, collect_sysmon=True):
         super().__init__(daemon=True)
         self.callback = callback
         self.running = True
@@ -271,6 +271,13 @@ class EnhancedEventCollector(threading.Thread):
         self.log_configs = {}
         self._active_logs = []
         self._use_realtime = False
+        # v4.6.4: the dedicated SysmonCollector reads the same channel with RICHER
+        # fields (target_process/granted_access/dll_path/registry_key...) and now
+        # feeds the correlation engine via _enrich_and_queue. Reading the channel
+        # here too double-sent every sysmon event (one process_event + one
+        # windows_event row on the server). agent_core passes collect_sysmon=False
+        # when the SysmonCollector is running; kept True as a fallback.
+        self.collect_sysmon = collect_sysmon
         self._init_logs()
 
     def _init_logs(self):
@@ -286,14 +293,16 @@ class EnhancedEventCollector(threading.Thread):
                 if not skip_missing:
                     pass  # Log will be silently skipped
 
-        # Try Sysmon
-        try:
-            hand = win32evtlog.OpenEventLog(None, "Microsoft-Windows-Sysmon/Operational")
-            win32evtlog.CloseEventLog(hand)
-            self._active_logs.append("Microsoft-Windows-Sysmon/Operational")
-            self.log_configs["Microsoft-Windows-Sysmon/Operational"] = {"priority": "HIGH", "category": "Sysmon"}
-        except Exception:
-            pass
+        # Try Sysmon (v4.6.4: skipped when SysmonCollector is running - avoids
+        # double-sending every sysmon event; see __init__ comment)
+        if self.collect_sysmon:
+            try:
+                hand = win32evtlog.OpenEventLog(None, "Microsoft-Windows-Sysmon/Operational")
+                win32evtlog.CloseEventLog(hand)
+                self._active_logs.append("Microsoft-Windows-Sysmon/Operational")
+                self.log_configs["Microsoft-Windows-Sysmon/Operational"] = {"priority": "HIGH", "category": "Sysmon"}
+            except Exception:
+                pass
 
         print(f"[*] Event Collector: {len(self._active_logs)} channels active")
         for log in self._active_logs:

@@ -307,7 +307,9 @@ class AgentCore:
 
         # Platform-specific collectors
         if IS_WINDOWS:
-            self.event_collector = EventCollector(callback=send_data)
+            # v4.6.4: SysmonCollector already covers the Sysmon channel with richer
+            # fields + engine feed - don't read it twice (double-sent events).
+            self.event_collector = EventCollector(callback=send_data, collect_sysmon=False)
             self.fim_collector = FIMCollector(callback=send_data)
             self.network_collector = NetworkCollector(callback=send_data)
         else:
@@ -2321,7 +2323,9 @@ del "%~f0"
                               # print monitors, LSA security packages, SBL/transcript keys
                               "clsid", "subscription", "appcertdlls", "monitors",
                               "security packages", "control\\lsa",
-                              "scriptblocklogging", "transcriptlogging")
+                              "scriptblocklogging", "transcriptlogging",
+                              # v4.6.4: WDigest plaintext-caching enable (THREAT-070)
+                              "wdigest", "securityproviders")
             if not any(k in reg_path for k in sensitive_keys):
                 return
 

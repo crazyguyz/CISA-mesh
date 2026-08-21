@@ -582,6 +582,9 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
                     # v4.6.2 (SEC review B9): SBL/transcript being disabled (T1562.002)
                     "scriptblocklogging",
                     "transcriptlogging",
+                    # v4.6.4: WDigest plaintext caching (THREAT-070)
+                    "\\wdigest",
+                    "securityproviders",
                 ]
                 target_lower = target_obj.lower() if target_obj else ""
                 if any(pk in target_lower for pk in persistence_keys):

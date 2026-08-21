@@ -41,11 +41,10 @@ rules:
     technique used by malware to hide file creation evidence.
   severity: HIGH
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: process_event
     event_id: '2'
-    description_contains:
-    - suspicious_termination
+    field_equals:
+      suspicious_termination: 'True'
     threshold: 1
     within_seconds: 300
 - id: THREAT-076
@@ -58,11 +57,10 @@ rules:
     in macro malware and initial access payloads (e.g., Emotet, QakBot).
   severity: HIGH
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: file_create_event
     event_id: '15'
     description_contains:
-    - motw_evasion
+    - motw tampering
     threshold: 1
     within_seconds: 60
 - id: THREAT-010
@@ -263,12 +261,11 @@ rules:
     paths)
   severity: HIGH
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: registry_event
     event_id: '13'
     description_contains:
-    - Run
-    - RunOnce
+    - run
+    - runonce
     threshold: 1
     within_seconds: 60
 - id: THREAT-014
@@ -341,16 +338,16 @@ rules:
     in System32)
   severity: HIGH
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: module_load_event
     event_id: '7'
+    field_contains:
+      dll_path:
+      - Users
+      - ProgramData
+      - Temp
+      - AppData
     threshold: 1
     within_seconds: 60
-    path_contains:
-    - Users
-    - ProgramData
-    - Temp
-    - AppData
 - id: THREAT-019
   name: PowerShell Encoded Command
   mitre: T1059.001
@@ -566,8 +563,7 @@ rules:
     IP
   severity: CRITICAL
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: process_injection
     event_id: '8'
     threshold: 1
     within_seconds: 300
@@ -1156,8 +1152,7 @@ rules:
     with malicious code)'
   severity: HIGH
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: process_tampering
     event_id: '25'
     threshold: 1
     within_seconds: 60
@@ -1275,12 +1270,11 @@ rules:
     for next logon)
   severity: MEDIUM
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: registry_event
     event_id: '13'
     description_contains:
-    - WDigest
-    - UseLogonCredential
+    - wdigest
+    - uselogoncredential
     threshold: 1
     within_seconds: 60
 - id: THREAT-071
@@ -1349,15 +1343,14 @@ rules:
     (strong ransomware indicator before encryption begins)
   severity: CRITICAL
   conditions:
-  - type: windows_event
-    subtype: Sysmon
+  - type: process_event
     event_id: '1'
-    description_contains:
-    - vssadmin
-    - delete
-    - shadows
-    - wmic
-    - shadowcopy
+    field_contains:
+      command_line:
+      - vssadmin
+      - shadowcopy
+      - wmic
+      - delete shadows
     threshold: 1
     within_seconds: 60
 - id: SIGMA-27CD0C2B
