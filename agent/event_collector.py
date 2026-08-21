@@ -37,6 +37,11 @@ MONITORED_LOGS = {
     "Directory Service": {"priority": "HIGH", "category": "DirectoryService", "skip_if_missing": True},
     # Print Service
     "Microsoft-Windows-PrintService/Operational": {"priority": "LOW", "category": "PrintService", "skip_if_missing": True},
+    # v4.13 (P2): NTLM authentication (pass-the-hash detection - EID 8004/8005)
+    "Microsoft-Windows-NTLM/Operational": {"priority": "HIGH", "category": "NTLM", "skip_if_missing": True},
+    # v4.13 (P2): DHCP server + client (MAC<->IP attribution for investigations)
+    "Microsoft-Windows-DHCP-Server/Operational": {"priority": "MEDIUM", "category": "DHCP", "skip_if_missing": True},
+    "Microsoft-Windows-DHCP-Client/Operational": {"priority": "MEDIUM", "category": "DHCP", "skip_if_missing": True},
 }
 
 # Event filtering - event IDs to ALWAYS collect (high value)
@@ -60,6 +65,9 @@ ALWAYS_COLLECT_IDS = {
     '5857', '5858', '5859', '5860', '5861',  # WMI
     '21', '22', '23', '24', '25', '39', '40',  # RDP
     '1006', '1007', '1008', '1009', '1015', '1116', '1117', '1118', '1119', '5001', '5007',  # Defender
+    '8004', '8005',  # v4.13 (P2): NTLM authentication (pass-the-hash)
+    '1006', '1007', '1008', '1009',  # v4.13 (P2): DHCP server (address granted/renewed/denied)
+    '1100', '1103', '1104', '1105', '1108',  # v4.13 (P2): DHCP client events
     '2003', '2004', '2005', '2006', '2009', '2033',  # Firewall
     '3008', '3020',  # DNS
     '1000', '1001', '1002', '5140', '5145',  # SMB

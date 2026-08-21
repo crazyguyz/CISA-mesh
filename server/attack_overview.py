@@ -492,3 +492,122 @@ def build_graph_v2(db, since_hours=None, until_hours=None):
             "generated_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
     }
+
+# =============================================================================
+# v4.13 (P2): KILL-CHAIN RISK SCORING
+# Groups threat alerts per machine within a window and counts DISTINCT MITRE
+# tactics. A machine touching >= min_tactics distinct tactics is an incident.
+# =============================================================================
+
+import os as _os
+import yaml as _yaml
+
+MITRE_TECHNIQUE_TACTIC = {
+    "T1059": "Execution", "T1204": "Execution", "T1569": "Execution", "T1053": "Execution",
+    "T1047": "Execution", "T1055": "Defense Evasion", "T1562": "Defense Evasion",
+    "T1070": "Defense Evasion", "T1036": "Defense Evasion", "T1112": "Defense Evasion",
+    "T1140": "Defense Evasion", "T1197": "Defense Evasion", "T1218": "Defense Evasion",
+    "T1003": "Credential Access", "T1110": "Credential Access", "T1555": "Credential Access",
+    "T1056": "Credential Access", "T1552": "Credential Access", "T1212": "Credential Access",
+    "T1021": "Lateral Movement", "T1550": "Lateral Movement", "T1080": "Lateral Movement",
+    "T1570": "Lateral Movement", "T1071": "C2", "T1571": "C2", "T1573": "C2", "T1095": "C2",
+    "T1005": "Exfiltration", "T1048": "Exfiltration", "T1041": "Exfiltration", "T1560": "Exfiltration",
+    "T1486": "Impact", "T1490": "Impact", "T1489": "Impact", "T1529": "Impact",
+    "T1547": "Persistence", "T1543": "Persistence", "T1136": "Persistence", "T1505": "Persistence",
+    "T1542": "Persistence", "T1074": "Collection", "T1119": "Collection", "T1113": "Collection",
+    "T1016": "Discovery", "T1082": "Discovery", "T1083": "Discovery", "T1087": "Discovery",
+    "T1046": "Discovery", "T1057": "Discovery", "T1557": "Discovery",
+    "T1133": "Initial Access", "T1190": "Initial Access", "T1189": "Initial Access",
+    "T1566": "Initial Access", "T1078": "Initial Access",
+}
+
+_rule_tactic_cache = None
+
+
+def _build_rule_tactic_index():
+    global _rule_tactic_cache
+    if _rule_tactic_cache is not None:
+        return _rule_tactic_cache
+    index = {}
+    paths = [
+        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "agent", "rules", "correlation_rules.yaml"),
+        _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "rules", "correlation_rules.yaml"),
+    ]
+    for p in paths:
+        if not _os.path.exists(p):
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = _yaml.safe_load(f) or {}
+            for r in data.get("rules", []) or []:
+                rid = r.get("id")
+                tac = (r.get("tactic") or "").strip()
+                if rid and tac:
+                    index[rid] = tac
+        except Exception:
+            pass
+    try:
+        from correlation_engine_server import CROSS_MACHINE_RULES
+        for r in CROSS_MACHINE_RULES or []:
+            m = re.search(r"T\d{4}", r.get("mitre", ""))
+            if r.get("id") and m:
+                index[r["id"]] = MITRE_TECHNIQUE_TACTIC.get(m.group(0), "Unknown")
+    except Exception:
+        pass
+    _rule_tactic_cache = index
+    return index
+
+
+def _tactic_of_alert(alert):
+    rid = alert.get("rule_id", "")
+    idx = _build_rule_tactic_index()
+    if rid in idx:
+        return idx[rid]
+    m = re.search(r"(T\d{4})", str(alert.get("description", "")))
+    if m:
+        return MITRE_TECHNIQUE_TACTIC.get(m.group(1), "Unknown")
+    return None
+
+
+def risk_killchain(db, since_hours=24, min_tactics=3):
+    now_ts = datetime.utcnow().timestamp()
+    per_machine = defaultdict(set)
+    info = {}
+    rows = []
+    try:
+        rows = db.get_threat_alerts(since_hours=since_hours, limit=5000) or []
+    except Exception:
+        rows = []
+    for r in rows:
+        mid = r.get("machine_id") or r.get("hostname") or "?"
+        tactic = _tactic_of_alert(r)
+        if tactic and tactic != "Unknown":
+            per_machine[mid].add(tactic)
+        info.setdefault(mid, {"hostname": r.get("hostname") or mid, "alerts": 0})
+        info[mid]["alerts"] += 1
+    machines = []
+    for mid, tactics in per_machine.items():
+        sev = "LOW"
+        if len(tactics) >= min_tactics:
+            sev = "CRITICAL"
+        elif len(tactics) >= 2:
+            sev = "HIGH"
+        machines.append({
+            "machine_id": mid,
+            "hostname": info.get(mid, {}).get("hostname", mid),
+            "tactics": sorted(tactics),
+            "tactic_count": len(tactics),
+            "alerts": info.get(mid, {}).get("alerts", 0),
+            "severity": sev,
+            "incident": len(tactics) >= min_tactics,
+        })
+    machines.sort(key=lambda x: x["tactic_count"], reverse=True)
+    incidents = [m for m in machines if m["incident"]]
+    return {
+        "since_hours": since_hours,
+        "min_tactics": min_tactics,
+        "machines": machines,
+        "incidents": incidents,
+        "total_incidents": len(incidents),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }

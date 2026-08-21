@@ -235,6 +235,11 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
   ```
 - Router/switch/firewall (DrayTek, TP-Link...): cấu hình NTP client trỏ về cùng nguồn thời gian.
 
+**5. Lưu trữ phân tầng & mở rộng (v4.13 P2):**
+- **Hot** (SQLite/PG) 30 ngày → **Warm** 90 ngày → **Cold** 12 tháng (archive file/parquet). Hàm `apply_retention_policy` (server_core.py) đã có — chỉ cần cấu hình số ngày phù hợp.
+- Chuyển sang **PostgreSQL** khi EPS > ~1.000 (backend `db_postgres.py` đã có sẵn; đặt `GIAMSAT_DB_BACKEND=postgres`).
+- **NetFlow/sFlow** (phát hiện C2 beaconing/exfil): nguồn phát sinh từ switch edge — mục tiêu P2 tiếp theo (cần bật flow export trên switch trước).
+
 ---
 
 ## 📸 Tính năng chính

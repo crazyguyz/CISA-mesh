@@ -139,6 +139,41 @@ class NetworkBaseline:
             }
             baseline_entries.append(entry)
 
+        # v4.13 (P2): baseline drift guard - flag abnormal one-rebuild expansion
+        # (possible baseline poisoning: attacker slowly feeds new destinations so
+        # they get whitelisted; or a major environment change). Compare against the
+        # previously stored baseline before applying the new one.
+        try:
+            existing = set()
+            try:
+                for _row in self.db.conn.execute(f"SELECT dst_ip FROM {BASELINE_TABLE}"):
+                    existing.add(_row[0])
+            except Exception:
+                existing = set()
+            new_ips = [e["dst_ip"] for e in baseline_entries if e["dst_ip"] not in existing]
+            total = len(existing) + len(new_ips)
+            drift_pct = (len(new_ips) * 100.0 / total) if total else 100.0
+            _limit = float(os.environ.get("GIAMSAT_BASELINE_DRIFT_LIMIT", "30"))
+            if existing and drift_pct > _limit:
+                _msg = (f"Network baseline expanded by {drift_pct:.0f}% in one rebuild "
+                        f"({len(new_ips)} new destination(s) of {total} total). Possible "
+                        f"baseline poisoning or a major environment change - review.")
+                print(f"[!] {_msg}")
+                try:
+                    self.db.insert_threat_alert({
+                        "machine_id": "BASELINE",
+                        "hostname": "NetworkBaseline",
+                        "rule_id": "BASELINE-DRIFT",
+                        "rule_name": "Network Baseline Abnormal Expansion",
+                        "severity": "HIGH",
+                        "description": _msg,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         # Store in database (SQLite-compatible syntax)
         try:
             self.db.conn.execute(f"""
