@@ -12,7 +12,7 @@ import html as _html
 import ssl
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Load .env file if exists
 _ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -305,12 +305,51 @@ class ServerCore:
 
         # Heartbeat timeout checker
         def heartbeat_monitor():
+            # v4.13 (P0.2): alert when agents drop offline (previously silent console-only).
+            # Dedup per machine with escalation: >5min = MEDIUM, >30min = HIGH.
+            _offline_alerted = {}
             while self._retention_running:
                 time.sleep(60)
                 try:
                     offline_count = self.db.check_heartbeat_timeout(timeout_seconds=120)
                     if offline_count > 0:
                         print(f"[*] Heartbeat monitor: {offline_count} machine(s) marked offline")
+                    try:
+                        machines = self.db.get_machines()
+                        offline_ids = set()
+                        now = time.time()
+                        for m in machines:
+                            if m.get("is_online"):
+                                continue
+                            mid = m.get("machine_id", "")
+                            offline_ids.add(mid)
+                            gap_min = 0
+                            try:
+                                _ts = datetime.strptime(str(m.get("last_seen", ""))[:19], "%Y-%m-%d %H:%M:%S")
+                                _ts = _ts.replace(tzinfo=timezone.utc).timestamp()
+                                gap_min = max(0, int((now - _ts) / 60))
+                            except Exception:
+                                gap_min = 10
+                            level = 2 if gap_min > 30 else (1 if gap_min > 5 else 0)
+                            if level and _offline_alerted.get(mid, 0) < level:
+                                severity = "HIGH" if level == 2 else "MEDIUM"
+                                label = m.get("hostname") or mid
+                                try:
+                                    self.alerting.send_alert(
+                                        title=f"[AGENT OFFLINE] {label} [{severity}]",
+                                        message=f"Agent '{label}' ({mid}) has no heartbeat for {gap_min} minutes (last seen {m.get('last_seen')}).",
+                                        severity=severity,
+                                        rule_id="AGENT-OFFLINE",
+                                    )
+                                except Exception:
+                                    pass
+                                _offline_alerted[mid] = level
+                        # Clear dedup state once an agent comes back online
+                        for mid in list(_offline_alerted.keys()):
+                            if mid not in offline_ids:
+                                del _offline_alerted[mid]
+                    except Exception:
+                        pass
                 except Exception as e:
                     from common.logger import log_error
                     log_error("Heartbeat monitor check failed", exc=e)

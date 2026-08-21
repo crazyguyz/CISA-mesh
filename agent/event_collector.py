@@ -4,6 +4,7 @@ Collects 12+ Windows Event Log channels with extended StringInserts parsing.
 Supports real-time Event Subscription (EvtSubscribe) with polling fallback.
 """
 import json
+import os
 import time
 import threading
 import win32evtlog
@@ -65,8 +66,11 @@ ALWAYS_COLLECT_IDS = {
 }
 
 # Event IDs to always skip (noise reduction)
+# v4.13 (P0.3): '4663' removed - required by THREAT-009/011/051 (LSASS/SAM object
+# access). Volume is acceptable on HIGH-priority channels; re-tune with a selective
+# SACL later if needed.
 SKIP_IDS = {
-    '4656', '4658', '4660', '4663',  # File system object access (noisy)
+    '4656', '4658', '4660',  # File system object access (noisy variants)
     '4689',  # Process termination
     '5156', '5158',  # WFP permitted (extremely noisy)
     '5376', '5377',  # Logon cache (noisy)
@@ -303,6 +307,41 @@ class EnhancedEventCollector(threading.Thread):
                     break
             last_seen = self.last_event_ids.get(log_name, 0)
             new_max_id = last_seen
+
+            # v4.13 (P0.1): detect event-log clear / record-number reset.
+            # After 'wevtutil cl Security', Windows restarts record numbering at 1,
+            # so every new event (incl. 1102 'audit log cleared') has a record number
+            # <= the old watermark and gets skipped forever -> the host goes blind.
+            if last_seen > 0 and event_records:
+                _min_rec = None
+                for _ev in event_records:
+                    try:
+                        _rn = int(_ev.RecordNumber)
+                    except (AttributeError, TypeError, ValueError):
+                        continue
+                    if _min_rec is None or _rn < _min_rec:
+                        _min_rec = _rn
+                if _min_rec is not None and _min_rec <= last_seen and (last_seen - _min_rec) > 50:
+                    print(f"[!] LOG RESET DETECTED on '{log_name}': record number dropped from {last_seen} to {_min_rec}")
+                    events.append({
+                        "type": "windows_event",
+                        "subtype": log_name,
+                        "event_category": "EventLog",
+                        "event_id": "LOG_RESET",
+                        "event_type": "ALERT",
+                        "source": "EventCollector",
+                        "computer": os.environ.get("COMPUTERNAME", ""),
+                        "user": "N/A",
+                        "category": "Tampering",
+                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "description": f"Event log '{log_name}' was CLEARED or reset (record number dropped from {last_seen} to {_min_rec}). Possible log tampering - historical events lost.",
+                        "raw_data": "",
+                        "severity": "HIGH",
+                    })
+                    # Reset the watermark so the restarted log (incl. 1102) IS collected
+                    last_seen = _min_rec - 1
+                    new_max_id = last_seen
+                    self.last_event_ids[log_name] = last_seen
 
             for event in event_records:
                 try:

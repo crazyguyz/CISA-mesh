@@ -100,11 +100,13 @@ rules:
   conditions:
   - type: windows_event
     event_id: '4688'
-    description_contains:
-    - reg save
-    - sam
-    - system
-    - security
+    # v4.13 (P0.4): was description_contains [reg save, sam, system, security] with
+    # any() semantics -> 'system' matched every 4688 (System32) -> CRITICAL FP storm.
+    # Now matched against the parsed 4688 command_line only (exact intent, no FP).
+    field_contains:
+      command_line:
+      - reg save
+      - reg.exe save
     threshold: 1
     within_seconds: 60
 - id: THREAT-002
