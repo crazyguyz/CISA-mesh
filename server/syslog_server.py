@@ -142,11 +142,14 @@ class SyslogServer(threading.Thread):
                     message = self._dhcp_mac_pattern.sub("xx:xx:xx:xx:xx:xx", message)
                     message = self._dhcp_hostname_pattern.sub(r'\1 [REDACTED]', message)
 
-                # Store in DB
+                # Store in DB - use the server receive time (ISO, sortable + cleanable)
+                # instead of the RFC-3164 message timestamp which has NO year and can
+                # never be matched by retention cleanup. The original message time is
+                # kept inside raw_data.
                 if self.db:
                     self.db.insert_syslog(
                         source_ip, hostname, facility_name, severity_name,
-                        timestamp_str, message, raw
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message, raw
                     )
 
                 # Notify web UI

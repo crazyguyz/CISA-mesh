@@ -736,7 +736,7 @@ class DatabaseManager:
 
     def insert_event(self, data):
         with self.lock:
-            self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), data.get("time",""), data.get("description",""), data.get("raw_data","")))
+            self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data","")))
             self.conn.commit()
 
     def insert_fim_event(self, data):
@@ -1902,6 +1902,90 @@ class DatabaseManager:
     # v3.2: DATA RETENTION & CLEANUP
     # =========================================================================
 
+    @staticmethod
+    def _normalize_time(t):
+        """v4.6.4: Convert C-style asctime ('Mon Aug 24 00:00:00 2026') to ISO
+        format ('2026-08-24 00:00:00') so cleanup WHERE clauses using
+        datetime('now', ...) actually compare correctly. Returns the input
+        unchanged if it already looks like ISO (starts with digit)."""
+        if not t or not isinstance(t, str):
+            return t
+        t = t.strip()
+        if not t or t[0].isdigit() or t[0] == '-':
+            return t  # already ISO, epoch, or empty
+        # C-style asctime: "Mon Aug 24 00:00:00 2026"
+        # Parse: weekday(3) month(3) day(2) HH:MM:SS(8) year(4)
+        import re
+        m = re.match(r'^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(\d{4})$', t)
+        if not m:
+            return t  # unknown format, keep as-is
+        month, day, hh, mi, ss, year = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2), m.group(4).zfill(2), m.group(5).zfill(2), m.group(6)
+        MONTHS = {"Jan":"01","Feb":"02","Mar":"03","Apr":"04","May":"05","Jun":"06",
+                  "Jul":"07","Aug":"08","Sep":"09","Oct":"10","Nov":"11","Dec":"12"}
+        mm = MONTHS.get(month.capitalize()[:3])
+        if not mm:
+            return t
+        return f"{year}-{mm}-{day} {hh}:{mi}:{ss}"
+
+    def _migrate_legacy_time_format(self):
+        """v4.6.4: one-time conversion of legacy non-ISO time rows to ISO format so
+        retention cleanup can compare them with datetime('now').
+        - events/fim_events: C-style asctime ('Mon Aug 24 00:00:00 2026') has a year.
+        - syslog: RFC-3164 'Aug 20 15:42:53' has NO year - infer current (or previous
+          if the month is ahead of now, i.e. the device clock is skewed).
+        Idempotent + cheap (only touches rows whose time does not start with a digit)."""
+        try:
+            from datetime import datetime as _dt
+            now = _dt.now()
+            for table, col in (("events", "time"), ("fim_events", "time")):
+                try:
+                    rows = self.conn.execute(
+                        f"SELECT id, {col} FROM {table} WHERE {col} NOT GLOB '[0-9]*' AND {col} != ''"
+                    ).fetchall()
+                except Exception:
+                    continue
+                to_fix = []
+                for rid, t in rows:
+                    nt = self._normalize_time(t)
+                    if nt and nt != t:
+                        to_fix.append((nt, rid))
+                if to_fix:
+                    self.conn.executemany(
+                        f"UPDATE {table} SET {col}=? WHERE id=?", to_fix)
+                    self.conn.commit()
+                    print(f"[*] Time migration: {len(to_fix)} legacy rows converted in {table}")
+            # syslog rows: RFC-3164 'Mon DD HH:MM:SS' without a year
+            try:
+                rows = self.conn.execute(
+                    "SELECT id, timestamp FROM syslog WHERE timestamp NOT GLOB '[0-9]*' AND timestamp != ''"
+                ).fetchall()
+            except Exception:
+                rows = []
+            to_fix = []
+            MONTHS = {"Jan":1,"Feb":2,"Mar":3,"Apr":4,"May":5,"Jun":6,
+                      "Jul":7,"Aug":8,"Sep":9,"Oct":10,"Nov":11,"Dec":12}
+            for rid, t in rows:
+                m = __import__("re").match(r'^(\w{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})$', t.strip())
+                if not m:
+                    continue
+                mon, day, hh, mi, ss = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2), m.group(4), m.group(5)
+                mm = MONTHS.get(mon.capitalize()[:3])
+                if not mm:
+                    continue
+                year = now.year
+                if mm > now.month:
+                    year -= 1  # device clock ahead of server -> last year
+                nt = f"{year}-{mm:02d}-{day} {hh}:{mi}:{ss}"
+                if nt != t:
+                    to_fix.append((nt, rid))
+            if to_fix:
+                self.conn.executemany(
+                    "UPDATE syslog SET timestamp=? WHERE id=?", to_fix)
+                self.conn.commit()
+                print(f"[*] Time migration: {len(to_fix)} legacy rows converted in syslog")
+        except Exception as e:
+            print(f"[-] Time migration skipped: {e}")
+
     def cleanup_old_data(self, retention_days=60, types=None, keep_threats=True):
         """
         Delete data older than retention_days from specified tables.
@@ -1921,6 +2005,13 @@ class DatabaseManager:
             types = ["events", "fim_events", "network_traffic", "sysmon_events",
                      "heartbeats", "syslog", "network_inspection", "yara_alerts",
                      "sca_events", "agentless_events", "response_results", "audit_log"]
+
+        # v4.6.4: convert any legacy C-time rows first so the WHERE clauses below
+        # can actually match them (the old C-time strings sorted after any ISO date).
+        try:
+            self._migrate_legacy_time_format()
+        except Exception:
+            pass
         
         # Tables with time column named 'time'
         time_tables = {"events": "time", "fim_events": "time"}
@@ -1936,22 +2027,32 @@ class DatabaseManager:
                 try:
                     if table in time_tables:
                         col = time_tables[table]
-                        where_clause = f"{col} < datetime('now', ?)"
+                        # v4.6.4: existing events may have C-style asctime ('Mon Aug...')
+                        # which cannot be compared with datetime('now'). Use a compound
+                        # WHERE: ISO format OR C-time where the extracted year is old.
+                        where_clause = (
+                            f"({col} < datetime('now', ?) AND {col} GLOB '[0-9]*')"  # ISO
+                            f" OR ({col} NOT GLOB '[0-9]*' AND {col} != ''"  # C-time
+                            f" AND substr({col}, -4) < strftime('%Y', datetime('now', ?)))")
                     elif table in ts_tables:
                         where_clause = f"timestamp < datetime('now', ?)"
                     else:
                         continue
                     
                     # COUNT before DELETE (cursor.rowcount is -1 in Python sqlite3)
+                    if table in time_tables:
+                        params = (f'-{retention_days} days', f'-{retention_days} days')
+                    else:
+                        params = (f'-{retention_days} days',)
                     cnt_cursor = self.conn.execute(
                         f"SELECT COUNT(*) FROM {table} WHERE {where_clause}",
-                        (f'-{retention_days} days',)
+                        params
                     )
                     deleted[table] = cnt_cursor.fetchone()[0]
                     if deleted[table] > 0:
                         self.conn.execute(
                             f"DELETE FROM {table} WHERE {where_clause}",
-                            (f'-{retention_days} days',)
+                            params
                         )
                 except Exception as e:
                     print(f"[-] Cleanup error on {table}: {e}")
@@ -2069,7 +2170,7 @@ class DatabaseManager:
                     (e.get("machine_id",""), e.get("hostname",""), e.get("type",""),
                      e.get("subtype",""), str(e.get("event_id","")), e.get("event_type",""),
                      e.get("source",""), e.get("computer",""), e.get("user",""),
-                     str(e.get("category","")), e.get("time",""), e.get("description",""),
+                     str(e.get("category","")), self._normalize_time(e.get("time","")), e.get("description",""),
                      e.get("raw_data","")))
             self.conn.commit()
 
