@@ -266,7 +266,10 @@
           var data = JSON.parse(xhr.responseText);
           var html = '';
           if (data.alerts && data.alerts.length > 0) {
-            html += '<table class="table table-sm table-dark table-hover"><thead><tr><th>Time</th><th>Host</th><th>Rule</th><th>Severity</th><th>Description</th></tr></thead><tbody>';
+            // v4.6.6: add a per-alert Resolve button - marking handled removes it
+            // from the matrix (the API filters status resolved/false_positive), but
+            // future identical alerts still appear (this is NOT a suppression rule).
+            html += '<table class="table table-sm table-dark table-hover"><thead><tr><th>Time</th><th>Host</th><th>Rule</th><th>Severity</th><th>Description</th><th>Action</th></tr></thead><tbody>';
             for (var i = 0; i < data.alerts.length; i++) {
               var a = data.alerts[i];
               var sevColor = SEV_COLORS[a.severity] || '#999';
@@ -274,7 +277,8 @@
               html += '<td>' + esc(a.hostname || a.machine_id || '') + '</td>';
               html += '<td>' + esc(a.rule_name || '') + '</td>';
               html += '<td><span style="color:' + sevColor + ';">' + esc(a.severity) + '</span></td>';
-              html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td></tr>';
+              html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td>';
+              html += '<td><button class="btn btn-sm btn-outline-success" style="font-size:10px;padding:0 6px;" onclick="resolveMitreAlert(' + (a.id || '') + ', \'' + escJs(techniqueId) + '\')">✓ ' + t('tr.resolve') + '</button></td></tr>';
             }
             html += '</tbody></table>';
           } else {
@@ -289,6 +293,23 @@
       }
     };
     xhr.send();
+  };
+
+  // v4.6.6: mark one MITRE alert as handled/resolved -> it disappears from the
+  // matrix (the API filters status resolved/false_positive) but future identical
+  // alerts still appear (this is NOT a suppression rule).
+  window.resolveMitreAlert = function (id, techniqueId) {
+    if (!id) return;
+    fetch('/api/threats/' + id + '/status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'resolved' })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (window.showToast) showToast((d.success ? '✅ ' : '❌ ') + (d.success ? t('tr.resolved') : (d.error || '')));
+      if (d.success) {
+        if (techniqueId && window.showTechniqueDetail) window.showTechniqueDetail(techniqueId);
+        if (window.loadMITREMatrix) window.loadMITREMatrix('mitre-matrix-container');
+      }
+    }).catch(function () { if (window.showToast) showToast('❌ ' + t('ui.connErrShort')); });
   };
 
 })();

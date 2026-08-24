@@ -45,12 +45,15 @@ def register_routes(app, core):
             is_sqlite = not hasattr(core.db, '_execute')
 
             # Query threat alerts with MITRE data (use received_at, not timestamp TEXT)
+            # v4.6.6: exclude triaged-as-resolved/false-positive alerts so marking an
+            # alert handled removes it from the matrix (future identical alerts still
+            # appear - this is NOT a suppression rule).
             if is_sqlite:
                 q = """SELECT rule_id, rule_name, severity, description, 
                               machine_id, hostname, timestamp,
                               raw_data
                        FROM threat_alerts 
-                       WHERE 1=1"""
+                       WHERE status NOT IN ('resolved', 'false_positive')"""
                 params = []
                 if machine_id:
                     q += " AND machine_id = ?"
@@ -64,7 +67,7 @@ def register_routes(app, core):
                               machine_id, hostname, timestamp,
                               raw_data
                        FROM threat_alerts 
-                       WHERE 1=1"""
+                       WHERE status NOT IN ('resolved', 'false_positive')"""
                 params = []
                 if machine_id:
                     q += " AND machine_id = %s"
@@ -187,6 +190,10 @@ def register_routes(app, core):
         try:
             rows = core.db.get_threat_alerts(limit=1000) or []
             for r in rows:
+                # v4.6.6: skip triaged alerts (resolved / false-positive) - the
+                # matrix + detail should only show what still needs attention.
+                if r.get("status") in ("resolved", "false_positive"):
+                    continue
                 raw = r.get("raw_data") or {}
                 if isinstance(raw, str):
                     try:
@@ -200,6 +207,8 @@ def register_routes(app, core):
                 if technique_id and (tid == technique_id or rid == technique_id
                                      or str(technique_id) in json.dumps(raw, default=str)):
                     result["alerts"].append({
+                        "id": r.get("id"),
+                        "status": r.get("status", "new"),
                         "rule_id": rid, "rule_name": r.get("rule_name", ""),
                         "severity": r.get("severity", ""),
                         "description": r.get("description", "") or "",
