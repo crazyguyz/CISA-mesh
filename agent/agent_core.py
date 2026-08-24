@@ -309,7 +309,15 @@ class AgentCore:
         if IS_WINDOWS:
             # v4.6.4: SysmonCollector already covers the Sysmon channel with richer
             # fields + engine feed - don't read it twice (double-sent events).
-            self.event_collector = EventCollector(callback=send_data, collect_sysmon=False)
+            # v4.6.5: pass agent PID + optional skip_processes so the event collector
+            # can drop 4688 for the agent's own routine children (netstat/powershell/
+            # conhost) and configured processes (e.g. postgres.exe on the server).
+            _skip_procs = list(self.config.get("skip_processes") or [])
+            _env_skip = os.environ.get("GIAMSAT_SKIP_PROCESSES", "")
+            if _env_skip:
+                _skip_procs += [p.strip() for p in _env_skip.split(",") if p.strip()]
+            self.event_collector = EventCollector(callback=send_data, collect_sysmon=False,
+                                                  agent_pid=os.getpid(), skip_processes=_skip_procs)
             self.fim_collector = FIMCollector(callback=send_data)
             self.network_collector = NetworkCollector(callback=send_data)
         else:

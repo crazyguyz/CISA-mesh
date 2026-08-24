@@ -17,6 +17,14 @@ try:
 except Exception:
     HAS_EVT_SUBSCRIBE = False
 
+# v4.6.5: 4688 process-creation events for the agent's OWN routine children are
+# noise (the agent polls netstat, runs powershell/conhost for scans). Skipped only
+# when their parent is the agent itself (attacker-spawned copies keep flowing).
+_SELF_NOISE_PROCESSES = {
+    "netstat.exe", "powershell.exe", "pwsh.exe", "conhost.exe",
+    "wmic.exe", "ping.exe", "nslookup.exe", "schtasks.exe", "cmd.exe",
+}
+
 # Expanded log channels (12+) with categories
 MONITORED_LOGS = {
     "Security": {"priority": "HIGH", "category": "Security"},
@@ -89,9 +97,15 @@ SKIP_IDS = {
 EVENT_STRINGINSERTS_MAP = {
     # Format: event_id: {field_name: insert_index}
     '4688': {  # Process Creation
+        # v4.6.5 FIX: 4688 has exactly 9 inserts (0..8):
+        # [0]SubjectSid [1]SubjectUser [2]SubjectDomain [3]SubjectLogonId
+        # [4]NewProcessId [5]NewProcessName [6]TokenElevationType
+        # [7]CreatorProcessId(parent PID) [8]CommandLine
+        # Old map had command_line:9 (out of range -> never populated) and
+        # parent_pid:8 (actually the command line).
         'process_name': 5,
-        'command_line': 9,
-        'parent_pid': 8,
+        'command_line': 8,
+        'parent_pid': 7,
         'token_elevation': 6,
         'target_username': 1,
         'target_domain': 2,
@@ -263,7 +277,7 @@ EVENT_STRINGINSERTS_MAP = {
 
 
 class EnhancedEventCollector(threading.Thread):
-    def __init__(self, callback, collect_sysmon=True):
+    def __init__(self, callback, collect_sysmon=True, agent_pid=None, skip_processes=()):
         super().__init__(daemon=True)
         self.callback = callback
         self.running = True
@@ -271,12 +285,13 @@ class EnhancedEventCollector(threading.Thread):
         self.log_configs = {}
         self._active_logs = []
         self._use_realtime = False
+        # v4.6.5: reduce self-inflicted 4688 volume - drop the agent's OWN routine
+        # child processes (netstat poll, powershell/conhost from scans) and any
+        # configured process (e.g. postgres.exe when the server runs on SQLite).
+        self.agent_pid = str(agent_pid) if agent_pid else ""
+        self.skip_processes = set(skip_processes or ())
         # v4.6.4: the dedicated SysmonCollector reads the same channel with RICHER
-        # fields (target_process/granted_access/dll_path/registry_key...) and now
-        # feeds the correlation engine via _enrich_and_queue. Reading the channel
-        # here too double-sent every sysmon event (one process_event + one
-        # windows_event row on the server). agent_core passes collect_sysmon=False
-        # when the SysmonCollector is running; kept True as a fallback.
+        # fields - don't read it here too (double-send); agent_core passes False.
         self.collect_sysmon = collect_sysmon
         self._init_logs()
 
@@ -484,6 +499,17 @@ class EnhancedEventCollector(threading.Thread):
                 # Raw data from StringInserts
                 if string_inserts:
                     event_data["raw_data"] = " | ".join(str(s) for s in string_inserts)
+
+                # v4.6.5: drop the agent's own process-creation noise (its routine
+                # netstat/powershell/conhost children) + configured processes.
+                if event_id == "4688":
+                    ppid = str(event_data.get("parent_pid", ""))
+                    pname = str(event_data.get("process_name", "")).lower()
+                    pbase = os.path.basename(pname).lower() if pname else ""
+                    if self.agent_pid and ppid == self.agent_pid and pbase in _SELF_NOISE_PROCESSES:
+                        continue
+                    if pbase and pbase in self.skip_processes:
+                        continue
 
                 events.append(event_data)
 
