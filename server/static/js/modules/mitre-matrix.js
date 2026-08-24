@@ -278,7 +278,14 @@
               html += '<td>' + esc(a.rule_name || '') + '</td>';
               html += '<td><span style="color:' + sevColor + ';">' + esc(a.severity) + '</span></td>';
               html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td>';
-              html += '<td><button class="btn btn-sm btn-outline-success" style="font-size:10px;padding:0 6px;" onclick="resolveMitreAlert(' + (a.id || '') + ', \'' + escJs(techniqueId) + '\')">✓ ' + t('tr.resolve') + '</button></td></tr>';
+              // v4.6.6: resolve button only renders once the server returns the alert id
+              // (needs server on >= d05653d - older servers have no id field yet).
+              if (a.id) {
+                html += '<td><button class="btn btn-sm btn-outline-success" style="font-size:10px;padding:0 6px;" onclick="resolveMitreAlert(' + a.id + ', \'' + escJs(techniqueId) + '\')">✓ ' + t('tr.resolve') + '</button></td>';
+              } else {
+                html += '<td></td>';
+              }
+              html += '</tr>';
             }
             html += '</tbody></table>';
           } else {
