@@ -153,10 +153,10 @@ class DatabaseManager:
             # YARA/Pattern scan alerts
             c.execute("""CREATE TABLE IF NOT EXISTS yara_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,rule_name TEXT,description TEXT,file TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
-            # v4.6.6: triage status columns for YARA + network inspection (same
+            # v4.6.6: triage status columns for YARA + network inspection + vulns (same
             # semantics as threat_alerts: resolved/false_positive hide from default
             # views but future detections still appear as new)
-            for _tbl in ("yara_alerts", "network_inspection"):
+            for _tbl in ("yara_alerts", "network_inspection", "vuln_alerts"):
                 try:
                     c.execute(f"ALTER TABLE {_tbl} ADD COLUMN status TEXT DEFAULT 'new'")
                 except sqlite3.OperationalError:
@@ -991,21 +991,25 @@ class DatabaseManager:
                 (machine_id, cve, software)
             ).fetchone()
             if existing:
+                # v4.6.6: reset status='new' on re-detection so a triaged/waived CVE
+                # REAPPEARS when the scanner reports it again (triage hides it from the
+                # default view, it is NOT a permanent waiver).
                 self.conn.execute(
-                    """UPDATE vuln_alerts SET hostname=?, version=?, publisher=?, severity=?, description=?, timestamp=?, received_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    """UPDATE vuln_alerts SET hostname=?, version=?, publisher=?, severity=?, description=?, timestamp=?, status='new', received_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (data.get("hostname",""), data.get("version",""), data.get("publisher",""), data.get("severity",""), data.get("description",""), data.get("timestamp",""), existing["id"])
                 )
             else:
                 self.conn.execute("""INSERT INTO vuln_alerts (machine_id,hostname,software,version,publisher,cve,severity,description,timestamp) VALUES (?,?,?,?,?,?,?,?,?)""", (machine_id, data.get("hostname",""), software, data.get("version",""), data.get("publisher",""), cve, data.get("severity",""), data.get("description",""), data.get("timestamp","")))
             self.conn.commit()
 
-    def get_vuln_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_vuln_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         with self.lock:
             q = "SELECT * FROM vuln_alerts WHERE 1=1"
             p = []
             if machine_id: q += " AND machine_id=?"; p.append(machine_id)
             if since_hours:
                 q += " AND received_at >= datetime('now', ?)"; p.append(f'-{since_hours} hours')
+            if status: q += " AND status=?"; p.append(status)
             q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
@@ -1081,6 +1085,12 @@ class DatabaseManager:
         """v4.6.6: triage status on a network inspection finding."""
         with self.lock:
             self.conn.execute("UPDATE network_inspection SET status=? WHERE id=?", (status, alert_id))
+            self.conn.commit()
+
+    def set_vuln_status(self, alert_id, status):
+        """v4.6.6: triage status on a vulnerability alert (resolved = mitigated/accepted risk)."""
+        with self.lock:
+            self.conn.execute("UPDATE vuln_alerts SET status=? WHERE id=?", (status, alert_id))
             self.conn.commit()
 
     # ---- NEW v1.6.0: SCA Events (UPSERT - update if exists) ----

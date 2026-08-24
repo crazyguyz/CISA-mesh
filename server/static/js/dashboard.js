@@ -505,6 +505,8 @@ function loadNetwork() {
             );
         }
         fetch('/api/inspection?limit=100').then(r2 => r2.json()).then(inspData => {
+            // v4.6.6: hide triaged findings (resolved/false_positive) for consistency with the Inspection tab
+            inspData = (Array.isArray(inspData) ? inspData : []).filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
             if (inspData.length) {
                 html += '<hr style="border-color:#2a3a4a;margin:8px 0;"><h6 class="px-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-search"></i> Deep Packet Inspection (DNS / TLS / HTTP / Beaconing)</h6>';
                 html += inspData.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong>${e.subtype==='beaconing'?` (${t('ssh.period')} ${escapeHtml(e.avg_interval_sec)}s)`:''}</span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
@@ -622,8 +624,28 @@ function loadVulns() {
     const el = document.getElementById('vulnList');
     fetch('/api/vulns?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('dash.noVulns') + '</div>'; return; }
-        el.innerHTML = buildGroupedByMachine(data, 'vulns', '🐞 Vulnerability Alerts (CVE)');
+        // v4.6.6: hide triaged/waived CVEs by default (resolved/false_positive); toggle reveals them.
+        const showHandled = (document.getElementById('vulnShowHandled') || {}).checked === true;
+        const toolbar = '<div class="p-2 d-flex justify-content-end" style="font-size:11px;color:#8892a4;">' +
+            '<label class="me-2"><input type="checkbox" id="vulnShowHandled" onchange="loadVulns()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
+        const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        if (!rows.length) {
+            el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('tr.allHandled') + '</div>';
+            return;
+        }
+        el.innerHTML = toolbar + buildGroupedByMachine(rows, 'vulns', '🐞 Vulnerability Alerts (CVE)');
     }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
+}
+
+function setVulnStatus(id, status) {
+    fetch('/api/vulns/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('tr.updated'));
+                if (typeof loadVulns === 'function') loadVulns();
+            }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
 function loadSca() {
@@ -882,9 +904,9 @@ function buildGroupedByMachine(data, type, title) {
                 html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + (e.rule_id||'-') + '</td><td>' + (e.rule_name||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
             });
         } else if (type === 'vulns') {
-            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
+            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (e.severity||'?') + '</span></td><td style="font-family:monospace;">' + (e.cve||'-') + '</td><td>' + (e.software||'-') + ' v' + (e.version||'?') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td>' + _actionButtons('vulns', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (e.severity||'?') + '</span></td><td style="font-family:monospace;">' + (e.cve||'-') + '</td><td>' + (e.software||'-') + ' v' + (e.version||'?') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setVulnStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('vulns', e) + '</tr>';
             });
         } else if (type === 'yara') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Rule Name</th><th>File</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';

@@ -1321,6 +1321,453 @@
     "triggered": true,
     "rule_name_contains": "Injection"
    }
+  },
+  {
+   "id": "TC-015",
+   "rule_id": "THREAT-077",
+   "name": "LSASS Process Access via Sysmon EID 10",
+   "description": "Sysmon EID 10 - process opening lsass.exe memory",
+   "events": [
+    {
+     "type": "process_access",
+     "event_id": "10",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "lsass process access detected",
+     "process_name": "mimikatz.exe",
+     "target_process": "lsass.exe",
+     "timestamp": "2026-01-01 12:00:00",
+     "computer": "PC-TEST01"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "LSASS"
+   }
+  },
+  {
+   "id": "TC-016",
+   "rule_id": "THREAT-078",
+   "name": "COM Hijack Persistence - CLSID InprocServer32",
+   "description": "Sysmon registry write under CLSID InprocServer32",
+   "events": [
+    {
+     "type": "registry_event",
+     "event_id": "13",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "registry_key": "HKLM\\SOFTWARE\\Classes\\CLSID\\{AB12-3456-7890}\\InprocServer32",
+     "timestamp": "2026-01-01 12:00:00"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "COM Hijack"
+   }
+  },
+  {
+   "id": "TC-017",
+   "rule_id": "THREAT-079",
+   "name": "WMI Event Subscription Persistence",
+   "description": "Sysmon registry write under WMI Subscription key",
+   "events": [
+    {
+     "type": "registry_event",
+     "event_id": "13",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "registry_key": "HKLM\\SOFTWARE\\Microsoft\\WMI\\Subscription",
+     "timestamp": "2026-01-01 12:00:00"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "WMI Event Subscription"
+   }
+  },
+  {
+   "id": "TC-018",
+   "rule_id": "THREAT-080",
+   "name": "PowerShell Logging Disabled via Registry",
+   "description": "Registry write disabling PowerShell ScriptBlock logging",
+   "events": [
+    {
+     "type": "registry_event",
+     "event_id": "13",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "registry_key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging",
+     "registry_value": "0",
+     "timestamp": "2026-01-01 12:00:00"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "Logging Disabled"
+   }
+  },
+  {
+   "id": "TC-019",
+   "rule_id": "THREAT-081",
+   "name": "Timestomping via PowerShell (4688)",
+   "description": "4688 process create with LastWriteTime manipulation",
+   "events": [
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4688",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "New process created: powershell -Command Set-ItemProperty -Path f -Name LastWriteTime",
+     "timestamp": "2026-01-01 12:00:00",
+     "computer": "PC-TEST01"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "Timestomping"
+   }
+  },
+  {
+   "id": "TC-020",
+   "rule_id": "THREAT-082",
+   "name": "Slow Brute Force - 5x 4625 in 15 min",
+   "description": "5 failed logons from one source within 15 minutes",
+   "events": [
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4625",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "An account failed to log on",
+     "timestamp": "2026-01-01 12:00:00",
+     "computer": "PC-TEST01",
+     "source_ip": "192.168.1.100"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4625",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "An account failed to log on",
+     "timestamp": "2026-01-01 12:03:00",
+     "computer": "PC-TEST01",
+     "source_ip": "192.168.1.100"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4625",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "An account failed to log on",
+     "timestamp": "2026-01-01 12:06:00",
+     "computer": "PC-TEST01",
+     "source_ip": "192.168.1.100"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4625",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "An account failed to log on",
+     "timestamp": "2026-01-01 12:09:00",
+     "computer": "PC-TEST01",
+     "source_ip": "192.168.1.100"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "4625",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "An account failed to log on",
+     "timestamp": "2026-01-01 12:12:00",
+     "computer": "PC-TEST01",
+     "source_ip": "192.168.1.100"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "Slow Brute"
+   }
+  },
+  {
+   "id": "TC-021",
+   "rule_id": "THREAT-083",
+   "name": "Inbound Port Scan - 20x WFP Deny (5157)",
+   "description": "20 Windows Firewall deny events within 60s",
+   "events": [
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:00",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:01",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:02",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:03",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:04",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:05",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:06",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:07",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:08",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:09",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:10",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:11",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:12",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:13",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:14",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:15",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:16",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:17",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:18",
+     "computer": "PC-TEST01"
+    },
+    {
+     "type": "windows_event",
+     "subtype": "Security",
+     "event_id": "5157",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "description": "The Windows Filtering Platform has blocked a connection",
+     "timestamp": "2026-01-01 12:00:19",
+     "computer": "PC-TEST01"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "Port Scan"
+   }
+  },
+  {
+   "id": "TC-022",
+   "rule_id": "NET-BEACON-001",
+   "name": "Periodic C2 Beaconing - same external dst_ip",
+   "description": "5 network windows to the same external IP within 1h",
+   "events": [
+    {
+     "type": "network_traffic",
+     "src_ip": "192.168.1.100",
+     "dst_ip": "203.0.113.10",
+     "dst_port": 8443,
+     "protocol": "TCP",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "timestamp": "2026-01-01 12:00:00"
+    },
+    {
+     "type": "network_traffic",
+     "src_ip": "192.168.1.100",
+     "dst_ip": "203.0.113.10",
+     "dst_port": 8443,
+     "protocol": "TCP",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "timestamp": "2026-01-01 12:12:00"
+    },
+    {
+     "type": "network_traffic",
+     "src_ip": "192.168.1.100",
+     "dst_ip": "203.0.113.10",
+     "dst_port": 8443,
+     "protocol": "TCP",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "timestamp": "2026-01-01 12:24:00"
+    },
+    {
+     "type": "network_traffic",
+     "src_ip": "192.168.1.100",
+     "dst_ip": "203.0.113.10",
+     "dst_port": 8443,
+     "protocol": "TCP",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "timestamp": "2026-01-01 12:36:00"
+    },
+    {
+     "type": "network_traffic",
+     "src_ip": "192.168.1.100",
+     "dst_ip": "203.0.113.10",
+     "dst_port": 8443,
+     "protocol": "TCP",
+     "machine_id": "agent-001",
+     "hostname": "PC-TEST01",
+     "timestamp": "2026-01-01 12:48:00"
+    }
+   ],
+   "expected": {
+    "triggered": true,
+    "rule_name_contains": "Beaconing"
+   }
   }
  ]
 }

@@ -1,6 +1,6 @@
-﻿# GIAM-SAT v4.1 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+﻿# GIAM-SAT v5.0.0 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
-> KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● 95 RULES MỚI ● HUMAN-IN-THE-LOOP ● MADE IN VIETNAM 🇻🇳
+> KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● HUMAN-IN-THE-LOOP ● PHÂN LOẠI CẢNH BÁO (TRIAGE) ● MADE IN VIETNAM 🇻🇳
 
 ---
 
@@ -457,6 +457,14 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 | **v4.2.1** | **2026-08** | **PostgreSQL Compatibility Bugfixes: syslog JSONB fix, MITRE raw_data dict/string handling, email auto-fill fallback, modal UI expansion, syslog API error handling, agentless JSONB normalization** |
 | **v4.3** | **2026-08-07** | **Production Hardening: mTLS toggle (GIAMSAT_TLS_ENABLED), syslog filter UI (facility/severity/IP/search), PostgreSQL indexes (threats.rule_id, syslog.* GIN full-text), ANALYZE schedule 6h, pg_dump backup script, UI layout 50-50, /api/health endpoint** |
 | **v4.3.1** | **2026-08-08** | **PostgreSQL Compatibility Bugfixes: Hardware Config không hiển thị (JSONB json.loads fix), _compute_diff missing → 500 error, Smart List Diff (phát hiện thêm/xóa/sửa cụ thể), Dashboard Config UI highlight từng dòng thay đổi** |
+| **v4.4** | **2026-08** | **PHA 1 (Audit): fix pre-filter sai field name (command_line/file_path/registry_key), thêm HashAlgorithms, gỡ browser/IP excludes, mở rộng thu thập EID 10/6/16/23/25/26/255, +4 rules (THREAT-077..080)** |
+| **v4.4.1** | **2026-08** | **PHA 2: enable_windows_audit.ps1 + audit_policy.inf + gpo_deploy -EnableAudit** |
+| **v4.5** | **2026-08** | **PHA 2.5: +THREAT-081/082/083 + NET-BEACON-001, memory-scanner name-spoof rewrite, SNMPv3 support** |
+| **v4.5.1** | **2026-08** | **Bugfix run: undefined fmtBytes/escapeHtml, i18n hardcoded strings, beaconing lọc private IPs** |
+| **v4.5.2** | **2026-08** | **Dedup sysmon double-send, repoint 8 dead subtype:Sysmon rules, fix engine FP (NOT+threshold) fire mọi event, fix tcp_server drop 8 sysmon types (BYOVD EID6, file-delete 23/26, hollowing 25...)** |
+| **v4.5.3** | **2026-08** | **Fix retention cleanup không khớp C-time rows (_normalize_time + migration), dedup 150k events/ngày (dedup_key + INSERT OR IGNORE + agent mutex), fix 4688 StringInserts map, agent self-noise filter + skip_processes** |
+| **v4.5.4** | **2026-08** | **Fix MITRE 'Error parsing MITRE data': tắt static-asset cache (SEND_FILE_MAX_AGE_DEFAULT=0), fix var t shadowing global t() trong renderMatrix** |
+| **v5.0.0** | **2026-08-24** | **Phân loại cảnh báo (Triage) toàn diện: Threats (MITRE matrix + detail modal nút ✓ Xử lý), YARA, Network Inspection, Vulns — dropdown Phân loại mỗi dòng + toggle 'Hiện đã xử lý'; alert resolved/false_positive ẩn khỏi dashboard mặc định nhưng tái phát vẫn hiện lại (KHÔNG phải suppression); fix dashboard treo sau khi bấm ✓ (double bootstrap backdrop); re-detection reset status='new' cho YARA/Vulns; audit log đầy đủ (ai/IP/khi nào)** |
 | v3.6.1 | 2026-06 | Initial release |
 
 ---

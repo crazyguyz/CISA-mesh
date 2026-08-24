@@ -90,6 +90,10 @@ class RuleTestRunner:
             self.engine.fired_alerts = {}
             self.engine.event_buffers = defaultdict(lambda: deque())
             self.engine.sequence_states = defaultdict(list)
+            # v4.6.6: rule_exclusions leak across cases (a prior case's network
+            # event with a standard port sets NET-BEACON-001's NOT-exclusion and
+            # silently blocks it for 300s) - reset them with the rest of the state.
+            self.engine.rule_exclusions = {}
         if getattr(self, "server_engine", None):
             self.server_engine.reset_buffers()
 

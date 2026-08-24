@@ -1,4 +1,4 @@
-# GIAM-SAT v4.5.4 — Hệ thống Giám sát An ninh Mạng Nội bộ
+# GIAM-SAT v5.0.0 — Hệ thống Giám sát An ninh Mạng Nội bộ
 
 > **GIAM-SAT** (GIAM SÁT) là hệ thống giám sát an ninh mạng mã nguồn mở, kiến trúc **Agent-Server**, hỗ trợ giám sát Windows/Linux endpoint, phân tích threat theo MITRE ATT&CK, quản lý tài sản CNTT, và cảnh báo thời gian thực qua Telegram/Email.
 
@@ -255,7 +255,7 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
 | **FIM** | Giám sát thay đổi file (File Integrity Monitoring) |
 | **SCA** | Đánh giá cấu hình bảo mật (Security Configuration Assessment) |
 | **Vulnerabilities** | Quét CVE từ installed software |
-| **Threat Alerts** | Cảnh báo dựa trên correlation rules |
+| **Threat Alerts** | Cảnh báo dựa trên correlation rules — kèm **phân loại (triage)** mỗi dòng (Mới / Đang xử lý / Đã xử lý / Báo động giả) |
 | **Tài sản** | Quản lý tài sản IT: máy tính, màn hình, **máy in**, **điện thoại IP**, **thiết bị mạng**, **tồn kho (chuột/bàn phím/linh kiện/điện thoại)**. **Tự phát hiện** qua SNMP/port fingerprint (máy in, điện thoại Yealink, router/switch/AP) + **nhập tay theo kho**; phát hiện thay đổi phần cứng; **xuất Excel đa sheet**.
 | **Messages** | Chat trực tiếp với agent; máy trạm chủ động nhắn tin (IT support) |
 | **Agent Update** | Auto-update agent qua server |

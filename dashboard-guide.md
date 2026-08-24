@@ -120,27 +120,33 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 - **VI:** Cảnh báo mối đe dọa do correlation engine phát hiện.
   - Mỗi dòng: tên rule, mức độ (CRITICAL/HIGH/MEDIUM/LOW), máy bị ảnh hưởng, thời gian, độ tin cậy.
   - Bấm vào dòng để xem **chi tiết + hành động đề xuất**; có thể **Điều tra** (mở dòng thời gian Incident).
+  - **🆕 Phân loại cảnh báo (Triage):** cột **Phân loại** mỗi dòng có dropdown *Mới / Đang xử lý / Đã xử lý / Báo động giả*. Chọn **Đã xử lý** → cảnh báo **biến mất khỏi dashboard** (MITRE + danh sách) để bạn tập trung phần còn lại. Bật checkbox **"Hiện đã xử lý"** (góc phải trên danh sách) để xem lại. Việc đánh dấu **KHÔNG chặn** cảnh báo tương tự trong tương lai — hành vi tái diễn vẫn hiện lại như dòng mới. Lịch sử phân loại lưu trong **Nhật ký kiểm toán** (ai, IP, khi nào).
 - **EN:** Threat alerts detected by the correlation engine.
   - Each row: rule name, severity (CRITICAL/HIGH/MEDIUM/LOW), affected machine, time, confidence.
   - Click a row for **details + suggested actions**; you can **Investigate** (open the incident timeline).
+  - **🆕 Triage:** the **Triage** column has a per-row dropdown (*New / In progress / Handled / False positive*). Choosing **Handled** removes the alert from the dashboard (MITRE matrix + list) so you can focus on the rest. Tick the **"Show handled"** checkbox (top-right of the list) to review them. Marking an alert handled **does NOT suppress** identical future alerts — a recurring behavior still appears as a new row. The full history is in the **Audit Log** (who, IP, when).
 
 ### Vulns
 
 - **VI:** Kết quả quét lỗ hổng (CVE) phần mềm đã cài.
   - Chọn máy hoặc xem tất cả → danh sách CVE với **CVE ID, mức nghiêm trọng, phần mềm, bản vá**.
   - Lọc theo severity (CRITICAL/HIGH...) để ưu tiên xử lý.
+  - **🆕 Phân loại (Triage):** có dropdown **Phân loại** mỗi dòng (giống Threats) — dùng để đánh dấu CVE đã **giảm thiểu/chấp nhận rủi ro**; mặc định ẩn khỏi danh sách, bật **"Hiện đã xử lý"** để xem lại. Nếu scanner báo lại đúng CVE đó → nó hiện lại như mới.
 - **EN:** Vulnerability scan results (CVEs) of installed software.
   - Pick a machine or view all → list of CVEs with **CVE ID, severity, software, patch**.
   - Filter by severity (CRITICAL/HIGH...) to prioritize.
+  - **🆕 Triage:** a **Triage** dropdown per row (like Threats) — use it to mark a CVE **mitigated/accepted risk**; hidden from the list by default, tick **"Show handled"** to review. If the scanner reports the same CVE again it reappears as new.
 
 ### YARA
 
 - **VI:** Kết quả quét mã độc bằng rule YARA.
   - Xem file nghi ngờ: **rule YARA khớp, máy, đường dẫn file, thời gian**.
   - *Lưu ý:* rule YARA quản lý trên server; nếu chưa có rule nào, tab sẽ trống.
+  - **🆕 Phân loại (Triage):** cột **Phân loại** mỗi dòng (giống Threats) — đánh dấu **Đã xử lý/Báo động giả** để ẩn khỏi danh sách mặc định; bật **"Hiện đã xử lý"** để xem lại. Cùng file + rule tái phát sẽ **hiện lại như mới**.
 - **EN:** Malware scan results using YARA rules.
   - View suspicious files: **matched rule, machine, file path, time**.
   - *Note:* rules are managed on the server; if none are defined the tab is empty.
+  - **🆕 Triage:** a **Triage** column per row (like Threats) — mark **Handled/False positive** to hide from the default list; tick **"Show handled"** to review. The same file + rule seen again **reappears as new**.
 
 ### SCA (Security Configuration Assessment)
 
@@ -255,9 +261,11 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 - **VI:** Ma trận MITRE ATT&CK các kỹ thuật đã phát hiện.
   - Chọn khoảng thời gian (1h/6h/24h/72h/7 ngày) rồi nhấn **Tải lại**.
   - Ma trận hiện tactic (cột) × kỹ thuật (hàng); kỹ thuật đã phát hiện được tô màu — bấm để xem chi tiết.
+  - **🆕 Đánh dấu đã xử lý ngay trong matrix:** bấm vào ô kỹ thuật → modal liệt kê từng alert → bấm **"✓ Xử lý"** cạnh một alert → nó **biến mất khỏi matrix** (số liệu trong ô giảm đi). Matrix chỉ hiện alert **chưa xử lý**; để xem lại alert MITRE đã xử lý → vào tab **Threats** bật **"Hiện đã xử lý"** (cùng nguồn dữ liệu).
 - **EN:** MITRE ATT&CK matrix of detected techniques.
   - Pick a period (1h/6h/24h/72h/7 days) then click **Reload**.
   - Matrix shows tactics (columns) × techniques (rows); detected ones are highlighted — click for details.
+  - **🆕 Resolve right from the matrix:** click a technique cell → the modal lists each alert → click **"✓ Mark handled"** next to an alert → it **disappears from the matrix** (cell counts drop). The matrix only shows **unhandled** alerts; to review handled MITRE alerts open the **Threats** tab and tick **"Show handled"** (same data source).
 
 ### Agent Assistant (Trợ lý AI)
 

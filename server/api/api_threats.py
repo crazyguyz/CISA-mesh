@@ -48,8 +48,25 @@ def register(app, core):
         return jsonify(core.db.get_vuln_alerts(
             machine_id=request.args.get("machine_id"),
             limit=request.args.get("limit", 100, type=int),
-            since_hours=since_hours
+            since_hours=since_hours,
+            status=request.args.get("status")
         ))
+
+    @app.route("/api/vulns/<int:alert_id>/status", methods=["POST"])
+    def api_vuln_status(alert_id):
+        """v4.6.6: triage status on a vulnerability alert (resolved = mitigated/accepted risk)."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        status = (request.json or {}).get("status", "new")
+        if status not in ("new", "in_progress", "resolved", "false_positive"):
+            return jsonify({"success": False, "error": "Invalid status"}), 400
+        try:
+            core.db.set_vuln_status(alert_id, status)
+            core.db.insert_audit_log(username, "vuln_status",
+                f"Vuln #{alert_id} -> {status}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
 
     @app.route("/api/inspection")
     def api_inspection():
