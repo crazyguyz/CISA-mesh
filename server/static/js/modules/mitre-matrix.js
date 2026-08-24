@@ -53,7 +53,10 @@
           var data = JSON.parse(xhr.responseText);
           renderMatrix(container, data, sinceHours);
         } catch (e) {
-          container.innerHTML = '<div class="alert alert-warning">Error parsing MITRE data</div>';
+          // v4.6.6: surface the REAL error so stale-cache / data-shape problems are
+          // diagnosable instead of a generic message.
+          var em = (e && e.message) ? e.message : String(e);
+          container.innerHTML = '<div class="alert alert-warning">Error parsing MITRE data: ' + String(em).replace(/</g, '&lt;') + '</div>';
         }
       } else {
         container.innerHTML = '<div class="alert alert-warning">Failed to load MITRE data (HTTP ' + xhr.status + ')</div>';
