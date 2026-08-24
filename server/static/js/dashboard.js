@@ -558,7 +558,18 @@ function loadThreats() {
     const el = document.getElementById('threatList');
     fetch('/api/threats?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('dash.noCriticalAlerts') + '</div>'; return; }
-        el.innerHTML = buildGroupedByMachine(data, 'threats', '⚠ Threat Alerts');
+        // v4.6.6: hide triaged alerts (resolved/false_positive) by default so handled
+        // items disappear from the dashboard; a toggle reveals them again. Marking an
+        // alert handled is NOT a suppression rule - future identical alerts still appear.
+        const showHandled = (document.getElementById('threatShowHandled') || {}).checked === true;
+        const toolbar = '<div class="p-2 d-flex justify-content-end" style="font-size:11px;color:#8892a4;">' +
+            '<label class="me-2"><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
+        const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        if (!rows.length) {
+            el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('tr.allHandled') + '</div>';
+            return;
+        }
+        el.innerHTML = toolbar + buildGroupedByMachine(rows, 'threats', '⚠ Threat Alerts');
     });
 }
 
