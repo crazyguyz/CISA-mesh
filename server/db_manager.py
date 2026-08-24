@@ -42,6 +42,40 @@ class DatabaseManager:
                 except sqlite3.OperationalError:
                     pass
             c.execute("""CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,type TEXT,subtype TEXT,event_id TEXT,event_type TEXT,source TEXT,computer TEXT,user TEXT,category TEXT,time TEXT,description TEXT,raw_data TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            # v4.6.5 MIGRATION: dedup_key (hash of machine+event+source+time+desc) so
+            # double-sent events (two agent instances / restart races) are dropped by
+            # INSERT OR IGNORE instead of bloating the events table.
+            try:
+                c.execute("ALTER TABLE events ADD COLUMN dedup_key TEXT")
+            except sqlite3.OperationalError:
+                pass  # already exists
+            # Dedup legacy rows BEFORE creating the unique index (NULL rows cannot be
+            # backfilled once the index exists if two rows would collide).
+            try:
+                c.execute("DROP INDEX IF EXISTS idx_events_dedup")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                rows = c.execute(
+                    "SELECT id, machine_id, event_id, source, time, description FROM events "
+                    "WHERE dedup_key IS NULL AND time != '' LIMIT 200000").fetchall()
+                if rows:
+                    import hashlib as _hl
+                    upd = []
+                    for rid, mid, eid, src, t, desc in rows:
+                        key = "|".join([str(mid or ""), str(eid or ""), str(src or ""), str(t or ""), str(desc or "")[:500]])
+                        upd.append((_hl.md5(key.encode("utf-8", errors="ignore")).hexdigest(), rid))
+                    c.executemany("UPDATE events SET dedup_key=? WHERE id=?", upd)
+                    c.execute("""DELETE FROM events WHERE id NOT IN (
+                        SELECT MIN(id) FROM events WHERE dedup_key IS NOT NULL GROUP BY dedup_key)""")
+                    self.conn.commit()
+                    print(f"[*] Event dedup: backfilled {len(upd)} keys, removed duplicate rows")
+            except Exception as e:
+                print(f"[-] Event dedup backfill skipped: {e}")
+            try:
+                c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events(dedup_key) WHERE dedup_key IS NOT NULL")
+            except sqlite3.OperationalError:
+                pass
             c.execute("""CREATE TABLE IF NOT EXISTS fim_events (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,action TEXT,path TEXT,time TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("""CREATE TABLE IF NOT EXISTS heartbeats (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("""CREATE TABLE IF NOT EXISTS response_results (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,exec_id TEXT,status TEXT,output TEXT,error TEXT,exit_code INTEGER,action TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -736,7 +770,11 @@ class DatabaseManager:
 
     def insert_event(self, data):
         with self.lock:
-            self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data","")))
+            try:
+                self.conn.execute("""INSERT OR IGNORE INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data,dedup_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data",""), self._dedup_key(data)))
+            except Exception:
+                # fallback if dedup_key column missing (very old DB not migrated)
+                self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data","")))
             self.conn.commit()
 
     def insert_fim_event(self, data):
@@ -1927,6 +1965,22 @@ class DatabaseManager:
             return t
         return f"{year}-{mm}-{day} {hh}:{mi}:{ss}"
 
+    @staticmethod
+    def _dedup_key(data):
+        """v4.6.5: hash of the fields that identify ONE real event - two agent
+        instances reading the same log produce identical rows that must collapse
+        to one. Includes description so two DISTINCT events in the same second
+        (different command lines) are NOT collapsed."""
+        import hashlib
+        key = "|".join([
+            str(data.get("machine_id", "")),
+            str(data.get("event_id", "")),
+            str(data.get("source", "")),
+            str(data.get("time", "")),
+            str(data.get("description", ""))[:500],
+        ])
+        return hashlib.md5(key.encode("utf-8", errors="ignore")).hexdigest()
+
     def _migrate_legacy_time_format(self):
         """v4.6.4: one-time conversion of legacy non-ISO time rows to ISO format so
         retention cleanup can compare them with datetime('now').
@@ -2156,22 +2210,34 @@ class DatabaseManager:
     # =========================================================================
 
     def batch_insert_events(self, events):
-        """Batch insert events in a single transaction. 50-100x faster than per-row commit."""
+        """Batch insert events in a single transaction. 50-100x faster than per-row commit.
+        v4.6.5: INSERT OR IGNORE + dedup_key drops double-sent rows."""
         if not events:
             return
         with self.write_lock:
             c = self.conn.cursor()
             c.execute("BEGIN IMMEDIATE")
             for e in events:
-                c.execute(
-                    "INSERT INTO events (machine_id,hostname,type,subtype,event_id,"
-                    "event_type,source,computer,user,category,time,description,raw_data) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (e.get("machine_id",""), e.get("hostname",""), e.get("type",""),
-                     e.get("subtype",""), str(e.get("event_id","")), e.get("event_type",""),
-                     e.get("source",""), e.get("computer",""), e.get("user",""),
-                     str(e.get("category","")), self._normalize_time(e.get("time","")), e.get("description",""),
-                     e.get("raw_data","")))
+                try:
+                    c.execute(
+                        "INSERT OR IGNORE INTO events (machine_id,hostname,type,subtype,event_id,"
+                        "event_type,source,computer,user,category,time,description,raw_data,dedup_key) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (e.get("machine_id",""), e.get("hostname",""), e.get("type",""),
+                         e.get("subtype",""), str(e.get("event_id","")), e.get("event_type",""),
+                         e.get("source",""), e.get("computer",""), e.get("user",""),
+                         str(e.get("category","")), self._normalize_time(e.get("time","")), e.get("description",""),
+                         e.get("raw_data",""), self._dedup_key(e)))
+                except Exception:
+                    c.execute(
+                        "INSERT INTO events (machine_id,hostname,type,subtype,event_id,"
+                        "event_type,source,computer,user,category,time,description,raw_data) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (e.get("machine_id",""), e.get("hostname",""), e.get("type",""),
+                         e.get("subtype",""), str(e.get("event_id","")), e.get("event_type",""),
+                         e.get("source",""), e.get("computer",""), e.get("user",""),
+                         str(e.get("category","")), self._normalize_time(e.get("time","")), e.get("description",""),
+                         e.get("raw_data","")))
             self.conn.commit()
 
     def batch_insert_sysmon_events(self, events):
