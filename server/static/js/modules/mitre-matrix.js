@@ -236,7 +236,16 @@
 
   // Expose to global scope
   window.loadMITREMatrix = loadMITREMatrix;
-  window.showTechniqueDetail = function (techniqueId) {
+  // v4.6.6 FIX (dashboard freeze): old code did `new bootstrap.Modal(modal)` on every
+  // showTechniqueDetail call; resolveMitreAlert re-opened the detail while the modal
+  // was already open -> a SECOND Modal instance ran .show() -> 2nd .modal-backdrop
+  // appended. Closing removed only ONE backdrop -> leftover invisible overlay blocked
+  // all clicks => page looked frozen until F5. Fix: cache ONE Modal instance (show()
+  // idempotent) + refresh the body in place after resolving instead of re-showing.
+  var mitreModal = null;
+  var mitreModalEl = null;
+
+  function ensureMitreModal() {
     var modal = document.getElementById('mitre-detail-modal');
     var body = document.getElementById('mitre-detail-body');
     if (!modal || !body) {
@@ -252,11 +261,18 @@
       document.body.appendChild(modal);
       body = document.getElementById('mitre-detail-body');
     }
-    document.getElementById('mitre-detail-title').textContent = techniqueId;
+    if (!mitreModal || mitreModalEl !== modal) {
+      mitreModalEl = modal;
+      mitreModal = bootstrap.Modal.getInstance(modal) || new bootstrap.Modal(modal);
+    }
+    return { modal: modal, body: body };
+  }
+
+  // Fetch + render the technique's alert list into the modal body.
+  function loadTechniqueBody(techniqueId, cb) {
+    var body = document.getElementById('mitre-detail-body');
+    if (!body) return;
     body.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-info"></div></div>';
-    
-    var bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
 
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '/api/mitre/technique/' + techniqueId, true);
@@ -266,9 +282,9 @@
           var data = JSON.parse(xhr.responseText);
           var html = '';
           if (data.alerts && data.alerts.length > 0) {
-            // v4.6.6: add a per-alert Resolve button - marking handled removes it
-            // from the matrix (the API filters status resolved/false_positive), but
-            // future identical alerts still appear (this is NOT a suppression rule).
+            // v4.6.6: per-alert Resolve button - marking handled removes it from the
+            // matrix (API filters status resolved/false_positive), but future identical
+            // alerts still appear (this is NOT a suppression rule).
             html += '<table class="table table-sm table-dark table-hover"><thead><tr><th>Time</th><th>Host</th><th>Rule</th><th>Severity</th><th>Description</th><th>Action</th></tr></thead><tbody>';
             for (var i = 0; i < data.alerts.length; i++) {
               var a = data.alerts[i];
@@ -278,8 +294,8 @@
               html += '<td>' + esc(a.rule_name || '') + '</td>';
               html += '<td><span style="color:' + sevColor + ';">' + esc(a.severity) + '</span></td>';
               html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td>';
-              // v4.6.6: resolve button only renders once the server returns the alert id
-              // (needs server on >= d05653d - older servers have no id field yet).
+              // v4.6.6: button only renders once the server returns the alert id
+              // (needs server >= d05653d - older servers have no id field yet).
               if (a.id) {
                 html += '<td><button class="btn btn-sm btn-outline-success" style="font-size:10px;padding:0 6px;" onclick="resolveMitreAlert(' + a.id + ', \'' + escJs(techniqueId) + '\')">✓ ' + t('tr.resolve') + '</button></td>';
               } else {
@@ -292,14 +308,28 @@
             html = '<p class="text-muted">No alerts found for this technique.</p>';
           }
           body.innerHTML = html;
+          if (cb) cb(data);
         } catch (e) {
           body.innerHTML = '<div class="alert alert-warning">Error parsing data</div>';
+          if (cb) cb(null);
         }
       } else {
         body.innerHTML = '<div class="alert alert-warning">Failed to load details</div>';
+        if (cb) cb(null);
       }
     };
+    xhr.onerror = function () {
+      body.innerHTML = '<div class="alert alert-danger">Network error loading details</div>';
+      if (cb) cb(null);
+    };
     xhr.send();
+  }
+
+  window.showTechniqueDetail = function (techniqueId) {
+    ensureMitreModal();
+    document.getElementById('mitre-detail-title').textContent = techniqueId;
+    loadTechniqueBody(techniqueId);
+    mitreModal.show(); // cached instance -> idempotent, never stacks a 2nd backdrop
   };
 
   // v4.6.6: mark one MITRE alert as handled/resolved -> it disappears from the
@@ -313,7 +343,15 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (window.showToast) showToast((d.success ? '✅ ' : '❌ ') + (d.success ? t('tr.resolved') : (d.error || '')));
       if (d.success) {
-        if (techniqueId && window.showTechniqueDetail) window.showTechniqueDetail(techniqueId);
+        // Refresh the open modal's content IN PLACE (no re-show -> no double backdrop).
+        if (techniqueId) {
+          loadTechniqueBody(techniqueId, function (data) {
+            // If this was the technique's last unresolved alert, close the modal.
+            if (mitreModal && data && (!data.alerts || data.alerts.length === 0)) {
+              mitreModal.hide();
+            }
+          });
+        }
         if (window.loadMITREMatrix) window.loadMITREMatrix('mitre-matrix-container');
       }
     }).catch(function () { if (window.showToast) showToast('❌ ' + t('ui.connErrShort')); });

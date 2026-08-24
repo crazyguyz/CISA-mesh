@@ -549,7 +549,12 @@ function statusOptions(cur) {
 function setThreatStatus(id, status) {
     fetch('/api/threats/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
         .then(function(r) { return r.json(); }).then(function(d) {
-            if (d.success) { showToast('✅ ' + t('tr.updated')); }
+            if (d.success) {
+                showToast('✅ ' + t('tr.updated'));
+                // v4.6.6: reload so a resolved/false_positive row disappears from the
+                // default list (handled alerts are hidden unless 'Show handled' is on).
+                if (typeof loadThreats === 'function') loadThreats();
+            }
             else { showToast('❌ ' + (d.error || '')); }
         }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
