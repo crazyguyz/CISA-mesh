@@ -94,10 +94,13 @@
     }
     if (data.techniques) {
       for (var j = 0; j < data.techniques.length; j++) {
-        var t = data.techniques[j];
-        var tactic = t.tactic || "Unknown";
+        // v4.6.6 FIX: was 'var t = ...' which SHADOWED the global t() function
+        // (var is function-scoped) - so t('mitre.other') below threw
+        // "t is not a function" whenever a non-standard tactic existed.
+        var tech = data.techniques[j];
+        var tactic = tech.tactic || "Unknown";
         if (!tacticMap[tactic]) tacticMap[tactic] = [];
-        tacticMap[tactic].push(t);
+        tacticMap[tactic].push(tech);
       }
     }
 
