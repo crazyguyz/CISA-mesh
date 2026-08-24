@@ -153,6 +153,15 @@ class DatabaseManager:
             # YARA/Pattern scan alerts
             c.execute("""CREATE TABLE IF NOT EXISTS yara_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,rule_name TEXT,description TEXT,file TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
+            # v4.6.6: triage status columns for YARA + network inspection (same
+            # semantics as threat_alerts: resolved/false_positive hide from default
+            # views but future detections still appear as new)
+            for _tbl in ("yara_alerts", "network_inspection"):
+                try:
+                    c.execute(f"ALTER TABLE {_tbl} ADD COLUMN status TEXT DEFAULT 'new'")
+                except sqlite3.OperationalError:
+                    pass
+
             # SCA (Security Configuration Assessment) events
             c.execute("""CREATE TABLE IF NOT EXISTS sca_events (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,check_id TEXT,title TEXT,status TEXT,severity TEXT,description TEXT,remediation TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
 
@@ -1006,12 +1015,13 @@ class DatabaseManager:
             self.conn.execute("""INSERT INTO network_inspection (machine_id,hostname,subtype,domain,dst_ip,dst_port,src_ip,src_port,protocol,query_type,avg_interval_sec,sample_count,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("subtype",""), data.get("domain",""), data.get("dst_ip",""), data.get("dst_port",0), data.get("src_ip",""), data.get("src_port",0), data.get("protocol",""), data.get("query_type",""), data.get("avg_interval_sec",0), data.get("sample_count",0), data.get("timestamp","")))
             self.conn.commit()
 
-    def get_network_inspection(self, machine_id=None, subtype=None, limit=100):
+    def get_network_inspection(self, machine_id=None, subtype=None, limit=100, status=None):
         with self.lock:
             q = "SELECT * FROM network_inspection WHERE 1=1"
             p = []
             if machine_id: q += " AND machine_id=?"; p.append(machine_id)
             if subtype: q += " AND subtype=?"; p.append(subtype)
+            if status: q += " AND status=?"; p.append(status)
             q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
@@ -1027,8 +1037,11 @@ class DatabaseManager:
                 (machine_id, rule_name, file_path)
             ).fetchone()
             if existing:
+                # v4.6.6: reset status='new' on re-detection so a resolved/false_positive
+                # alert REAPPEARS in the dashboard when the same file+rule is seen again
+                # (triaging hides it from the default view, it is NOT a permanent block).
                 self.conn.execute(
-                    """UPDATE yara_alerts SET hostname=?, description=?, timestamp=?, received_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    """UPDATE yara_alerts SET hostname=?, description=?, timestamp=?, status='new', received_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (data.get("hostname",""), data.get("description",""), data.get("timestamp",""), existing["id"])
                 )
             else:
@@ -1046,16 +1059,29 @@ class DatabaseManager:
             self.conn.commit()
         print("[*] Deduplication: cleaned duplicate threat/vuln/yara alerts")
 
-    def get_yara_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_yara_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         with self.lock:
             q = "SELECT * FROM yara_alerts WHERE 1=1"
             p = []
             if machine_id: q += " AND machine_id=?"; p.append(machine_id)
             if since_hours:
                 q += " AND received_at >= datetime('now', ?)"; p.append(f'-{since_hours} hours')
+            if status: q += " AND status=?"; p.append(status)
             q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
+
+    def set_yara_status(self, alert_id, status):
+        """v4.6.6: triage status on a YARA alert."""
+        with self.lock:
+            self.conn.execute("UPDATE yara_alerts SET status=? WHERE id=?", (status, alert_id))
+            self.conn.commit()
+
+    def set_inspection_status(self, alert_id, status):
+        """v4.6.6: triage status on a network inspection finding."""
+        with self.lock:
+            self.conn.execute("UPDATE network_inspection SET status=? WHERE id=?", (status, alert_id))
+            self.conn.commit()
 
     # ---- NEW v1.6.0: SCA Events (UPSERT - update if exists) ----
     def insert_sca_event(self, data):

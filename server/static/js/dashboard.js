@@ -518,7 +518,16 @@ function loadInspection() {
     const el = document.getElementById('inspectionList');
     fetch('/api/inspection?limit=300').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noDpiData') + '</div>'; return; }
-        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:8px 12px;margin-bottom:4px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong></span><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small></div></div>`).join('');
+        // v4.6.6: hide triaged findings by default (resolve/false_positive); toggle reveals them.
+        const showHandled = (document.getElementById('inspShowHandled') || {}).checked === true;
+        const toolbar = '<div class="p-2 d-flex justify-content-end" style="font-size:11px;color:#8892a4;">' +
+            '<label class="me-2"><input type="checkbox" id="inspShowHandled" onchange="loadInspection()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
+        const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        if (!rows.length) {
+            el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('tr.allHandled') + '</div>';
+            return;
+        }
+        el.innerHTML = toolbar + rows.map(e => `<div style="background:#1a1a2a;border-left:4px solid #3399ff;padding:8px 12px;margin-bottom:4px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center"><span><span class="badge ${e.subtype==='dns_query'?'bg-info':e.subtype==='tls_sni'?'bg-success':e.subtype==='http_host'?'bg-warning text-dark':e.subtype==='beaconing'?'bg-danger':'bg-secondary'}">${escapeHtml(e.subtype||'?')}</span> <strong style="color:#d0d8e0;">${escapeHtml(e.domain||e.dst_ip||'-')}</strong></span><span style="white-space:nowrap;"><small class="text-muted">${escapeHtml((e.timestamp||'').substring(0,19))}</small> <select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setInspectionStatus(${e.id}, this.value)">${statusOptions(e.status)}</select></span></div></div>`).join('');
     });
 }
 
@@ -526,18 +535,49 @@ function loadYara() {
     const el = document.getElementById('yaraList');
     fetch('/api/yara?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> '+t('ui.noMalware')+'</div>'; return; }
+        // v4.6.6: hide triaged alerts by default (resolved/false_positive); toggle reveals them.
+        const showHandled = (document.getElementById('yaraShowHandled') || {}).checked === true;
+        const toolbar = '<div class="p-2 d-flex justify-content-end" style="font-size:11px;color:#8892a4;">' +
+            '<label class="me-2"><input type="checkbox" id="yaraShowHandled" onchange="loadYara()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
+        const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        if (!rows.length) {
+            el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('tr.allHandled') + '</div>';
+            return;
+        }
         // v2.6.5: Highlight Binary_Padding_Evasion alerts
-        const paddingAlerts = data.filter(e => e.rule_name === 'Binary_Padding_Evasion');
-        let html = '';
+        const paddingAlerts = rows.filter(e => e.rule_name === 'Binary_Padding_Evasion');
+        let html = toolbar;
         if (paddingAlerts.length > 0) {
             html += '<div class="p-2 mb-2" style="background:#1a1000;border:1px solid #ffcc66;border-radius:6px;">';
             html += '<strong style="color:#ffcc66;">⚠ Binary Padding Evasion Detected (' + paddingAlerts.length + ' files)</strong>';
             html += '<div style="font-size:11px;color:#ffaa44;margin-top:4px;">'+t('ui.lowEntropyHint')+'</div>';
             html += '</div>';
         }
-        html += buildGroupedByMachine(data, 'yara', '🦠 YARA/Pattern Scan');
+        html += buildGroupedByMachine(rows, 'yara', '🦠 YARA/Pattern Scan');
         el.innerHTML = html;
     });
+}
+
+function setYaraStatus(id, status) {
+    fetch('/api/yara/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('tr.updated'));
+                if (typeof loadYara === 'function') loadYara();
+            }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+function setInspectionStatus(id, status) {
+    fetch('/api/inspection/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) {
+                showToast('✅ ' + t('tr.updated'));
+                if (typeof loadInspection === 'function') loadInspection();
+            }
+            else { showToast('❌ ' + (d.error || '')); }
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
 function statusOptions(cur) {
@@ -847,9 +887,9 @@ function buildGroupedByMachine(data, type, title) {
                 html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (e.severity||'?') + '</span></td><td style="font-family:monospace;">' + (e.cve||'-') + '</td><td>' + (e.software||'-') + ' v' + (e.version||'?') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td>' + _actionButtons('vulns', e) + '</tr>';
             });
         } else if (type === 'yara') {
-            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Rule Name</th><th>File</th><th>' + t('dash.desc') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
+            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Rule Name</th><th>File</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td style="color:#ff6644;font-weight:600;">' + (e.rule_name||'?') + '</td><td style="font-family:monospace;font-size:10px;">' + (e.file||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td>' + _actionButtons('yara', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td style="color:#ff6644;font-weight:600;">' + (e.rule_name||'?') + '</td><td style="font-family:monospace;font-size:10px;">' + (e.file||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setYaraStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('yara', e) + '</tr>';
             });
         } else if (type === 'sca') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Trạng thái</th><th>Check ID</th><th>Tiêu đề</th><th>' + t('dash.desc') + '</th></tr></thead><tbody>';

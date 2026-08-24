@@ -58,8 +58,25 @@ def register(app, core):
         return jsonify(core.db.get_network_inspection(
             machine_id=request.args.get("machine_id"),
             subtype=request.args.get("subtype"),
-            limit=request.args.get("limit", 100, type=int)
+            limit=request.args.get("limit", 100, type=int),
+            status=request.args.get("status")
         ))
+
+    @app.route("/api/inspection/<int:alert_id>/status", methods=["POST"])
+    def api_inspection_status(alert_id):
+        """v4.6.6: triage status on a network inspection finding."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        status = (request.json or {}).get("status", "new")
+        if status not in ("new", "in_progress", "resolved", "false_positive"):
+            return jsonify({"success": False, "error": "Invalid status"}), 400
+        try:
+            core.db.set_inspection_status(alert_id, status)
+            core.db.insert_audit_log(username, "inspection_status",
+                f"Inspection #{alert_id} -> {status}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
 
     @app.route("/api/yara")
     def api_yara():
@@ -70,8 +87,25 @@ def register(app, core):
         return jsonify(core.db.get_yara_alerts(
             machine_id=request.args.get("machine_id"),
             limit=request.args.get("limit", 100, type=int),
-            since_hours=since_hours
+            since_hours=since_hours,
+            status=request.args.get("status")
         ))
+
+    @app.route("/api/yara/<int:alert_id>/status", methods=["POST"])
+    def api_yara_status(alert_id):
+        """v4.6.6: triage status on a YARA alert."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        status = (request.json or {}).get("status", "new")
+        if status not in ("new", "in_progress", "resolved", "false_positive"):
+            return jsonify({"success": False, "error": "Invalid status"}), 400
+        try:
+            core.db.set_yara_status(alert_id, status)
+            core.db.insert_audit_log(username, "yara_status",
+                f"YARA #{alert_id} -> {status}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
 
     @app.route("/api/sca")
     def api_sca():
