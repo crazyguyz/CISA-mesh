@@ -409,6 +409,10 @@ class ServerCore:
         app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "templates"),
                     static_folder=os.path.join(os.path.dirname(__file__), "static"))
         app.config["SECRET_KEY"] = os.environ.get("GIAMSAT_SECRET_KEY", os.urandom(24).hex())
+        # v4.6.6: no-cache for static assets - a browser that cached an old JS file
+        # after a server update showed stale UI (e.g. "Error parsing MITRE data" from
+        # a pre-fix mitre-matrix.js) even after Ctrl+F5 on some setups. Always fresh.
+        app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
         # Block access to sensitive config files (v4.2.1)
         @app.before_request
