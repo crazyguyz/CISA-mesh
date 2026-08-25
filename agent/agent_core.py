@@ -186,16 +186,20 @@ _SCRIPT_HOST_LOADERS = (
 
 
 def send_user_message():
-    """IT support: open a dialog for the workstation user to send a message to the admin.
-    Triggered by running the agent with --send-message (desktop shortcut 'IT support')."""
+    """IT support: open a structured support-request (ticket) dialog for the workstation
+    user. Triggered by running the agent with --send-message (desktop shortcut 'IT support').
+    v5.0.1: replaced the free-form chat with a category-based ticket (network/software/
+    computer/monitor/printer/phone/other) plus optional UltraView remote-support credentials.
+    The machine + user are already known from the agent config - the user only picks a category."""
     import tkinter as tk
+    from tkinter import ttk
     import urllib.request
 
     cfg = ConfigManager()
     machine_id = cfg.get("machine_id", "")
     hostname = cfg.get("hostname", "") or os.environ.get("COMPUTERNAME", socket.gethostname())
     server_host = cfg.get("server_host", "")
-    user_name = cfg.get("user_name", "")
+    user_name = cfg.get("user_name", "") or cfg.get("employee_name", "")
 
     def _msgbox(title, text, icon=0x40):
         try:
@@ -208,6 +212,10 @@ def send_user_message():
         _msgbox("IT support", "Chưa cấu hình địa chỉ máy chủ (server_host).", 0x10)
         return
 
+    CATS = [("network", "Mạng"), ("software", "Phần mềm"), ("computer", "Máy tính"),
+            ("monitor", "Màn hình"), ("printer", "Máy in"), ("phone", "Điện thoại"),
+            ("other", "Khác")]
+
     BG = "#1a2a3a"; FG = "#eef4f8"; ACCENT = "#00d4aa"
     ENTRY_BG = "#0f1923"; ENTRY_FG = "#eef4f8"; MUTED = "#c8d8e8"
 
@@ -217,50 +225,91 @@ def send_user_message():
     root.resizable(False, False)
     root.attributes("-topmost", True)
 
-    w, h = 460, 340
+    w, h = 480, 460
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
     root.geometry(f"{w}x{h}+{int((sw - w) / 2)}+{int((sh - h) / 2)}")
 
-    tk.Label(root, text="Gửi tin nhắn cho quản trị viên IT", font=("Segoe UI", 11, "bold"),
-             fg=ACCENT, bg=BG).pack(pady=(16, 4))
+    tk.Label(root, text="Yêu cầu hỗ trợ IT", font=("Segoe UI", 12, "bold"),
+             fg=ACCENT, bg=BG).pack(pady=(14, 2))
     tk.Label(root, text=(f"Người gửi: {user_name} ({hostname})" if user_name else f"Máy: {hostname}"),
-             font=("Segoe UI", 9), fg=MUTED, bg=BG).pack(pady=(0, 8))
+             font=("Segoe UI", 9), fg=MUTED, bg=BG).pack(pady=(0, 10))
 
-    entry = tk.Text(root, font=("Segoe UI", 10), bg=ENTRY_BG, fg=ENTRY_FG,
-                    insertbackground=ENTRY_FG, relief="flat", bd=1, wrap="word", height=9)
-    entry.pack(padx=16, fill="both", expand=True)
-    entry.focus_set()
+    form = tk.Frame(root, bg=BG)
+    form.pack(padx=18, fill="both", expand=True)
+
+    def row_label(text, r):
+        tk.Label(form, text=text, font=("Segoe UI", 9), fg=MUTED, bg=BG,
+                 anchor="w", width=16).grid(row=r, column=0, sticky="w", pady=(6, 0))
+
+    # Loại yêu cầu (bắt buộc)
+    row_label("Loại yêu cầu *", 0)
+    cat_var = tk.StringVar()
+    cat_combo = ttk.Combobox(form, textvariable=cat_var, state="readonly", width=28,
+                             values=[c[1] for c in CATS], font=("Segoe UI", 10))
+    cat_combo.grid(row=0, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
+    cat_combo.set("")
+
+    # Mô tả ngắn (không bắt buộc)
+    row_label("Mô tả ngắn", 1)
+    note_entry = tk.Entry(form, font=("Segoe UI", 10), bg=ENTRY_BG, fg=ENTRY_FG,
+                          insertbackground=ENTRY_FG, relief="flat", bd=1, width=32)
+    note_entry.grid(row=1, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
+    tk.Label(form, text="(không bắt buộc)", font=("Segoe UI", 8), fg="#5a6a7a",
+             bg=BG).grid(row=1, column=2, sticky="w")
+
+    # ID UltraView (không bắt buộc)
+    row_label("ID UltraView", 2)
+    uv_id_entry = tk.Entry(form, font=("Segoe UI", 10), bg=ENTRY_BG, fg=ENTRY_FG,
+                           insertbackground=ENTRY_FG, relief="flat", bd=1, width=32)
+    uv_id_entry.grid(row=2, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
+    tk.Label(form, text="(nếu có)", font=("Segoe UI", 8), fg="#5a6a7a",
+             bg=BG).grid(row=2, column=2, sticky="w")
+
+    # Mật khẩu UltraView (không bắt buộc)
+    row_label("Mật khẩu", 3)
+    uv_pwd_entry = tk.Entry(form, font=("Segoe UI", 10), bg=ENTRY_BG, fg=ENTRY_FG,
+                            insertbackground=ENTRY_FG, relief="flat", bd=1, width=32, show="*")
+    uv_pwd_entry.grid(row=3, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
+    tk.Label(form, text="(nếu có)", font=("Segoe UI", 8), fg="#5a6a7a",
+             bg=BG).grid(row=3, column=2, sticky="w")
 
     status = tk.Label(root, text="", font=("Segoe UI", 9), fg=MUTED, bg=BG)
-    status.pack(pady=(4, 0))
+    status.pack(pady=(8, 0))
 
     def on_send():
-        msg = entry.get("1.0", "end").strip()
-        if not msg:
-            status.config(text="Vui lòng nhập nội dung.", fg="#ffaa88")
+        cat_disp = cat_var.get().strip()
+        if not cat_disp:
+            status.config(text="Vui lòng chọn loại yêu cầu.", fg="#ffaa88")
             return
+        cat_code = next((c[0] for c in CATS if c[1] == cat_disp), "other")
+        note = note_entry.get().strip()[:300]
+        uv_id = uv_id_entry.get().strip()[:80]
+        uv_pwd = uv_pwd_entry.get().strip()[:80]
         url = f"{_web_base(server_host, 5000, cfg)}/api/message/from-agent"
         try:
-            payload = json.dumps({"machine_id": machine_id, "hostname": hostname,
-                                  "message": msg, "psk": cfg.get("psk", "")},
-                                 ensure_ascii=False).encode("utf-8")
+            payload = json.dumps({
+                "machine_id": machine_id, "hostname": hostname,
+                "user_name": user_name, "psk": cfg.get("psk", ""),
+                "msg_type": "support_ticket", "category": cat_code,
+                "note": note, "ultraview_id": uv_id, "ultraview_password": uv_pwd,
+            }, ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
             _web_open(req, 15, cfg)
             root.destroy()
-            _msgbox("IT support", "Đã gửi tin nhắn cho quản trị viên IT.", 0x40)
+            _msgbox("IT support", "Đã gửi yêu cầu hỗ trợ cho quản trị viên IT.", 0x40)
         except Exception as e:
             status.config(text=f"Lỗi gửi: {e}", fg="#ff8888")
 
     btn_frame = tk.Frame(root, bg=BG)
-    btn_frame.pack(pady=(4, 14))
+    btn_frame.pack(pady=(6, 14))
     tk.Button(btn_frame, text="Đóng", font=("Segoe UI", 10), bg="#4A2A2A", fg="#FFAAAA",
               activebackground="#5A3A3A", activeforeground="#FFBBBB", relief="flat", bd=0,
               padx=12, pady=3, cursor="hand2", command=root.destroy).pack(side="left", padx=6)
-    tk.Button(btn_frame, text="Gửi", font=("Segoe UI", 10, "bold"), bg="#2A4A3A", fg="#AAEEBB",
+    tk.Button(btn_frame, text="Gửi yêu cầu", font=("Segoe UI", 10, "bold"), bg="#2A4A3A", fg="#AAEEBB",
               activebackground="#3A5A4A", activeforeground="#BBFFCC", relief="flat", bd=0,
               padx=16, pady=3, cursor="hand2", command=on_send).pack(side="left", padx=6)
 
-    entry.bind("<Control-Return>", lambda e: on_send())
+    root.bind("<Return>", lambda e: on_send())
     root.after(100, lambda: root.focus_force())
     root.mainloop()
 

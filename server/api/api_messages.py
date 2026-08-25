@@ -74,7 +74,7 @@ def register(app, core):
             return err, code
 
         rows = core.db.conn.execute(
-            "SELECT msg_id,sender,title,message,reply,require_reply,status,direction,created_at,replied_at "
+            "SELECT msg_id,sender,title,message,reply,require_reply,status,direction,created_at,replied_at,msg_type,category,ultraview_id,ultraview_password "
             "FROM messages WHERE machine_id=? ORDER BY id DESC LIMIT 50",
             (machine_id,)).fetchall()
 
@@ -84,7 +84,9 @@ def register(app, core):
                 "msg_id": r[0], "sender": r[1], "title": r[2], "message": r[3],
                 "reply": r[4] or "", "require_reply": bool(r[5]),
                 "status": r[6], "direction": r[7] or "server",
-                "created_at": r[8] or "", "replied_at": r[9] or ""
+                "created_at": r[8] or "", "replied_at": r[9] or "",
+                "msg_type": r[10] or "chat", "category": r[11] or "",
+                "ultraview_id": r[12] or "", "ultraview_password": r[13] or ""
             })
         return jsonify({"messages": msgs})
 
@@ -270,8 +272,18 @@ def register(app, core):
         hostname = (data.get("hostname") or "").strip()
         message = (data.get("message") or "").strip()[:1000]
         title = (data.get("title") or "Tin nhắn từ máy trạm")[:100]
-
-        if not machine_id or not message:
+        # v5.0.1: structured support tickets (free-form chat replaced on the workstation)
+        msg_type = (data.get("msg_type") or "chat").strip()[:20]
+        category = (data.get("category") or "").strip()[:40]
+        note = (data.get("note") or "").strip()[:300]
+        uv_id = (data.get("ultraview_id") or "").strip()[:80]
+        uv_pwd = (data.get("ultraview_password") or "").strip()[:80]
+        if msg_type == "support_ticket":
+            if not machine_id or not category:
+                return jsonify({"error": "machine_id and category required"}), 400
+            message = note
+            title = f"Ticket: {category}"
+        elif not machine_id or not message:
             return jsonify({"error": "machine_id and message required"}), 400
 
         u = core.db.get_machine_user(machine_id) or {}
@@ -282,9 +294,10 @@ def register(app, core):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             core.db.conn.execute(
-                "INSERT INTO messages (msg_id, machine_id, sender, title, message, require_reply, status, direction, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (msg_id, machine_id, sender, title, message, 0, 'received', 'agent', now))
+                "INSERT INTO messages (msg_id, machine_id, sender, title, message, require_reply, status, direction, created_at, msg_type, category, ultraview_id, ultraview_password) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (msg_id, machine_id, sender, title, message, 0, 'received', 'agent', now,
+                 msg_type, category, uv_id, uv_pwd))
             core.db.conn.commit()
             # v4.10: push SSE event so the dashboard nav badge updates immediately
             # (previously the badge was only refreshed while the Messages tab was open)
@@ -294,6 +307,7 @@ def register(app, core):
                         "type": "agent_message", "msg_id": msg_id,
                         "machine_id": machine_id, "hostname": hostname,
                         "sender": sender, "title": title,
+                        "msg_type": msg_type, "category": category,
                         "timestamp": now,
                     })
                     if len(core.sse_queue) > 1000:

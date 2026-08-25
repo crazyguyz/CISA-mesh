@@ -327,6 +327,14 @@ class DatabaseManager:
                 c.execute("ALTER TABLE messages ADD COLUMN direction TEXT DEFAULT 'server'")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.1: support-ticket fields (structured requests from workstations)
+            # msg_type: 'chat' (free message) | 'support_ticket' (category-based request)
+            for _mcol in ("msg_type TEXT DEFAULT 'chat'", "category TEXT DEFAULT ''",
+                          "ultraview_id TEXT DEFAULT ''", "ultraview_password TEXT DEFAULT ''"):
+                try:
+                    c.execute(f"ALTER TABLE messages ADD COLUMN {_mcol}")
+                except sqlite3.OperationalError:
+                    pass
 
             # v3.3: Timestamp indexes for cleanup summary (MIN/MAX instant via index)
             _TS_INDEXES = [

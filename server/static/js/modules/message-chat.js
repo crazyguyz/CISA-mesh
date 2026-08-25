@@ -349,6 +349,22 @@ window.messageChat = (function() {
       .catch(function() {});
   }
 
+  // v5.0.1: support-ticket rendering (structured workstation requests)
+  var TICKET_COLORS = {
+    network: '#3399ff', software: '#a06ee8', computer: '#0dd4aa',
+    monitor: '#5a7dff', printer: '#ff9933', phone: '#ff66aa', other: '#8892a4'
+  };
+  function ticketBody(m) {
+    var h = '';
+    if (m.message) h += '<div style="color:#ddd;margin-top:4px;font-size:0.8rem;">' + esc(m.message) + '</div>';
+    else h += '<div style="color:#5a6a7a;margin-top:4px;font-size:0.75rem;font-style:italic;">' + t('ticket.noNote') + '</div>';
+    if (m.ultraview_id || m.ultraview_password) {
+      h += '<div class="mt-1 p-1 rounded" style="background:rgba(0,212,170,0.08);border-left:2px solid #0dd4aa;font-size:0.72rem;color:#9fdcc8;">' +
+        '<strong>' + t('ticket.ultraview') + ':</strong> ' + esc(m.ultraview_id || '—') + ' / ' + esc(m.ultraview_password || '—') + '</div>';
+    }
+    return h;
+  }
+
   function renderMessages(messages) {
     var container = document.getElementById('chat-messages');
     if (!container) return;
@@ -363,13 +379,16 @@ window.messageChat = (function() {
       var m = messages[i];
       var isAgent = m.direction === 'agent';
       var isUnread = isAgent && m.status === 'received';
-      html += '<div class="p-2 mb-2 rounded" style="background:' + (isAgent ? '#2b2410' : '#0d2b1e') + ';' + (isUnread ? 'border:1px solid #ffaa33;box-shadow:0 0 8px rgba(255,170,51,0.4);' : '') + '">' +
+      var isTicket = m.msg_type === 'support_ticket';
+      var catCode = TICKET_COLORS[m.category] ? m.category : 'other';
+      html += '<div class="p-2 mb-2 rounded" style="background:' + (isTicket ? '#1a2533' : (isAgent ? '#2b2410' : '#0d2b1e')) + ';' + (isUnread ? 'border:1px solid #ffaa33;box-shadow:0 0 8px rgba(255,170,51,0.4);' : '') + '">' +
         '<div style="display:flex;justify-content:space-between;">' +
-        '<span style="font-size:0.75rem;color:#aaa;"><strong>' + (isAgent ? '👤 ' : '') + esc(m.sender||'admin') + '</strong>' +
+        '<span style="font-size:0.75rem;color:#aaa;"><strong>' + (isTicket ? '🎫 ' : isAgent ? '👤 ' : '') + esc(m.sender||'admin') + '</strong>' +
+        (isTicket ? ' <span class="badge" style="background:' + TICKET_COLORS[catCode] + ';color:#fff;font-size:9px;">' + esc(t('ticket.cat.' + catCode)) + '</span>' : '') +
         (isUnread ? ' <span class="badge bg-warning text-dark" style="font-size:9px;">MỚI</span>' : (isAgent ? ' <span class="badge bg-warning text-dark" style="font-size:9px;">' + t('chat.fromMachine') + '</span>' : '')) + '</span>' +
         '<span style="font-size:0.7rem;color:#5a6a7a;">' + (m.created_at||'') + '</span>' +
         '</div>' +
-        '<div style="color:#ddd;margin-top:4px;">' + esc(m.message||'') + '</div>' +
+        (isTicket ? ticketBody(m) : '<div style="color:#ddd;margin-top:4px;">' + esc(m.message||'') + '</div>') +
         (m.reply ? '<div class="mt-1 p-1 rounded" style="background:rgba(0,212,170,0.1);border-left:2px solid #0dd4aa;">' +
           '<div style="font-size:0.7rem;color:#0dd4aa;">' + t('chat.reply', [m.replied_at||'']) + '</div>' +
           '<div style="color:#ccc;">' + esc(m.reply) + '</div></div>' : '') +

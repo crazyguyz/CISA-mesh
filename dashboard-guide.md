@@ -301,10 +301,12 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   1. Vào menu **Messages** → danh sách hội thoại theo máy.
   2. Chọn máy → gõ tin nhắn và gửi; agent hiển thị thông báo cho người dùng (popup / bong bóng).
   3. Dùng để gửi thông báo bảo mật, yêu cầu hỗ trợ hoặc cảnh báo nội bộ.
+  - **🆕 Ticket yêu cầu hỗ trợ (v5.0.1):** phía máy trạm, người dùng bấm lối tắt **"IT support"** → hộp thoại **Yêu cầu hỗ trợ** thay vì chat tự do: chọn **loại yêu cầu** (Mạng / Phần mềm / Máy tính / Màn hình / Máy in / Điện thoại / Khác) + **mô tả ngắn** (không bắt buộc) + **ID + mật khẩu UltraView** (không bắt buộc, để IT remote hỗ trợ). Máy + người gửi tự định danh từ cấu hình agent. Trên dashboard, ticket hiện dạng thẻ **🎫** với badge loại (màu theo hạng mục) + hộp UltraView. Tin nhắn **từ server → máy trạm** vẫn là chat như cũ.
 - **EN:** Two-way messaging between admin and workstation users.
   1. Open **Messages** → conversations per machine.
   2. Pick a machine → type and send; the agent shows it to the user (popup/bubble).
   3. Use for security announcements, support requests, internal alerts.
+  - **🆕 Support tickets (v5.0.1):** on the workstation the user clicks the **"IT support"** shortcut → a structured **Support Request** dialog instead of free-form chat: pick a **category** (Network / Software / Computer / Monitor / Printer / Phone / Other) + optional **short note** + optional **UltraView ID + password** (for remote support). Machine + sender are auto-identified from the agent config. On the dashboard tickets render as **🎫** cards with a category badge (color-coded) + an UltraView box. Server → workstation messaging remains a free chat.
 
 ### Agent Groups (Nhóm máy trạm)
 

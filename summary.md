@@ -465,6 +465,7 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 | **v4.5.3** | **2026-08** | **Fix retention cleanup không khớp C-time rows (_normalize_time + migration), dedup 150k events/ngày (dedup_key + INSERT OR IGNORE + agent mutex), fix 4688 StringInserts map, agent self-noise filter + skip_processes** |
 | **v4.5.4** | **2026-08** | **Fix MITRE 'Error parsing MITRE data': tắt static-asset cache (SEND_FILE_MAX_AGE_DEFAULT=0), fix var t shadowing global t() trong renderMatrix** |
 | **v5.0.0** | **2026-08-24** | **Phân loại cảnh báo (Triage) toàn diện: Threats (MITRE matrix + detail modal nút ✓ Xử lý), YARA, Network Inspection, Vulns — dropdown Phân loại mỗi dòng + toggle 'Hiện đã xử lý'; alert resolved/false_positive ẩn khỏi dashboard mặc định nhưng tái phát vẫn hiện lại (KHÔNG phải suppression); fix dashboard treo sau khi bấm ✓ (double bootstrap backdrop); re-detection reset status='new' cho YARA/Vulns; audit log đầy đủ (ai/IP/khi nào)** |
+| **v5.0.1** | **2026-08-24** | **Ticket yêu cầu hỗ trợ có cấu trúc (thay chat tự do từ máy trạm): hộp thoại 'Yêu cầu hỗ trợ IT' — loại yêu cầu (Mạng/Phần mềm/Máy tính/Màn hình/Máy in/Điện thoại/Khác) + mô tả ngắn + ID/pass UltraView (tùy chọn); máy + người gửi tự định danh từ agent config; messages table + 4 cột (msg_type/category/ultraview_id/ultraview_password); dashboard render ticket dạng 🎫 badge màu + hộp UltraView; từ server → máy trạm vẫn chat như cũ** |
 | v3.6.1 | 2026-06 | Initial release |
 
 ---
