@@ -281,6 +281,8 @@ def register(app, core):
         if msg_type == "support_ticket":
             if not machine_id or not category:
                 return jsonify({"error": "machine_id and category required"}), 400
+            if not note:
+                return jsonify({"error": "note required"}), 400
             message = note
             title = f"Ticket: {category}"
         elif not machine_id or not message:

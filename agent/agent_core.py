@@ -189,8 +189,9 @@ def send_user_message():
     """IT support: open a structured support-request (ticket) dialog for the workstation
     user. Triggered by running the agent with --send-message (desktop shortcut 'IT support').
     v5.0.1: replaced the free-form chat with a category-based ticket (network/software/
-    computer/monitor/printer/phone/other) plus optional UltraView remote-support credentials.
-    The machine + user are already known from the agent config - the user only picks a category."""
+    computer/monitor/printer/phone/other) + a REQUIRED short description + optional
+    UltraView remote-support credentials. The machine + user are already known from the
+    agent config - the user only picks a category and types what happened."""
     import tkinter as tk
     from tkinter import ttk
     import urllib.request
@@ -249,13 +250,11 @@ def send_user_message():
     cat_combo.grid(row=0, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
     cat_combo.set("")
 
-    # Mô tả ngắn (không bắt buộc)
-    row_label("Mô tả ngắn", 1)
+    # Mô tả sự việc (bắt buộc - category alone is too vague for triage)
+    row_label("Mô tả sự việc *", 1)
     note_entry = tk.Entry(form, font=("Segoe UI", 10), bg=ENTRY_BG, fg=ENTRY_FG,
                           insertbackground=ENTRY_FG, relief="flat", bd=1, width=32)
     note_entry.grid(row=1, column=1, sticky="w", pady=(6, 0), padx=(0, 4))
-    tk.Label(form, text="(không bắt buộc)", font=("Segoe UI", 8), fg="#5a6a7a",
-             bg=BG).grid(row=1, column=2, sticky="w")
 
     # ID UltraView (không bắt buộc)
     row_label("ID UltraView", 2)
@@ -283,6 +282,9 @@ def send_user_message():
             return
         cat_code = next((c[0] for c in CATS if c[1] == cat_disp), "other")
         note = note_entry.get().strip()[:300]
+        if not note:
+            status.config(text="Vui lòng nhập mô tả sự việc.", fg="#ffaa88")
+            return
         uv_id = uv_id_entry.get().strip()[:80]
         uv_pwd = uv_pwd_entry.get().strip()[:80]
         url = f"{_web_base(server_host, 5000, cfg)}/api/message/from-agent"
