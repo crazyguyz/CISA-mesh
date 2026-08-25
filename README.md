@@ -34,6 +34,8 @@ git pull
 - Python files changed (`*.py`) → **restart the server** to apply (agents reconnect automatically within a few seconds).
 - Sao lưu trước khi cập nhật: `server\giamsat_data.db`, `users.json`, `.env` (nếu có).
 - Back up before updating: `server\giamsat_data.db`, `users.json`, `.env` (if present).
+- ⚠️ `server\version.txt` là **phiên bản agent-build** — server dùng nó để so sánh với phiên bản agent báo lên (`update_available = agent_version != version.txt`). Phải để **khớp với bản GiamSatAgent.exe đang phát hành**, nếu không agent sẽ tải đi tải lại mãi (vòng lặp update). `build-agent.ps1` tự ghi đúng vào cả 2 file mỗi lần build.
+- ⚠️ `server\version.txt` is the **agent-build version** — the server compares it to the version each agent reports (`update_available = agent_version != version.txt`). It MUST match the shipped `GiamSatAgent.exe`, otherwise agents loop forever (update loop). `build-agent.ps1` writes the correct value to both files on every build.
 
 ---
 

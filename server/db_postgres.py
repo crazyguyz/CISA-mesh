@@ -422,7 +422,9 @@ class PostgresDatabase:
                 sender TEXT DEFAULT '', title TEXT DEFAULT '', message TEXT DEFAULT '',
                 reply TEXT DEFAULT '', require_reply INTEGER DEFAULT 1,
                 status TEXT DEFAULT 'sent', direction TEXT DEFAULT 'server',
-                created_at TEXT DEFAULT '', replied_at TEXT DEFAULT ''
+                created_at TEXT DEFAULT '', replied_at TEXT DEFAULT '',
+                msg_type TEXT DEFAULT 'chat', category TEXT DEFAULT '',
+                ultraview_id TEXT DEFAULT '', ultraview_password TEXT DEFAULT ''
             )""",
             "custom_dashboards": """CREATE TABLE IF NOT EXISTS custom_dashboards (
                 id SERIAL PRIMARY KEY, name TEXT NOT NULL,
@@ -576,6 +578,11 @@ class PostgresDatabase:
             ("assets_inventory", "employee_id", "VARCHAR(64) DEFAULT ''"),
             ("machine_users", "branch", "TEXT DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
+            # v5.0.1: support-ticket columns (structured workstation requests)
+            ("messages", "msg_type", "TEXT DEFAULT 'chat'"),
+            ("messages", "category", "TEXT DEFAULT ''"),
+            ("messages", "ultraview_id", "TEXT DEFAULT ''"),
+            ("messages", "ultraview_password", "TEXT DEFAULT ''"),
         ]
         for table, col, col_type in alt_cols:
             try:
