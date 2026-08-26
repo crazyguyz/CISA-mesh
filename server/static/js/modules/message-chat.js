@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Message Chat Module v3.9.7
  * - Left panel: machine search + group select + "Máy đã chọn" reply grid
  *   Grid shows ALL machines in group (yellow=pending, green=replied)
@@ -584,8 +584,11 @@ window.messageChat = (function() {
   // ===== UTILS =====
 
   function esc(text) {
-    if (!text) return '';
-    return text.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"');
+    // v5.0.2 FIX: coerce numbers to String (esc(g.id) crashed the Messages tab:
+    // group ids are numbers -> 'text.replace is not a function') and actually
+    // HTML-escape (the old replacements were no-ops, escaping nothing).
+    if (text === null || text === undefined) return '';
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   /**
