@@ -8,7 +8,7 @@ REST API for managing per-group security policies:
 import json
 from datetime import datetime
 from flask import request, jsonify
-from .api_common import check_auth
+from .api_common import check_auth, check_agent_psk
 
 _POLICY_TYPES = ["block_websites", "block_software", "block_usb"]
 
@@ -25,6 +25,7 @@ def register_routes(app, server_core):
         policy_type = data.get("policy_type", "")
         policy_name = data.get("policy_name", "")
         config = data.get("config", {})
+        enabled = data.get("enabled", True)
 
         if not group_id:
             return jsonify({"success": False, "error": "group_id is required"}), 400
@@ -36,7 +37,8 @@ def register_routes(app, server_core):
                 group_id=int(group_id),
                 policy_type=policy_type,
                 policy_name=policy_name or f"{policy_type} - {datetime.now().strftime('%H:%M')}",
-                config_json=json.dumps(config, ensure_ascii=False)
+                config_json=json.dumps(config, ensure_ascii=False),
+                enabled=1 if enabled else 0
             )
             server_core.db.insert_audit_log(username, "policy_add",
                 f"Tạo policy '{policy_name or policy_type}' cho group {group_id} (id={policy_id})",
@@ -111,11 +113,12 @@ def register_routes(app, server_core):
 
     @app.route("/api/policies/status", methods=["POST"])
     def api_policy_status():
-        """Update policy apply status (called by agent after applying)."""
-        _, err, code = check_auth("api")
-        if err: return err, code
+        """v5.0.2: record per-machine apply status (agent-reported). Requires agent PSK."""
         data = request.get_json() or {}
+        if not check_agent_psk(data):
+            return jsonify({"error": "invalid psk"}), 401
         policy_id = data.get("policy_id")
+        machine_id = (data.get("machine_id") or "").strip()
         status = data.get("status", "applied")
         message = data.get("message", "")
 
@@ -124,14 +127,38 @@ def register_routes(app, server_core):
         if status not in ("applied", "failed"):
             return jsonify({"success": False, "error": "Invalid status"}), 400
 
-        server_core.db.update_policy_status(policy_id, status, message)
+        server_core.db.set_policy_machine_status(int(policy_id), machine_id, status, message[:500])
         return jsonify({"success": True, "message": f"Policy status updated to {status}"})
+
+    @app.route("/api/policies/requeue/<int:policy_id>", methods=["POST"])
+    def api_policy_requeue(policy_id):
+        """v5.0.2: reset per-machine apply tracking so every machine re-applies the policy."""
+        username, err, code = check_auth("delete")
+        if err: return err, code
+        server_core.db.clear_policy_machine_status(policy_id)
+        server_core.db.update_policy_status(policy_id, "pending", "re-queued for all machines")
+        server_core.db.insert_audit_log(username, "policy_requeue",
+            f"Re-queue policy id={policy_id} cho tất cả máy", request.remote_addr)
+        return jsonify({"success": True, "message": "Policy re-queued for all machines"})
+
+    @app.route("/api/policies/status-list")
+    def api_policy_status_list():
+        """v5.0.2: per-machine apply status for a policy (UI)."""
+        _, err, code = check_auth("api")
+        if err: return err, code
+        policy_id = request.args.get("policy_id", type=int)
+        if not policy_id:
+            return jsonify({"success": False, "error": "policy_id required"}), 400
+        rows = server_core.db.get_policy_machine_status(policy_id)
+        return jsonify({"success": True, "rows": rows})
 
     @app.route("/api/policies/pending/<machine_id>")
     def api_policy_pending(machine_id):
-        """Get pending policies for a specific machine."""
-        _, err, code = check_auth("api")
-        if err: return err, code
+        """v5.0.2: get pending policies for a specific machine (agent PSK - the agent is
+        the intended caller; admin reads go through /api/policies/list)."""
+        data = request.get_json(silent=True) or {}
+        if not check_agent_psk(data):
+            return jsonify({"error": "invalid psk"}), 401
         policies = server_core.db.get_pending_policies_for_machine(machine_id)
         for p in policies:
             try:

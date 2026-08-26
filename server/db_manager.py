@@ -204,6 +204,25 @@ class DatabaseManager:
                     c.execute(f"ALTER TABLE group_policies ADD COLUMN {col} {col_type}")
                 except sqlite3.OperationalError:
                     pass
+            # v5.0.2: soft-delete flag (delete = mark for removal, purge after all machines removed)
+            try:
+                c.execute("ALTER TABLE group_policies ADD COLUMN deleted INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
+
+            # v5.0.2: per-machine policy apply tracking (fixes first-machine-wins, offline
+            # machines, disable/delete never being removed). 'applied' row => machine got it.
+            c.execute("""CREATE TABLE IF NOT EXISTS policy_apply_status (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                policy_id INTEGER NOT NULL,
+                machine_id TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                message TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(policy_id, machine_id)
+            )""")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_pas_policy ON policy_apply_status(policy_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_pas_machine ON policy_apply_status(machine_id)")
 
             # v2.1.0: FIM Baseline DB for file integrity tracking
             c.execute("""CREATE TABLE IF NOT EXISTS fim_baseline (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,path TEXT,file_hash TEXT,file_hash_old TEXT,file_size INTEGER,owner TEXT,permissions TEXT,last_modified TEXT,first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,change_count INTEGER DEFAULT 0,UNIQUE(machine_id, path))""")
@@ -1351,17 +1370,15 @@ class DatabaseManager:
     # v3.9.2: GROUP POLICIES — Per-group policy enforcement
     # =========================================================================
 
-    def add_policy(self, group_id, policy_type, policy_name="", config_json="{}"):
+    def add_policy(self, group_id, policy_type, policy_name="", config_json="{}", enabled=1):
         """Add a new policy to a group. Returns policy ID."""
         with self.lock:
             c = self.conn.execute(
-                """INSERT INTO group_policies (group_id, policy_type, policy_name, config_json)
-                   VALUES (?, ?, ?, ?)""",
-                (group_id, policy_type, policy_name, config_json)
+                """INSERT INTO group_policies (group_id, policy_type, policy_name, config_json, enabled)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (group_id, policy_type, policy_name, config_json, enabled)
             )
             self.conn.commit()
-            self.insert_audit_log("admin", "add_policy",
-                f"group_id={group_id} type={policy_type} name={policy_name}")
             return c.lastrowid
 
     def update_policy(self, policy_id, policy_name=None, config_json=None, enabled=None):
@@ -1391,32 +1408,36 @@ class DatabaseManager:
             return True
 
     def delete_policy(self, policy_id):
-        """Delete a policy by ID."""
+        """v5.0.2: soft-delete - mark deleted + pending_removal so the enforcement loop
+        pushes remove_* to every machine that applied; hard-purged once all removed."""
         with self.lock:
-            self.conn.execute("DELETE FROM group_policies WHERE id=?", (policy_id,))
+            self.conn.execute(
+                "UPDATE group_policies SET deleted=1, apply_status='pending_removal', updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND deleted=0", (policy_id,))
             self.conn.commit()
 
     def get_policies(self, group_id=None):
-        """Get all policies, optionally filtered by group_id."""
+        """Get all policies, optionally filtered by group_id (excludes soft-deleted)."""
         with self.lock:
             if group_id:
                 c = self.conn.execute(
-                    "SELECT * FROM group_policies WHERE group_id=? ORDER BY created_at DESC",
+                    "SELECT * FROM group_policies WHERE group_id=? AND deleted=0 ORDER BY created_at DESC",
                     (group_id,))
             else:
                 c = self.conn.execute(
                     "SELECT g.name as group_name, p.* FROM group_policies p "
-                    "JOIN agent_groups g ON p.group_id=g.id ORDER BY p.created_at DESC")
+                    "JOIN agent_groups g ON p.group_id=g.id WHERE p.deleted=0 ORDER BY p.created_at DESC")
             return [dict(row) for row in c.fetchall()]
 
     def get_policy(self, policy_id):
         """Get single policy by ID."""
         with self.lock:
-            row = self.conn.execute("SELECT * FROM group_policies WHERE id=?", (policy_id,)).fetchone()
+            row = self.conn.execute("SELECT * FROM group_policies WHERE id=? AND deleted=0", (policy_id,)).fetchone()
             return dict(row) if row else None
 
     def update_policy_status(self, policy_id, status, message=""):
-        """Update apply status of a policy."""
+        """Update apply status of a policy (group-level summary; per-machine rows are
+        tracked in policy_apply_status)."""
         with self.lock:
             self.conn.execute(
                 "UPDATE group_policies SET apply_status=?, status_message=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -1424,35 +1445,95 @@ class DatabaseManager:
             self.conn.commit()
 
     def get_pending_policies_for_machine(self, machine_id):
-        """Get all pending policies for a machine based on its group membership."""
+        """v5.0.2: per-machine pending - enabled policy the machine has NOT yet applied.
+        Fixes first-machine-wins (old status was per-policy, so the first machine to
+        apply hid the policy from every other machine)."""
         with self.lock:
             c = self.conn.execute(
                 """SELECT p.* FROM group_policies p
                    JOIN agent_group_members m ON p.group_id=m.group_id
-                   WHERE m.machine_id=? AND p.enabled=1 AND p.apply_status='pending'
+                   WHERE m.machine_id=? AND p.enabled=1 AND p.deleted=0
+                     AND NOT EXISTS (
+                         SELECT 1 FROM policy_apply_status s
+                         WHERE s.policy_id=p.id AND s.machine_id=? AND s.status='applied'
+                     )
                    ORDER BY p.created_at ASC""",
-                (machine_id,))
+                (machine_id, machine_id))
             return [dict(row) for row in c.fetchall()]
 
     def get_removal_policies_for_machine(self, machine_id):
-        """Get policies that were applied but now need removal (disabled by admin).
-        Returns list of policy dicts that need remove_block_* action."""
+        """v5.0.2: per-machine removal - disabled OR soft-deleted policy that the machine
+        HAS applied (fixes the old SQLite query that required apply_status='applied' while
+        update_policy wrote 'pending_removal' - removals were never pushed)."""
         with self.lock:
             c = self.conn.execute(
                 """SELECT p.* FROM group_policies p
                    JOIN agent_group_members m ON p.group_id=m.group_id
-                   WHERE m.machine_id=? AND p.enabled=0 AND p.apply_status='applied'
+                   WHERE m.machine_id=? AND (p.enabled=0 OR p.deleted=1)
+                     AND EXISTS (
+                         SELECT 1 FROM policy_apply_status s
+                         WHERE s.policy_id=p.id AND s.machine_id=? AND s.status='applied'
+                     )
                    ORDER BY p.created_at ASC""",
-                (machine_id,))
+                (machine_id, machine_id))
             return [dict(row) for row in c.fetchall()]
 
-    def mark_policy_removal_sent(self, policy_id):
-        """Mark a policy as removal-sent (status back to pending)."""
+    def set_policy_machine_status(self, policy_id, machine_id, status, message=""):
+        """v5.0.2: record per-machine apply status (called when the agent reports)."""
         with self.lock:
             self.conn.execute(
-                "UPDATE group_policies SET apply_status='pending', updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (policy_id,))
+                "INSERT INTO policy_apply_status (policy_id, machine_id, status, message, updated_at) "
+                "VALUES (?,?,?,?,CURRENT_TIMESTAMP) "
+                "ON CONFLICT(policy_id, machine_id) DO UPDATE SET status=excluded.status, "
+                "message=excluded.message, updated_at=CURRENT_TIMESTAMP",
+                (policy_id, machine_id, status, message))
             self.conn.commit()
+
+    def clear_policy_machine_status(self, policy_id):
+        """v5.0.2: delete per-machine rows (used by 're-apply to all')."""
+        with self.lock:
+            self.conn.execute("DELETE FROM policy_apply_status WHERE policy_id=?", (policy_id,))
+            self.conn.commit()
+
+    def get_policy_machine_status(self, policy_id):
+        """v5.0.2: per-machine apply status for the UI (joined with machine hostnames)."""
+        with self.lock:
+            c = self.conn.execute(
+                """SELECT s.machine_id, s.status, s.message, s.updated_at,
+                          COALESCE(mc.hostname, s.machine_id) AS hostname
+                   FROM policy_apply_status s
+                   LEFT JOIN machines mc ON mc.machine_id=s.machine_id
+                   WHERE s.policy_id=? ORDER BY s.updated_at DESC""",
+                (policy_id,))
+            return [dict(row) for row in c.fetchall()]
+
+    def mark_policy_removal_sent(self, policy_id, machine_id=None):
+        """v5.0.2: after a removal command is delivered, drop that machine's 'applied'
+        row (back to baseline). Soft-deleted policies are hard-purged once no machine
+        has an 'applied' row."""
+        with self.lock:
+            if machine_id:
+                self.conn.execute("DELETE FROM policy_apply_status WHERE policy_id=? AND machine_id=?",
+                                  (policy_id, machine_id))
+            else:
+                self.conn.execute("DELETE FROM policy_apply_status WHERE policy_id=?", (policy_id,))
+            self.conn.commit()
+            self._purge_soft_deleted_policies()
+
+    def _purge_soft_deleted_policies(self):
+        """v5.0.2: hard-delete soft-deleted policies with no remaining 'applied' machines."""
+        try:
+            rows = self.conn.execute("SELECT id FROM group_policies WHERE deleted=1").fetchall()
+            for r in rows:
+                cnt = self.conn.execute(
+                    "SELECT COUNT(*) FROM policy_apply_status WHERE policy_id=? AND status='applied'",
+                    (r["id"],)).fetchone()[0]
+                if cnt == 0:
+                    self.conn.execute("DELETE FROM group_policies WHERE id=?", (r["id"],))
+                    self.conn.execute("DELETE FROM policy_apply_status WHERE policy_id=?", (r["id"],))
+            self.conn.commit()
+        except Exception:
+            pass
 
     # =========================================================================
     # v2.1.0: FIM BASELINE - File integrity tracking with hash comparison

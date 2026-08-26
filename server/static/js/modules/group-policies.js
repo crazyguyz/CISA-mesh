@@ -117,7 +117,8 @@
         };
         var hintEl = document.getElementById('policyConfigHint');
         if (hintEl) hintEl.textContent = hints[type] || '';
-        if (type === 'block_usb') {
+        // v5.0.2: only prefill {} for USB when ADDING (never clobber an existing config while editing)
+        if (type === 'block_usb' && !document.getElementById('policyEditId').value) {
             document.getElementById('policyConfig').value = '{}';
         }
     }
@@ -140,6 +141,9 @@
         var allTabs = document.querySelectorAll('#viewGroups > [id^="tab"]');
         allTabs.forEach(function(el) { el.style.display = 'none'; });
         document.querySelectorAll('#viewGroups .nav-link').forEach(function(el) { el.classList.remove('active'); });
+        // v5.0.2: also hide the group-management card so only the policies panel shows
+        var grpCard = document.querySelector('#viewGroups > .card');
+        if (grpCard) grpCard.style.display = 'none';
 
         // Show policies tab
         var panel = document.getElementById('tabGroupPolicies');
@@ -241,7 +245,8 @@
                     group_id: currentGroupId,
                     policy_type: policyType,
                     policy_name: policyName,
-                    config: config
+                    config: config,
+                    enabled: enabled
                 })
             }).then(function(r) { return r.json(); }).then(function(data) {
                 if (data.success) {
@@ -274,6 +279,50 @@
                 loadGroupPolicies(currentGroupId);
             }
         });
+    };
+
+    // v5.0.2: per-machine apply status modal + re-apply-to-all
+    window.showPolicyStatus = function(policyId) {
+        fetch('/api/policies/status-list?policy_id=' + policyId).then(function(r) { return r.json(); }).then(function(data) {
+            var rows = data.rows || [];
+            var html = '<table class="table table-sm table-dark table-hover" style="font-size:11px;margin:0;">' +
+                '<thead><tr><th>May</th><th>Trang thai</th><th>Chi tiet</th><th>Cap nhat</th></tr></thead><tbody>';
+            if (rows.length === 0) {
+                html += '<tr><td colspan="4" class="text-center text-muted py-2">Chua co may nao bao ket qua (cho heartbeat/ap dung)</td></tr>';
+            }
+            rows.forEach(function(r) {
+                var badge = r.status === 'applied' ? '<span class="badge bg-success">da ap dung</span>' :
+                             r.status === 'failed' ? '<span class="badge bg-danger">that bai</span>' :
+                             '<span class="badge bg-warning">cho</span>';
+                html += '<tr><td>' + escapeHtml(r.hostname || r.machine_id) + '</td><td>' + badge + '</td>' +
+                    '<td style="color:#8892a4;">' + escapeHtml((r.message || '').substring(0, 120)) + '</td>' +
+                    '<td style="color:#5a6a7a;">' + escapeHtml((r.updated_at || '').toString().substring(0, 19)) + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            var modal = document.getElementById('policyStatusModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'policyStatusModal';
+                modal.className = 'modal fade';
+                modal.setAttribute('tabindex', '-1');
+                modal.innerHTML = '<div class="modal-dialog modal-dialog-scrollable"><div class="modal-content" style="background:#13202e;color:#c8d8e8;">' +
+                    '<div class="modal-header" style="border-bottom:1px solid #2a3a4a;"><h6 class="modal-title">Trang thai policy theo may</h6>' +
+                    '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>' +
+                    '<div class="modal-body" id="policyStatusBody"></div></div></div>';
+                document.body.appendChild(modal);
+            }
+            document.getElementById('policyStatusBody').innerHTML = html;
+            new bootstrap.Modal(modal).show();
+        }).catch(function() { showToast(t('gp.loadErr'), 'danger'); });
+    };
+
+    window.requeuePolicy = function(policyId) {
+        if (!confirm('Ap lai policy nay cho TAT CA may trong nhom?')) return;
+        fetch('/api/policies/requeue/' + policyId, {method: 'POST'})
+            .then(function(r) { return r.json(); }).then(function(data) {
+                showToast(data.success ? 'Da len lich ap lai cho tat ca may' : (data.error || 'Loi'), data.success ? 'success' : 'danger');
+                loadGroupPolicies(currentGroupId);
+            }).catch(function() { showToast('Loi ket noi', 'danger'); });
     };
 
     function loadGroupPolicies(groupId) {
@@ -313,6 +362,8 @@
                     '</div>' +
                     '<div class="btn-group btn-group-sm">' +
                     '<button class="btn btn-xs btn-outline-info" onclick="window.editPolicy(' + p.id + ')" title="Sua"><i class="bi bi-pencil"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-secondary" onclick="window.showPolicyStatus(' + p.id + ')" title="Trang thai tung may"><i class="bi bi-people"></i></button>' +
+                    '<button class="btn btn-xs btn-outline-warning" onclick="window.requeuePolicy(' + p.id + ')" title="Ap lai cho tat ca may"><i class="bi bi-arrow-repeat"></i></button>' +
                     '<button class="btn btn-xs btn-outline-danger" onclick="window.deletePolicy(' + p.id + ')" title="Xoa"><i class="bi bi-trash"></i></button>' +
                     '</div>' +
                     '</div>' +

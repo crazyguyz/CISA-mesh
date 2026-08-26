@@ -413,18 +413,29 @@ class TCPServer(threading.Thread):
                 out = msg.get("output") or msg.get("error", "")
                 self.db.insert_agent_update_log(mid, hn, "", "", st, out, "push")
 
-            # v3.9.2: Handle policy enforcement results
+            # v3.9.2: Handle policy enforcement results (TCP path - legacy; the primary
+            # path is HTTP /api/agent/command-result in api_agent_commands.py)
             action = msg.get("action", "")
             if action and action.startswith(("apply_block_", "remove_block_")):
-                params = msg.get("params", {})
-                policy_id = params.get("policy_id")
-                if policy_id:
-                    if msg.get("status") == "completed":
-                        self.db.update_policy_status(policy_id, "applied", msg.get("output", "")[:500])
-                        print(f"[POLICY] Policy {policy_id} applied successfully on {msg.get('hostname','?')}")
+                exec_id = msg.get("exec_id", "")
+                _mid = msg.get("machine_id", "")
+                try:
+                    import re as _re
+                    _m = _re.match(r"^policy_rm_(\d+)_", exec_id or "")
+                    if _m:
+                        if msg.get("status") == "completed" and _mid:
+                            self.db.mark_policy_removal_sent(int(_m.group(1)), _mid)
+                            print(f"[POLICY] Removal result on {_mid}: policy={_m.group(1)} done")
                     else:
-                        self.db.update_policy_status(policy_id, "failed", msg.get("error", "")[:500])
-                        print(f"[POLICY] Policy {policy_id} FAILED on {msg.get('hostname','?')}: {msg.get('error','')[:200]}")
+                        _m = _re.match(r"^policy_(\d+)_", exec_id or "")
+                        if _m and _mid:
+                            _pst = "applied" if msg.get("status") == "completed" else "failed"
+                            self.db.set_policy_machine_status(
+                                int(_m.group(1)), _mid, _pst,
+                                (msg.get("output") or msg.get("error", ""))[:500])
+                            print(f"[POLICY] Apply result on {_mid}: policy={_m.group(1)} -> {_pst}")
+                except Exception as e:
+                    print(f"[-] POLICY: result parse error: {e}")
 
     def _handle_network(self, msg):
         if self.event_queue:
@@ -699,8 +710,11 @@ class TCPServer(threading.Thread):
                 traceback.print_exc()
 
     def _push_pending_policies(self, mid, hostname, pending):
-        """v3.9.3: Push pending policies in background thread (non-blocking)."""
-        import json as _json, uuid as _uuid
+        """v5.0.2: queue apply_* into the commands table (HTTP-poll fallback so OFFLINE
+        machines still get it) + best-effort TCP push when online. exec_id is deterministic
+        (policy_<id>_<machine>) so repeated heartbeats are idempotent; per-machine tracking
+        stops re-pushing once the machine reports 'applied'."""
+        import json as _json
         for policy in pending:
             try:
                 policy_type = policy.get("policy_type", "")
@@ -708,22 +722,30 @@ class TCPServer(threading.Thread):
                     config = _json.loads(policy.get("config_json", "{}"))
                 except Exception:
                     config = {}
+                exec_id = f"policy_{policy.get('id')}_{mid}"
+                config_str = _json.dumps(config, ensure_ascii=False)
                 cmd_data = {
                     "action": f"apply_{policy_type}",
-                    "command": _json.dumps(config, ensure_ascii=False),
-                    "exec_id": f"policy_{policy.get('id')}_{_uuid.uuid4().hex[:8]}",
+                    "command": config_str,
+                    "exec_id": exec_id,
                     "params": {"policy_id": policy.get("id")},
                 }
+                # Queue for HTTP poll (exec_id UNIQUE -> duplicate add is a no-op)
+                try:
+                    self.db.add_command(mid, f"apply_{policy_type}", config_str, exec_id)
+                except Exception:
+                    pass
                 if self.send_command(mid, cmd_data):
                     print(f"[POLICY] Pushed {policy_type} to {hostname} (policy_id={policy.get('id')})")
                 else:
-                    print(f"[-] POLICY: Failed to push {policy_type} to {hostname} (offline?)")
+                    print(f"[-] POLICY: TCP push failed {policy_type} to {hostname} (queued for HTTP poll)")
             except Exception as e:
                 print(f"[-] POLICY: Error pushing policy {policy.get('id')}: {e}")
 
     def _push_removal_policies(self, mid, hostname, removal):
-        """v3.9.3: Push removal commands for disabled/deleted policies."""
-        import json as _json, uuid as _uuid
+        """v5.0.2: queue remove_* via commands table + TCP push. The machine's 'applied'
+        row is dropped when the agent reports completion (api_agent_commands)."""
+        import json as _json
         for policy in removal:
             try:
                 policy_type = policy.get("policy_type", "")
@@ -731,17 +753,22 @@ class TCPServer(threading.Thread):
                     config = _json.loads(policy.get("config_json", "{}"))
                 except Exception:
                     config = {}
+                exec_id = f"policy_rm_{policy.get('id')}_{mid}"
+                config_str = _json.dumps(config, ensure_ascii=False)
                 cmd_data = {
                     "action": f"remove_{policy_type}",
-                    "command": _json.dumps(config, ensure_ascii=False),
-                    "exec_id": f"policy_rm_{policy.get('id')}_{_uuid.uuid4().hex[:8]}",
+                    "command": config_str,
+                    "exec_id": exec_id,
                     "params": {"policy_id": policy.get("id")},
                 }
+                try:
+                    self.db.add_command(mid, f"remove_{policy_type}", config_str, exec_id)
+                except Exception:
+                    pass
                 if self.send_command(mid, cmd_data):
-                    self.db.mark_policy_removal_sent(policy.get("id"))
                     print(f"[POLICY] Removal pushed: {policy_type} to {hostname} (policy_id={policy.get('id')})")
                 else:
-                    print(f"[-] POLICY: Failed to push removal {policy_type} to {hostname}")
+                    print(f"[-] POLICY: Removal queued for {hostname} (HTTP poll)")
             except Exception as e:
                 print(f"[-] POLICY: Error pushing removal {policy.get('id')}: {e}")
 

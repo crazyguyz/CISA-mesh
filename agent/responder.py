@@ -856,6 +856,13 @@ Write-Output "USB storage re-enabled (registry Start=3)"
 
         if IS_WINDOWS:
             results = []
+            # v5.0.2: remove ALL existing GIAMSAT_WEB_* rules first so re-applying a
+            # policy (e.g. after a server-side re-queue) never creates duplicate rules
+            # or fails with 'rule already exists'.
+            _run(["powershell", "-NoProfile", "-Command",
+                "netsh advfirewall firewall show rule name=all | Select-String 'GIAMSAT_WEB_' | ForEach-Object { "
+                "$_ -replace '.*Rule Name:\\s*','' | ForEach-Object { netsh advfirewall firewall delete rule name=`\"$_`\" } }"
+            ], timeout=20)
             # 1. Resolve domains to IPs and block via firewall (most effective)
             blocked_ips = set()
             for domain in domains:

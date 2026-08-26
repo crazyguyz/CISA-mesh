@@ -444,7 +444,17 @@ class PostgresDatabase:
                 policy_type TEXT NOT NULL, policy_name TEXT DEFAULT '',
                 config_json JSONB DEFAULT '{}', enabled INTEGER DEFAULT 1,
                 apply_status TEXT DEFAULT 'pending', status_message TEXT DEFAULT '',
-                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(),
+                deleted INTEGER DEFAULT 0
+            )""",
+            "policy_apply_status": """CREATE TABLE IF NOT EXISTS policy_apply_status (
+                id SERIAL PRIMARY KEY,
+                policy_id INTEGER NOT NULL,
+                machine_id TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                message TEXT DEFAULT '',
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(policy_id, machine_id)
             )""",
             "assets_computers": """CREATE TABLE IF NOT EXISTS assets_computers (
                 id SERIAL PRIMARY KEY, asset_id VARCHAR(32) UNIQUE NOT NULL,
@@ -583,6 +593,8 @@ class PostgresDatabase:
             ("messages", "category", "TEXT DEFAULT ''"),
             ("messages", "ultraview_id", "TEXT DEFAULT ''"),
             ("messages", "ultraview_password", "TEXT DEFAULT ''"),
+            # v5.0.2: soft-delete flag for group_policies
+            ("group_policies", "deleted", "INTEGER DEFAULT 0"),
         ]
         for table, col, col_type in alt_cols:
             try:
@@ -2279,13 +2291,13 @@ class PostgresDatabase:
             return None
 
     # Policies
-    def add_policy(self, group_id, policy_type, policy_name="", config_json="{}"):
+    def add_policy(self, group_id, policy_type, policy_name="", config_json="{}", enabled=1):
         if not self._connected:
             return 0
         try:
             result = self._execute(
-                "INSERT INTO group_policies (group_id, policy_type, policy_name, config_json) VALUES (%s,%s,%s,%s) RETURNING id",
-                (group_id, policy_type, policy_name, config_json), fetch=True
+                "INSERT INTO group_policies (group_id, policy_type, policy_name, config_json, enabled) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                (group_id, policy_type, policy_name, config_json, enabled), fetch=True
             )
             return result["id"] if result else 0
         except Exception:
@@ -2316,10 +2328,12 @@ class PostgresDatabase:
             return False
 
     def delete_policy(self, policy_id):
+        """v5.0.2: soft-delete - mark deleted + pending_removal so the enforcement loop
+        pushes remove_* to every machine that applied; hard-purged once all removed."""
         if not self._connected:
             return
         try:
-            self._execute("DELETE FROM group_policies WHERE id=%s", (policy_id,))
+            self._execute("UPDATE group_policies SET deleted=1, apply_status='pending_removal', updated_at=NOW() WHERE id=%s AND deleted=0", (policy_id,))
         except Exception:
             pass
 
@@ -2329,11 +2343,12 @@ class PostgresDatabase:
         try:
             if group_id:
                 return self._execute(
-                    "SELECT * FROM group_policies WHERE group_id=%s ORDER BY created_at DESC",
+                    "SELECT * FROM group_policies WHERE group_id=%s AND deleted=0 ORDER BY created_at DESC",
                     (group_id,), fetchall=True
                 ) or []
             return self._execute(
-                "SELECT g.name as group_name, p.* FROM group_policies p JOIN agent_groups g ON p.group_id=g.id ORDER BY p.created_at DESC",
+                "SELECT g.name as group_name, p.* FROM group_policies p JOIN agent_groups g ON p.group_id=g.id "
+                "WHERE p.deleted=0 ORDER BY p.created_at DESC",
                 fetchall=True
             ) or []
         except Exception:
@@ -2343,7 +2358,7 @@ class PostgresDatabase:
         if not self._connected:
             return None
         try:
-            return self._execute("SELECT * FROM group_policies WHERE id=%s", (policy_id,), fetch=True)
+            return self._execute("SELECT * FROM group_policies WHERE id=%s AND deleted=0", (policy_id,), fetch=True)
         except Exception:
             return None
 
@@ -2357,34 +2372,107 @@ class PostgresDatabase:
             pass
 
     def get_pending_policies_for_machine(self, machine_id):
+        """v5.0.2: per-machine pending - enabled policy the machine has NOT yet applied."""
         if not self._connected:
             return []
         try:
             return self._execute(
                 """SELECT p.* FROM group_policies p JOIN agent_group_members m ON p.group_id=m.group_id
-                   WHERE m.machine_id=%s AND p.enabled=1 AND p.apply_status='pending'""",
-                (machine_id,), fetchall=True
+                   WHERE m.machine_id=%s AND p.enabled=1 AND p.deleted=0
+                     AND NOT EXISTS (
+                         SELECT 1 FROM policy_apply_status s
+                         WHERE s.policy_id=p.id AND s.machine_id=%s AND s.status='applied'
+                     )""",
+                (machine_id, machine_id), fetchall=True
             ) or []
         except Exception:
             return []
 
     def get_removal_policies_for_machine(self, machine_id):
+        """v5.0.2: per-machine removal - disabled OR soft-deleted policy the machine applied."""
         if not self._connected:
             return []
         try:
             return self._execute(
                 """SELECT p.* FROM group_policies p JOIN agent_group_members m ON p.group_id=m.group_id
-                   WHERE m.machine_id=%s AND p.apply_status='pending_removal'""",
-                (machine_id,), fetchall=True
+                   WHERE m.machine_id=%s AND (p.enabled=0 OR p.deleted=1)
+                     AND EXISTS (
+                         SELECT 1 FROM policy_apply_status s
+                         WHERE s.policy_id=p.id AND s.machine_id=%s AND s.status='applied'
+                     )""",
+                (machine_id, machine_id), fetchall=True
             ) or []
         except Exception:
             return []
 
-    def mark_policy_removal_sent(self, policy_id):
+    def set_policy_machine_status(self, policy_id, machine_id, status, message=""):
+        """v5.0.2: record per-machine apply status (called when the agent reports)."""
         if not self._connected:
             return
         try:
-            self._execute("UPDATE group_policies SET apply_status='removed', updated_at=NOW() WHERE id=%s", (policy_id,))
+            self._execute(
+                "INSERT INTO policy_apply_status (policy_id, machine_id, status, message, updated_at) "
+                "VALUES (%s,%s,%s,%s,NOW()) "
+                "ON CONFLICT (policy_id, machine_id) DO UPDATE SET status=EXCLUDED.status, "
+                "message=EXCLUDED.message, updated_at=NOW()",
+                (policy_id, machine_id, status, message))
+        except Exception:
+            pass
+
+    def clear_policy_machine_status(self, policy_id):
+        """v5.0.2: delete per-machine rows (used by 're-apply to all')."""
+        if not self._connected:
+            return
+        try:
+            self._execute("DELETE FROM policy_apply_status WHERE policy_id=%s", (policy_id,))
+        except Exception:
+            pass
+
+    def get_policy_machine_status(self, policy_id):
+        """v5.0.2: per-machine apply status for the UI (joined with machine hostnames)."""
+        if not self._connected:
+            return []
+        try:
+            return self._execute(
+                """SELECT s.machine_id, s.status, s.message, s.updated_at,
+                          COALESCE(mc.hostname, s.machine_id) AS hostname
+                   FROM policy_apply_status s
+                   LEFT JOIN machines mc ON mc.machine_id=s.machine_id
+                   WHERE s.policy_id=%s ORDER BY s.updated_at DESC""",
+                (policy_id,), fetchall=True
+            ) or []
+        except Exception:
+            return []
+
+    def mark_policy_removal_sent(self, policy_id, machine_id=None):
+        """v5.0.2: after a removal command is delivered, drop that machine's 'applied'
+        row (back to baseline). Soft-deleted policies are hard-purged once no machine
+        has an 'applied' row."""
+        if not self._connected:
+            return
+        try:
+            if machine_id:
+                self._execute("DELETE FROM policy_apply_status WHERE policy_id=%s AND machine_id=%s",
+                              (policy_id, machine_id))
+            else:
+                self._execute("DELETE FROM policy_apply_status WHERE policy_id=%s", (policy_id,))
+            self._purge_soft_deleted_policies()
+        except Exception:
+            pass
+
+    def _purge_soft_deleted_policies(self):
+        """v5.0.2: hard-delete soft-deleted policies with no remaining 'applied' machines."""
+        if not self._connected:
+            return
+        try:
+            rows = self._execute("SELECT id FROM group_policies WHERE deleted=1", fetchall=True) or []
+            for r in rows:
+                cnt = self._execute(
+                    "SELECT COUNT(*) AS c FROM policy_apply_status WHERE policy_id=%s AND status='applied'",
+                    (r["id"],), fetch=True)
+                if not cnt or cnt["c"] == 0:
+                    self._execute("DELETE FROM group_policies WHERE id=%s", (r["id"],))
+                    self._execute("DELETE FROM policy_apply_status WHERE policy_id=%s", (r["id"],))
         except Exception:
             pass
 

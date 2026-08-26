@@ -313,11 +313,11 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 - **VI:** Gom máy theo nhóm để áp dụng chính sách chung.
   1. Vào menu **Groups** → danh sách nhóm.
   2. **Tạo nhóm mới** (đặt tên + mô tả), **thêm máy vào nhóm**, **xóa máy khỏi nhóm**.
-  3. Có thể gán **Group Policy** (chặn website, chặn USB, chặn phần mềm) cho từng nhóm.
+  3. Bấm tab **"Group Policies"** để gán chính sách cho nhóm: **chặn USB**, **chặn website** (config `{"domains": [...]}`), **chặn phần mềm** (config `{"blocked_paths": [...]}`). Mỗi policy theo dõi **trạng thái theo từng máy** (👁 xem máy nào đã áp/thất bại) + nút **↻ Áp lại cho tất cả**. Tắt/Xóa policy → hệ thống tự đẩy lệnh **gỡ chặn** cho từng máy đã áp. Máy **offline** sẽ nhận policy khi kết nối lại (qua hàng đợi lệnh HTTP).
 - **EN:** Group machines to apply common policies.
   1. Open **Groups** → list of groups.
   2. **Create a group** (name + description), **add/remove machines**.
-  3. Optionally assign **Group Policies** (block websites, block USB, block software) per group.
+  3. Use the **"Group Policies"** tab to assign per-group policies: **block USB**, **block websites** (`{"domains": [...]}`), **block software** (`{"blocked_paths": [...]}`). Each policy tracks **per-machine status** (👁 view which machines applied/failed) with a **↻ Re-apply to all** button. Disabling/Deleting a policy pushes a **remove-block** command to every machine that applied. **Offline** machines receive the policy when they reconnect (via the HTTP command queue).
 
 ### Cập nhật Agent (Update Agent)
 

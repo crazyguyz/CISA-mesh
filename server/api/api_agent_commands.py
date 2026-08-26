@@ -112,6 +112,28 @@ def register(app, core):
                 (status, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), exec_id, machine_id)
             )
 
+            # v5.0.2: policy enforcement result -> per-machine apply tracking.
+            # exec_id embeds the policy id: apply => policy_<id>_<machine>, remove => policy_rm_<id>_<machine>.
+            # (Fixes BUG: apply_status was never persisted because the agent reports over
+            # HTTP while the old policy-status code only existed on the TCP path.)
+            if action and (action.startswith("apply_block_") or action.startswith("remove_block_")):
+                import re as _re
+                _m = _re.match(r"^policy_rm_(\d+)_", exec_id or "")
+                if _m:
+                    _pid = int(_m.group(1))
+                    # removal delivered -> machine back to baseline
+                    if status in ("completed",):
+                        core.db.mark_policy_removal_sent(_pid, machine_id)
+                    print(f"[POLICY] removal result for {machine_id}: policy={_pid} status={status}")
+                else:
+                    _m = _re.match(r"^policy_(\d+)_", exec_id or "")
+                    if _m:
+                        _pid = int(_m.group(1))
+                        _pstatus = "applied" if status == "completed" else "failed"
+                        _msg = (output or error or "")[:500]
+                        core.db.set_policy_machine_status(_pid, machine_id, _pstatus, _msg)
+                        print(f"[POLICY] apply result for {machine_id}: policy={_pid} -> {_pstatus}")
+
             # Save response result
             try:
                 core.db.insert_response_result({
