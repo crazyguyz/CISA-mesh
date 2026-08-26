@@ -2547,7 +2547,7 @@ function loadRules(){
                 if (window._cachedRules && window._cachedRules[idx]) {
                     showDetailModal('📋 Rule ' + window._cachedRules[idx].id,
                         '<pre style="color:#d0e8d8;font-size:11px;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">' + 
-                        JSON.stringify(window._cachedRules[idx], null, 2).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>') + 
+                        JSON.stringify(window._cachedRules[idx], null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + 
                         '</pre>');
                 }
             });

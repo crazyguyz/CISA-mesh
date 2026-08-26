@@ -32,7 +32,7 @@ def register(app, core):
             "keep_threats": true
         }
         """
-        _, err, code = check_auth("delete")
+        username, err, code = check_auth("delete")
         if err: return err, code
         data = request.get_json(silent=True) or {}
         types = data.get("types", None)  # None = all
@@ -57,10 +57,10 @@ def register(app, core):
                 except:
                     pass
 
-            # Audit log
+            # Audit log (v5.0.2: use the actual logged-in user, not hardcoded 'admin')
             try:
                 core.db.insert_audit_log(
-                    username="admin",
+                    username=username or "admin",
                     action="manual_cleanup",
                     details=f"Deleted {total} records older than {days} days. "
                             + ", ".join(f"{k}={v}" for k, v in deleted.items() if v > 0)
