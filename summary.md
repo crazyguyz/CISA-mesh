@@ -442,6 +442,7 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 
 | Version | Date | Thay đổi chính |
 |---------|------|---------------|
+| **v5.0.3** | **2026-08** | **Security P1+P2: NetFlow DoS hardening (rate-limit/exporter + template TTL + batch insert), 2FA rate-limit+lockout+compare_digest+admin reset, nonce chống replay command, che ultraview_password khỏi viewer, rate-limit/blacklist GC, syslog UDP rate-limit, engine server = agent (subtype/dst_port/field_equals/field_regex/FIELD_ALIASES), PSK per-machine + validate machine_id + sanitize hostname (triệt stored-XSS nguồn), dedup_key theo normalized time, hunting LIKE escape, digest cap 200→2000 + weekly catch-up, CDN SRI, agent check_hostname, agent version 4.6.5** |
 | v3.9.3 | 2026-07 | Network Smart Aggregation (aggregate-only, flush count>0, TTL 300s → 96%↓), SCA Fix (PASS+FAIL+WARN reporting, real-time sca_event) |
 | v3.9.0 | 2026-07 | Log Volume Optimization: Heartbeat 120s+metrics, Network 3-Tier Aggregation, Sysmon Pre-Filter, DB heartbeat timeout 300s |
 | v3.8.0 | 2026-07 | Sysmon EID 3 Network, Alert Suppression, Agent Watchdog, MISP Threat Intel, Enrollment & Revocation |
