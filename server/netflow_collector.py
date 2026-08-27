@@ -39,8 +39,9 @@ class NetflowCollector(threading.Thread):
         self.sock = None
         # v9 template cache: (exporter_ip, source_id) -> {template_id: [(field_type, field_len), ...]}
         self._templates = {}
-        self._templ_seen = {}      # key -> last activity (TTL eviction)
+        self._templ_seen = {}      # key/(key,tid) -> last activity (TTL eviction)
         self._rate = {}            # exporter_ip -> (window_start, packet_count)
+        self._last_rate_gc = 0.0   # v5.0.3: last idle-GC timestamp
         self._batch = []           # pending flows (batch insert)
         self._batch_lock = threading.Lock()
         self._stats = {"packets": 0, "flows": 0, "errors": 0, "v5": 0, "v9": 0, "stored": 0}
@@ -111,15 +112,17 @@ class NetflowCollector(threading.Thread):
             w, c = now, 0
         c += 1
         self._rate[exporter_ip] = (w, c)
-        # v5.0.3 (ra soat): GC idle exporter keys so a flood of spoofed source
-        # IPs cannot grow this dict forever (mirrors the API rate-limit GC)
-        if len(self._rate) % 1000 == 0:
-            try:
-                idle = [k for k, v in self._rate.items() if now - v[0] > 60]
-                for k in idle:
-                    self._rate.pop(k, None)
-            except Exception:
-                pass
+        # v5.0.3 (ra soat): GC idle exporter keys every 30s so spoofed-source
+        # floods cannot grow this dict unbounded (mirrors the API limiter GC)
+        if now - self._last_rate_gc > 30:
+            self._last_rate_gc = now
+            if len(self._rate) > 1000:
+                try:
+                    idle = [k for k, v in self._rate.items() if now - v[0] > 60]
+                    for k in idle:
+                        self._rate.pop(k, None)
+                except Exception:
+                    pass
         if c > MAX_PKT_PER_SEC:
             self._stats["errors"] += 1
             return
@@ -187,9 +190,9 @@ class NetflowCollector(threading.Thread):
             if fs_id == 0:
                 self._parse_v9_templates(key, body)
             else:
-                templ = self._templates.get(key, {}).get(fs_id)
-                if templ:
-                    flows.extend(self._decode_v9_records(templ, body, unix_secs, exporter_ip))
+                entry = self._templates.get(key, {}).get(fs_id)
+                if entry:
+                    flows.extend(self._decode_v9_records(entry[0], body, unix_secs, exporter_ip))
             off += fs_len
         self._stats["flows"] += len(flows)
         return flows
@@ -217,12 +220,16 @@ class NetflowCollector(threading.Thread):
                 ftype, flen = struct.unpack("!HH", body[pos:pos + 4])
                 pos += 4
                 fields.append((ftype, flen))
-            self._templates.setdefault(key, {})[tid] = fields
+            # v5.0.3 (ra soat): store (fields, last_seen) so the per-key cap keeps
+            # the MOST RECENT templates without an unbounded side dict.
+            self._templates.setdefault(key, {})[tid] = (fields, time.time())
             self._templ_seen[key] = time.time()
             if len(self._templates[key]) > MAX_TEMPLATES_PER_KEY:
                 # keep only the most recent MAX_TEMPLATES_PER_KEY template ids
-                keys_sorted = sorted(self._templates[key].keys(), key=lambda t: self._templ_seen.get((key, t), 0), reverse=True)[:MAX_TEMPLATES_PER_KEY]
-                self._templates[key] = {t: self._templates[key][t] for t in keys_sorted}
+                keys_sorted = sorted(self._templates[key].items(),
+                                     key=lambda kv: kv[1][1],
+                                     reverse=True)[:MAX_TEMPLATES_PER_KEY]
+                self._templates[key] = dict(keys_sorted)
 
     def _decode_v9_records(self, fields, body, unix_secs, exporter_ip):
         """Decode data records from a template. Variable-length (0xFFFF) fields
