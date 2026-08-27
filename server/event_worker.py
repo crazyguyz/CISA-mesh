@@ -201,7 +201,26 @@ class EventWorkerPool:
         if self.correlation:
             for e in events:
                 try:
-                    self.correlation.process_event(e)
+                    # v5.0.3 (HIGH-2 FIX): process_event RETURNS a list of alerts but the
+                    # result was discarded - CROSS-* rules burned CPU yet never produced a
+                    # visible alert. Persist each triggered alert to threat_alerts (+ SSE).
+                    alerts = self.correlation.process_event(e)
+                    if alerts:
+                        from datetime import datetime as _dt
+                        for a in alerts:
+                            if not a or not a.get("rule_id"):
+                                continue
+                            self.db.insert_threat_alert({
+                                "machine_id": "CROSS",
+                                "hostname": "Cross-Machine Correlation",
+                                "rule_id": a.get("rule_id", ""),
+                                "rule_name": a.get("rule_name", ""),
+                                "description": a.get("description", ""),
+                                "severity": a.get("severity", "HIGH"),
+                                "timestamp": a.get("timestamp") or _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "mitre": a.get("mitre", ""),
+                                "machines_involved": a.get("machines_involved", []),
+                            })
                 except Exception:
                     pass
         # v3.2: Anomaly detection

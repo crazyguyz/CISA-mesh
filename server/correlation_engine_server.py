@@ -359,12 +359,18 @@ class ServerCorrelationEngine:
         # Notify alerting engine
         if self.alerting:
             try:
-                self.alerting.send_alert(
-                    title=f"[CROSS-MACHINE] {rule['name']} [{rule['severity']}]",
-                    message=alert["description"],
-                    severity=rule["severity"],
-                    rule_id=rule["id"],
-                )
+                # v5.0.3 (HIGH-2 FIX): send_alert takes ONE dict, not kwargs - the old
+                # call raised TypeError every time a CROSS rule fired (swallowed), so
+                # cross-machine alerts never reached email/Telegram.
+                self.alerting.send_alert({
+                    "title": f"[CROSS-MACHINE] {rule['name']} [{rule['severity']}]",
+                    "message": alert["description"],
+                    "severity": rule["severity"],
+                    "rule_id": rule["id"],
+                    "machine_id": "CROSS",
+                    "hostname": "Cross-Machine Correlation",
+                    "timestamp": alert.get("timestamp", ""),
+                })
             except Exception:
                 pass
 

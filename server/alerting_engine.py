@@ -131,7 +131,14 @@ class AlertingEngine:
                                 from_user = (cb.get("from") or {}).get("id")
                                 allowed = [s.strip() for s in
                                            os.environ.get("GIAMSAT_TELEGRAM_SOC_IDS", "").split(",") if s.strip()]
-                                if allowed and from_user not in [int(a) for a in allowed if a.isdigit()]:
+                                # v5.0.3 (HIGH-7 FIX): fail-closed - if SOC_IDS is NOT
+                                # configured, reject ALL approval callbacks (previously the
+                                # check was skipped entirely, so anyone in the chat could
+                                # Approve/Deny SOAR actions).
+                                if not allowed:
+                                    print("[!] TELEGRAM: GIAMSAT_TELEGRAM_SOC_IDS not configured - rejecting approval callback (fail-closed)")
+                                    continue
+                                if from_user not in [int(a) for a in allowed if a.isdigit()]:
                                     print(f"[!] TELEGRAM: callback from unauthorized user {from_user} ignored")
                                     continue
                                 if self._core is not None:

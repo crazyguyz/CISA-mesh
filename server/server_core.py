@@ -349,12 +349,18 @@ class ServerCore:
                                 severity = "HIGH" if level == 2 else "MEDIUM"
                                 label = m.get("hostname") or mid
                                 try:
-                                    self.alerting.send_alert(
-                                        title=f"[AGENT OFFLINE] {label} [{severity}]",
-                                        message=f"Agent '{label}' ({mid}) has no heartbeat for {gap_min} minutes (last seen {m.get('last_seen')}).",
-                                        severity=severity,
-                                        rule_id="AGENT-OFFLINE",
-                                    )
+                                    # v5.0.3 (HIGH-1 FIX): send_alert takes ONE dict, not
+                                    # kwargs - the old call raised TypeError on every offline
+                                    # check (swallowed), so AGENT-OFFLINE alerts never fired.
+                                    self.alerting.send_alert({
+                                        "title": f"[AGENT OFFLINE] {label} [{severity}]",
+                                        "message": f"Agent '{label}' ({mid}) has no heartbeat for {gap_min} minutes (last seen {m.get('last_seen')}).",
+                                        "severity": severity,
+                                        "rule_id": "AGENT-OFFLINE",
+                                        "machine_id": mid,
+                                        "hostname": label,
+                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    })
                                 except Exception:
                                     pass
                                 _offline_alerted[mid] = level
@@ -515,7 +521,12 @@ class ServerCore:
                 web_scheme = "https"
                 print(f"[*] Web TLS enabled ({web_scheme}://localhost:{self.web_port})")
             except Exception as e:
-                print(f"[!] Web TLS setup failed, staying on plaintext HTTP: {e}")
+                # v5.0.3 (HIGH-6 FIX): fail-closed - same as TCP. 'TLS on' but the context
+                # could not be built must NOT silently downgrade to plaintext (sessions
+                # and PSK would travel in clear while the admin believes it is HTTPS).
+                print(f"[!] FATAL: GIAMSAT_WEB_TLS_ENABLED=true but TLS setup failed: {e}")
+                print("[!] Fix the TLS configuration, or set GIAMSAT_WEB_TLS_ENABLED=false to run WITHOUT HTTPS.")
+                sys.exit(1)
 
         print(f"[*] Web UI: {web_scheme}://localhost:{self.web_port}")
         # v2.5.22: Waitress production server (multi-threaded) thay Flask dev server

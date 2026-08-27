@@ -275,7 +275,8 @@ class PostgresDatabase:
                 event_type TEXT DEFAULT '', source TEXT DEFAULT '', computer TEXT DEFAULT '',
                 "user" TEXT DEFAULT '', category TEXT DEFAULT '',
                 time TEXT DEFAULT '', description TEXT DEFAULT '', raw_data JSONB DEFAULT '{}',
-                received_at TIMESTAMPTZ DEFAULT NOW()
+                received_at TIMESTAMPTZ DEFAULT NOW(),
+                dedup_key TEXT
             )""",
             "fim_events": """CREATE TABLE IF NOT EXISTS fim_events (
                 id SERIAL PRIMARY KEY, machine_id TEXT, hostname TEXT DEFAULT '',
@@ -554,6 +555,7 @@ class PostgresDatabase:
             "CREATE INDEX IF NOT EXISTS idx_vulns_time ON vuln_alerts(id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_netflow_dst ON netflow_flows(dst_ip)",
             "CREATE INDEX IF NOT EXISTS idx_netflow_time ON netflow_flows(received_at DESC)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events(dedup_key) WHERE dedup_key IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_yara_machine ON yara_alerts(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_sca_machine ON sca_events(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_syslog_time ON syslog(received_at DESC)",
@@ -606,6 +608,8 @@ class PostgresDatabase:
             ("messages", "ultraview_password", "TEXT DEFAULT ''"),
             # v5.0.2: soft-delete flag for group_policies
             ("group_policies", "deleted", "INTEGER DEFAULT 0"),
+            # v5.0.3 (HIGH-5): dedup_key for events - same fix as SQLite v4.6.5
+            ("events", "dedup_key", "TEXT"),
         ]
         for table, col, col_type in alt_cols:
             try:
@@ -740,22 +744,59 @@ class PostgresDatabase:
     # Event Inserts (high-throughput)
     # =========================================================================
 
+    @staticmethod
+    def _normalize_time(t):
+        """v4.6.4/v5.0.3: convert C-style asctime ('Mon Aug 24 00:00:00 2026') to ISO
+        ('2026-08-24 00:00:00') so cleanup + dedup work consistently on both backends."""
+        if not t or not isinstance(t, str):
+            return t
+        t = t.strip()
+        if not t or t[0].isdigit() or t[0] == '-':
+            return t
+        import re
+        m = re.match(r'^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})\s+(\d{4})$', t)
+        if not m:
+            return t
+        month, day, hh, mi, ss, year = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2), m.group(4).zfill(2), m.group(5).zfill(2), m.group(6)
+        MONTHS = {"Jan": "01", "Feb": "02", "Mar": "03", "Apr": "04", "May": "05", "Jun": "06",
+                  "Jul": "07", "Aug": "08", "Sep": "09", "Oct": "10", "Nov": "11", "Dec": "12"}
+        mm = MONTHS.get(month.capitalize()[:3])
+        if not mm:
+            return t
+        return f"{year}-{mm}-{day} {hh}:{mi}:{ss}"
+
+    @staticmethod
+    def _dedup_key(data):
+        """v4.6.5/v5.0.3: hash of the fields that identify ONE real event - two agent
+        instances reading the same log produce identical rows that must collapse to one."""
+        import hashlib
+        key = "|".join([
+            str(data.get("machine_id", "")),
+            str(data.get("event_id", "")),
+            str(data.get("source", "")),
+            str(data.get("time", "")),
+            str(data.get("description", ""))[:500],
+        ])
+        return hashlib.md5(key.encode("utf-8", errors="ignore")).hexdigest()
+
     def insert_event(self, msg):
         if not self._connected:
             return
         try:
             self._execute(
                 """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
-                   source, computer, "user", category, time, description, raw_data, received_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                   source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                   ON CONFLICT (dedup_key) DO NOTHING""",
                 (
                     msg.get("machine_id", ""), msg.get("hostname", ""),
                     msg.get("type", ""), msg.get("subtype", ""),
                     msg.get("event_id", ""), msg.get("event_type", ""),
                     msg.get("source", ""), msg.get("computer", ""),
                     msg.get("user", "SYSTEM"), msg.get("category", ""),
-                    msg.get("time", ""), msg.get("description", "")[:1000],
+                    self._normalize_time(msg.get("time", "")), msg.get("description", "")[:1000],
                     json.dumps(msg, ensure_ascii=False, default=str),
+                    self._dedup_key(msg),
                 )
             )
         except Exception:
@@ -1025,16 +1066,18 @@ class PostgresDatabase:
             return
         try:
             sql = """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
-                       source, computer, "user", category, time, description, raw_data, received_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())"""
+                       source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
+                       ON CONFLICT (dedup_key) DO NOTHING"""
             params = [(
                 e.get("machine_id", ""), e.get("hostname", ""),
                 e.get("type", ""), e.get("subtype", ""),
                 e.get("event_id", ""), e.get("event_type", ""),
                 e.get("source", ""), e.get("computer", ""),
                 e.get("user", "SYSTEM"), e.get("category", ""),
-                e.get("time", ""), e.get("description", "")[:1000],
+                self._normalize_time(e.get("time", "")), e.get("description", "")[:1000],
                 json.dumps(e, ensure_ascii=False, default=str),
+                self._dedup_key(e),
             ) for e in events]
             self._executemany(sql, params)
         except Exception:
@@ -2156,6 +2199,11 @@ class PostgresDatabase:
                 "yara_alerts": "yara_alerts",
                 "sca_events": "sca_events",
                 "agentless_events": "agentless_events",
+                # v5.0.3 (MEDIUM-8): these 3 were missing from the PG cleanup - they
+                # grew forever on PG while the UI reported them as cleaned.
+                "network_inspection": "network_inspection",
+                "response_results": "response_results",
+                "audit_log": "audit_log",
             }
             # Filter by types if specified
             if types:
