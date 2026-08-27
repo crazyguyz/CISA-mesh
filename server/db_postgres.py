@@ -523,6 +523,15 @@ class PostgresDatabase:
                 extra_json JSONB DEFAULT '{}',
                 first_seen TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.3: netflow_flows was missing from the PG backend entirely - the NetFlow
+            # collector + /api/netflow + /api/netflow/beaconing crashed on PG (AttributeError).
+            "netflow_flows": """CREATE TABLE IF NOT EXISTS netflow_flows (
+                id SERIAL PRIMARY KEY,
+                exporter_ip TEXT, src_ip TEXT, dst_ip TEXT,
+                src_port INTEGER, dst_port INTEGER, protocol INTEGER, tcp_flags INTEGER,
+                packets INTEGER, bytes INTEGER, first DOUBLE PRECISION, last DOUBLE PRECISION,
+                received_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
         }
 
         indexes = [
@@ -543,6 +552,8 @@ class PostgresDatabase:
             "CREATE INDEX IF NOT EXISTS idx_vulns_machine ON vuln_alerts(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vuln_alerts(severity)",
             "CREATE INDEX IF NOT EXISTS idx_vulns_time ON vuln_alerts(id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_netflow_dst ON netflow_flows(dst_ip)",
+            "CREATE INDEX IF NOT EXISTS idx_netflow_time ON netflow_flows(received_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_yara_machine ON yara_alerts(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_sca_machine ON sca_events(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_syslog_time ON syslog(received_at DESC)",
@@ -2475,6 +2486,71 @@ class PostgresDatabase:
                     self._execute("DELETE FROM policy_apply_status WHERE policy_id=%s", (r["id"],))
         except Exception:
             pass
+
+    # v5.0.3: triage status methods were missing from the PG backend - on a PG
+    # deployment POST /api/threats/<id>/status etc. raised AttributeError (500).
+    def set_threat_status(self, threat_id, status):
+        if not self._connected:
+            return
+        try:
+            self._execute("UPDATE threat_alerts SET status=%s WHERE id=%s", (status, threat_id))
+        except Exception:
+            pass
+
+    def set_vuln_status(self, alert_id, status):
+        if not self._connected:
+            return
+        try:
+            self._execute("UPDATE vuln_alerts SET status=%s WHERE id=%s", (status, alert_id))
+        except Exception:
+            pass
+
+    def set_inspection_status(self, alert_id, status):
+        if not self._connected:
+            return
+        try:
+            self._execute("UPDATE network_inspection SET status=%s WHERE id=%s", (status, alert_id))
+        except Exception:
+            pass
+
+    def set_yara_status(self, alert_id, status):
+        if not self._connected:
+            return
+        try:
+            self._execute("UPDATE yara_alerts SET status=%s WHERE id=%s", (status, alert_id))
+        except Exception:
+            pass
+
+    # v5.0.3: NetFlow methods were missing from the PG backend (AttributeError on PG).
+    def insert_netflow_flow(self, f):
+        if not self._connected:
+            return
+        try:
+            self._execute(
+                "INSERT INTO netflow_flows (exporter_ip, src_ip, dst_ip, src_port, dst_port, "
+                "protocol, tcp_flags, packets, bytes, first, last) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (f.get("exporter_ip", ""), f.get("src_ip", ""), f.get("dst_ip", ""),
+                 f.get("src_port", 0), f.get("dst_port", 0), f.get("protocol", 0),
+                 f.get("tcp_flags", 0), f.get("packets", 0), f.get("bytes", 0),
+                 f.get("first", 0), f.get("last", 0)))
+        except Exception:
+            pass
+
+    def get_netflow_flows(self, limit=100, since_hours=None):
+        if not self._connected:
+            return []
+        try:
+            q = "SELECT * FROM netflow_flows WHERE 1=1"
+            p = []
+            if since_hours:
+                # concatenation + cast avoids psycopg2 %s-inside-quotes bug
+                q += " AND received_at >= NOW() - (%s || ' hours')::INTERVAL"
+                p.append(str(since_hours))
+            q += " ORDER BY id DESC LIMIT %s"
+            p.append(int(limit))
+            return self._execute(q, tuple(p), fetchall=True) or []
+        except Exception:
+            return []
 
     # Revocation
     def revoke_machine(self, machine_id):

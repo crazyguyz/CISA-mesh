@@ -42,22 +42,6 @@ def _get_version():
 
 AGENT_VERSION = _get_version()
 
-# ===== v4.6.5: SINGLE-INSTANCE GUARD =====
-# Two agent instances running at once (e.g. watchdog spawned a duplicate while the
-# old one was still shutting down) both read the same event logs -> every event was
-# double-sent to the server. A named mutex makes the second instance exit immediately.
-_MUTEX_NAME = "Global\\GiamSatAgent_SingleInstance"
-_MUTEX_HANDLE = None
-try:
-    import ctypes
-    _MUTEX_HANDLE = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
-    _MUTEX_EXISTS = ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
-    if _MUTEX_EXISTS:
-        _log("Another GiamSatAgent instance is already running - exiting.")
-        sys.exit(0)
-except Exception:
-    _MUTEX_HANDLE = None  # mutex unavailable (non-Windows/dev) - continue anyway
-
 # ===== LINE 2: LOG + MESSAGEBOX =====
 _APPDATA = os.environ.get("APPDATA", os.path.expanduser("~"))
 _LOG_DIR = os.path.join(_APPDATA, "GIAM-SAT", "Agent", "logs")
@@ -71,6 +55,25 @@ def _log(msg):
             f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
     except Exception:
         pass
+
+# ===== v4.6.5: SINGLE-INSTANCE GUARD =====
+# Two agent instances running at once (e.g. watchdog spawned a duplicate while the
+# old one was still shutting down) both read the same event logs -> every event was
+# double-sent to the server. A named mutex makes the second instance exit immediately.
+# v5.0.3 FIX: _log() must be defined BEFORE this block - it was defined after, so a
+# duplicate instance hit NameError inside the try, the except swallowed it and the
+# second instance KEPT RUNNING (double events - the exact bug the guard was built for).
+_MUTEX_NAME = "Global\\GiamSatAgent_SingleInstance"
+_MUTEX_HANDLE = None
+try:
+    import ctypes
+    _MUTEX_HANDLE = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+    _MUTEX_EXISTS = ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
+    if _MUTEX_EXISTS:
+        _log("Another GiamSatAgent instance is already running - exiting.")
+        sys.exit(0)
+except Exception:
+    _MUTEX_HANDLE = None  # mutex unavailable (non-Windows/dev) - continue anyway
 
 _log("=" * 60)
 _log(f"AGENT v{AGENT_VERSION} MODULE-LEVEL START")
