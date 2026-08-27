@@ -73,18 +73,18 @@ var Assets = {
                     var monitors = c.monitors_json;
                     if (typeof monitors === 'string') { try { monitors = JSON.parse(monitors); } catch(e) { monitors = []; } }
 
-                    var diskInfo = disks.map(function(d) { return (d.model || '?') + ' (' + (d.size_gb || '?') + 'GB)'; }).join('<br>') || '-';
-                    var gpuInfo = gpus.map(function(g) { return (g.name || '?') + ' (' + (g.ram_gb || '?') + 'GB)'; }).join('<br>') || '-';
-                    var monitorInfo = monitors.map(function(m) { return (m.manufacturer || '') + ' ' + (m.name || ''); }).join('<br>') || '-';
+                    var diskInfo = disks.map(function(d) { return Assets.esc(d.model || '?') + ' (' + Assets.esc(d.size_gb || '?') + 'GB)'; }).join('<br>') || '-';
+                    var gpuInfo = gpus.map(function(g) { return Assets.esc(g.name || '?') + ' (' + Assets.esc(g.ram_gb || '?') + 'GB)'; }).join('<br>') || '-';
+                    var monitorInfo = monitors.map(function(m) { return Assets.esc(m.manufacturer || '') + ' ' + Assets.esc(m.name || ''); }).join('<br>') || '-';
 
-                    var mbInfo = (c.motherboard_manufacturer || '') + ' ' + (c.motherboard_product || '');
+                    var mbInfo = Assets.esc(c.motherboard_manufacturer || '') + ' ' + Assets.esc(c.motherboard_product || '');
                     if (!mbInfo.trim()) mbInfo = '-';
                     var displayId = c.display_id || c.asset_id || '-';
                     var onlineDot = c.is_online ? '<span class="online-dot online"></span>' : '<span class="online-dot offline"></span>';
                     var updated = c.updated_at ? c.updated_at.substring(0, 16) : '-';
 
                     html += '<tr>' +
-                        '<td><code style="font-size:11px;font-weight:bold;color:#00d4aa;">' + displayId + '</code></td>' +
+                        '<td><code style="font-size:11px;font-weight:bold;color:#00d4aa;">' + Assets.esc(displayId) + '</code></td>' +
                         '<td><strong>' + Assets.esc(c.hostname || c.machine_id || '-') + '</strong><br><small class="text-muted">' + Assets.esc(c.os_name || '') + ' ' + Assets.esc(c.os_version || '') + '</small></td>' +
                         '<td><strong>' + Assets.esc(c.user_name || '-') + '</strong><br><small>' + Assets.esc(c.employee_id || '') + '</small></td>' +
                         '<td style="font-size:10px;">' + Assets.esc(mbInfo) + '</td>' +
@@ -197,7 +197,7 @@ var Assets = {
                     html += '<tr>' +
                         '<td><small>' + (ch.created_at || '').substring(0, 16) + '</small></td>' +
                         '<td><span class="badge ' + typeBadge + '">' + typeLabel + '</span></td>' +
-                        '<td><code style="font-size:10px;">' + (ch.asset_id || '-') + '</code><br><small>' + (ch.asset_type || '') + '</small></td>' +
+                        '<td><code style="font-size:10px;">' + Assets.esc(ch.asset_id || '-') + '</code><br><small>' + Assets.esc(ch.asset_type || '') + '</small></td>' +
                         '<td style="font-size:11px;">' + Assets.esc(desc) + '</td>' +
                         '<td>' + statusHtml + '</td>' +
                         '<td>' + actionHtml + '</td>' +
