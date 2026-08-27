@@ -296,15 +296,21 @@ class TCPServer(threading.Thread):
             print("[!] REGISTRATION REJECTED: no GIAMSAT_AGENT_PSK configured on server (fail-closed). "
                   "Set GIAMSAT_AGENT_PSK in .env AND set matching 'psk' in each agent's agent_config.json.")
             return False
-        import hmac as _hmac
-        agent_psk = msg.get("psk", "")
-        if not _hmac.compare_digest(agent_psk, self.psk):
-            print(f"[!] REGISTRATION REJECTED: {msg.get('hostname','?')} from {msg.get('source_ip','?')} - "
-                  "Invalid/empty PSK. Set the agent's 'psk' (agent_config.json) to match GIAMSAT_AGENT_PSK.")
-            return False
-        machine_id = msg.get("machine_id", "")
+        machine_id = str(msg.get("machine_id", "") or "").strip()
         hostname = msg.get("hostname", "")
         ip = msg.get("source_ip", "")
+        # v5.0.3 (LOW-9): validate the machine_id BEFORE trusting it anywhere
+        from agent_auth import verify_agent_psk, validate_machine_id, sanitize_hostname
+        if not validate_machine_id(machine_id):
+            print(f"[!] REGISTRATION REJECTED: invalid machine_id '{machine_id[:64]}' from {ip}")
+            return False
+        if not verify_agent_psk(msg.get("psk", ""), self.psk, machine_id):
+            print(f"[!] REGISTRATION REJECTED: {hostname} from {ip} - "
+                  "Invalid/empty PSK. Set the agent's 'psk' (agent_config.json) to match "
+                  "GIAMSAT_AGENT_PSK (or the per-machine secret in GIAMSAT_PER_MACHINE_PSK[_FILE]).")
+            return False
+        # v5.0.3 (LOW-9): strip HTML/control chars from agent-supplied hostname
+        hostname = sanitize_hostname(hostname)
         platform = msg.get("platform", "Windows")
         version = msg.get("version", "1.0.0")
         tls = msg.get("tls", False)
@@ -331,7 +337,12 @@ class TCPServer(threading.Thread):
             self.db.insert_heartbeat(msg)
             # v3.3.5: Sync real agent version from heartbeat
             mid = msg.get("machine_id", "")
-            hostname = msg.get("hostname", "")
+            # v5.0.3 (LOW-9): sanitize agent-supplied hostname at every boundary
+            try:
+                from agent_auth import sanitize_hostname
+                hostname = sanitize_hostname(msg.get("hostname", ""))
+            except Exception:
+                hostname = msg.get("hostname", "")
             agent_version = msg.get("version", "")
             if agent_version:
                 try:

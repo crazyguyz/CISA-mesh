@@ -11,10 +11,27 @@ Key features:
 - Integration with alerting engine
 """
 import json
+import os
+import re
 import time
 import threading
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+
+# v5.0.3 (MEDIUM-7): share the SIGMA PascalCase -> snake_case field alias map
+# with the agent engine so server-side matching behaves identically.
+FIELD_ALIASES = {}
+try:
+    import yaml as _yaml
+    _alias_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "field_aliases.yaml")
+    if not os.path.exists(_alias_path):
+        _alias_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agent", "field_aliases.yaml")
+    if os.path.exists(_alias_path):
+        with open(_alias_path, "r", encoding="utf-8") as _f:
+            _alias_data = _yaml.safe_load(_f) or {}
+        FIELD_ALIASES = _alias_data.get("aliases", {}) or {}
+except Exception:
+    FIELD_ALIASES = {}
 
 CROSS_MACHINE_RULES = [
     # =========================================================================
@@ -399,6 +416,16 @@ class ServerCorrelationEngine:
                 if evt_id != str(expected_ids):
                     return False
 
+        # v5.0.3 (MEDIUM-7): subtype matching (mirrors agent engine)
+        expected_subtype = condition.get("subtype")
+        if expected_subtype:
+            subtype = str(event.get("subtype", ""))
+            if isinstance(expected_subtype, list):
+                if not any(str(s) in subtype for s in expected_subtype):
+                    return False
+            elif str(expected_subtype) not in subtype:
+                return False
+
         # Description contains
         desc_contains = condition.get("description_contains")
         if desc_contains:
@@ -410,10 +437,43 @@ class ServerCorrelationEngine:
                 if desc_contains.lower() not in desc:
                     return False
 
+        # v5.0.3 (MEDIUM-7): path_contains (mirrors agent engine)
+        path_contains = condition.get("path_contains")
+        if path_contains:
+            path_val = str(event.get("path", "")).lower()
+            if isinstance(path_contains, list):
+                if not any(str(p).lower() in path_val for p in path_contains):
+                    return False
+            elif str(path_contains).lower() not in path_val:
+                return False
+
+        # v5.0.3 (MEDIUM-7): severity matching (mirrors agent engine)
+        expected_severity = condition.get("severity")
+        if expected_severity:
+            ev_severity = str(event.get("severity", "")).upper()
+            if isinstance(expected_severity, list):
+                if ev_severity not in [str(s).upper() for s in expected_severity]:
+                    return False
+            elif ev_severity != str(expected_severity).upper():
+                return False
+
         # Action matching (for FIM)
         action = condition.get("action")
         if action and event.get("action", "") != action:
             return False
+
+        # v5.0.3 (MEDIUM-7): dst_port matching (mirrors agent engine)
+        expected_ports = condition.get("dst_port")
+        if expected_ports:
+            try:
+                dst_port = int(event.get("dst_port", 0) or 0)
+            except (TypeError, ValueError):
+                dst_port = -1
+            if isinstance(expected_ports, list):
+                if dst_port not in expected_ports:
+                    return False
+            elif dst_port != expected_ports:
+                return False
 
         # Logon type matching (from parsed fields)
         logon_type = condition.get("logon_type")
@@ -423,6 +483,20 @@ class ServerCorrelationEngine:
             if actual_lt != str(logon_type):
                 return False
 
+        # v5.0.3 (MEDIUM-7): shared field resolver with SIGMA alias support
+        def _field_value(field_name):
+            v = event.get(field_name)
+            if v is None:
+                pf = event.get("parsed_fields") or {}
+                v = pf.get(field_name)
+            if v is None and field_name in FIELD_ALIASES:
+                alias = FIELD_ALIASES[field_name]
+                v = event.get(alias)
+                if v is None:
+                    pf = event.get("parsed_fields") or {}
+                    v = pf.get(alias)
+            return "" if v is None else v
+
         # v4.11 (CRITICAL-1 FIX): field_contains - match structured event fields
         # (parsed_fields first, then top-level event fields). The server silently
         # ignored this condition before, so rules like THREAT-052 (4688 + command
@@ -431,16 +505,28 @@ class ServerCorrelationEngine:
         # engine (agent/correlation_engine.py) but also reads parsed_fields.
         field_contains = condition.get("field_contains")
         if field_contains and isinstance(field_contains, dict):
-            parsed = event.get("parsed_fields") or {}
             for field_name, patterns in field_contains.items():
-                raw = event.get(field_name)
-                if raw is None:
-                    raw = parsed.get(field_name)
-                field_val = str(raw if raw is not None else "").lower()
+                field_val = str(_field_value(field_name)).lower()
                 if isinstance(patterns, list):
                     if not any(str(p).lower() in field_val for p in patterns):
                         return False
                 elif str(patterns).lower() not in field_val:
+                    return False
+
+        # v5.0.3 (MEDIUM-7): field_equals + field_regex (mirrors agent engine)
+        field_equals = condition.get("field_equals")
+        if field_equals and isinstance(field_equals, dict):
+            for field_name, expected_val in field_equals.items():
+                field_val = str(_field_value(field_name))
+                if isinstance(expected_val, list):
+                    if field_val not in [str(v) for v in expected_val]:
+                        return False
+                elif field_val != str(expected_val):
+                    return False
+        field_regex = condition.get("field_regex")
+        if field_regex and isinstance(field_regex, dict):
+            for field_name, pattern in field_regex.items():
+                if not re.search(str(pattern), str(_field_value(field_name)), re.IGNORECASE):
                     return False
 
         return True

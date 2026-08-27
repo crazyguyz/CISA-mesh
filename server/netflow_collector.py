@@ -43,7 +43,7 @@ class NetflowCollector(threading.Thread):
         self._rate = {}            # exporter_ip -> (window_start, packet_count)
         self._batch = []           # pending flows (batch insert)
         self._batch_lock = threading.Lock()
-        self._stats = {"packets": 0, "flows": 0, "errors": 0, "v5": 0, "v9": 0}
+        self._stats = {"packets": 0, "flows": 0, "errors": 0, "v5": 0, "v9": 0, "stored": 0}
 
     # ------------------------------------------------------------------ setup
     def run(self):
@@ -287,8 +287,11 @@ class NetflowCollector(threading.Thread):
             else:
                 for f in batch:
                     self.db.insert_netflow_flow(f)
+            # v5.0.3 (LOW-5): only count flows actually stored (stats were
+            # previously inflated by parsing before the insert could fail)
+            self._stats["stored"] += len(batch)
         except Exception:
-            pass
+            self._stats["errors"] += 1
 
     def get_stats(self):
         return dict(self._stats)

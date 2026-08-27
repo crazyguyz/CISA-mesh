@@ -461,6 +461,14 @@ class DatabaseManager:
 
     def register_machine(self, machine_id, hostname, ip_address, platform="Windows", version="1.0.0"):
         with self.lock:
+            # v5.0.3 (LOW-9): never store raw agent-supplied hostname (stored-XSS source)
+            try:
+                from agent_auth import sanitize_hostname, validate_machine_id
+                hostname = sanitize_hostname(hostname)
+                if not validate_machine_id(machine_id):
+                    return False
+            except Exception:
+                pass
             self.conn.execute("""INSERT INTO machines (machine_id,hostname,ip_address,platform,version,first_seen,last_seen,is_online) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(machine_id) DO UPDATE SET hostname=excluded.hostname,ip_address=excluded.ip_address,last_seen=CURRENT_TIMESTAMP,is_online=1""", (machine_id, hostname, ip_address, platform, version))
             self.conn.commit()
 
@@ -806,11 +814,17 @@ class DatabaseManager:
 
     def insert_event(self, data):
         with self.lock:
+            # v5.0.3 (LOW-9): never store raw agent-supplied hostname (stored-XSS source)
             try:
-                self.conn.execute("""INSERT OR IGNORE INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data,dedup_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data",""), self._dedup_key(data)))
+                from agent_auth import sanitize_hostname
+                _hn = sanitize_hostname(data.get("hostname", ""))
+            except Exception:
+                _hn = data.get("hostname", "")
+            try:
+                self.conn.execute("""INSERT OR IGNORE INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data,dedup_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), _hn, data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data",""), self._dedup_key(data)))
             except Exception:
                 # fallback if dedup_key column missing (very old DB not migrated)
-                self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data","")))
+                self.conn.execute("""INSERT INTO events (machine_id,hostname,type,subtype,event_id,event_type,source,computer,user,category,time,description,raw_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), _hn, data.get("type",""), data.get("subtype",""), str(data.get("event_id","")), data.get("event_type",""), data.get("source",""), data.get("computer",""), data.get("user",""), str(data.get("category","")), self._normalize_time(data.get("time","")), data.get("description",""), data.get("raw_data","")))
             self.conn.commit()
 
     def insert_fim_event(self, data):
@@ -820,7 +834,13 @@ class DatabaseManager:
 
     def insert_heartbeat(self, data):
         with self.lock:
-            self.conn.execute("""INSERT INTO heartbeats (machine_id,hostname,timestamp) VALUES (?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("timestamp","")))
+            # v5.0.3 (LOW-9): defense-in-depth - never store raw agent hostnames
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = sanitize_hostname(data.get("hostname", ""))
+            except Exception:
+                _hn = data.get("hostname", "")
+            self.conn.execute("""INSERT INTO heartbeats (machine_id,hostname,timestamp) VALUES (?,?,?)""", (data.get("machine_id",""), _hn, data.get("timestamp","")))
             self.conn.execute("""UPDATE machines SET last_seen=CURRENT_TIMESTAMP, is_online=1 WHERE machine_id=?""", (data.get("machine_id",""),))
             self.conn.commit()
 
@@ -2115,7 +2135,7 @@ class DatabaseManager:
             str(data.get("machine_id", "")),
             str(data.get("event_id", "")),
             str(data.get("source", "")),
-            str(data.get("time", "")),
+            str(DatabaseManager._normalize_time(str(data.get("time", "")))),
             str(data.get("description", ""))[:500],
         ])
         return hashlib.md5(key.encode("utf-8", errors="ignore")).hexdigest()

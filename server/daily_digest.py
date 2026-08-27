@@ -85,7 +85,10 @@ def run_digest(core, alerting_cfg):
         print("[DIGEST] No recipients configured (digest.to / GIAMSAT_SMTP_USER) - skip")
         return False
     try:
-        alerts = core.db.get_threat_alerts(limit=200, since_hours=24) or []
+        # v5.0.3 (MEDIUM-5): raise the collection cap so >200 alerts/day are not
+        # silently dropped from the summary; _build_body still displays 100 lines
+        # but reports the real total.
+        alerts = core.db.get_threat_alerts(limit=2000, since_hours=24) or []
         medium = [a for a in alerts if (a.get("severity") or "").upper() == "MEDIUM"]
         # v4.11 (runtime fix): YARA and MEDIUM vuln alerts were never surfaced
         # anywhere (Telegram only takes HIGH+; the digest only read threat_alerts).
@@ -93,19 +96,18 @@ def run_digest(core, alerting_cfg):
         yara_fn = getattr(core.db, "get_yara_alerts", None)
         if yara_fn:
             try:
-                medium += yara_fn(limit=200, since_hours=24) or []
+                medium += yara_fn(limit=2000, since_hours=24) or []
             except Exception:
                 pass
         vuln_fn = getattr(core.db, "get_vuln_alerts", None)
         if vuln_fn:
             try:
-                vulns = vuln_fn(limit=200, since_hours=24) or []
+                vulns = vuln_fn(limit=2000, since_hours=24) or []
                 medium += [a for a in vulns if (a.get("severity") or "").upper() == "MEDIUM"]
             except Exception:
                 pass
-        # newest first, capped like the old threat-only digest
+        # newest first; _build_body displays 100 lines but reports the real total
         medium.sort(key=lambda a: str(a.get("timestamp") or a.get("received_at") or ""), reverse=True)
-        medium = medium[:100]
         if not medium:
             # v4.11 (runtime fix): never send an empty "0 alerts" email - this was
             # spamming the admin mailbox on every server start during the day.
@@ -136,7 +138,10 @@ def run_weekly_report(core, alerting_cfg):
     if not cfg.get("enabled", True):
         return False
     now = datetime.now()
-    if now.weekday() != int(cfg.get("day", 0)) or now.hour < int(cfg.get("hour", 8)):
+    # v5.0.3 (MEDIUM-5): run on ANY day on/after the scheduled weekday so a
+    # server that was down on the exact day still sends the report that week
+    # (still once per ISO week via state["last_week"]).
+    if now.weekday() < int(cfg.get("day", 0)) or now.hour < int(cfg.get("hour", 8)):
         return False
     state = _load_state()
     week = now.strftime("%Y-%W")

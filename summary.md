@@ -1,4 +1,4 @@
-﻿# GIAM-SAT v5.0.0 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+# GIAM-SAT v5.0.0 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
 > KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● HUMAN-IN-THE-LOOP ● PHÂN LOẠI CẢNH BÁO (TRIAGE) ● MADE IN VIETNAM 🇻🇳
 
@@ -29,7 +29,7 @@ E:\giamsat\
 │   ├── db_manager.py               ← v3.9.0: SQLite backend (30+ indexes, WAL, FIM baseline, heartbeat metrics, timeout 300s)
 │   ├── db_postgres.py              ← PostgreSQL + TimescaleDB (20-500 agents)
 │   ├── db_elasticsearch.py         ← Elasticsearch 8.x (500+ agents, full-text search)
-│   ├── db_clickhouse.py            ← v3.7: ClickHouse columnar (on-premises, 2-4GB RAM)
+│   ├── db_clickhouse.py            ← v3.7: ClickHouse columnar — ⚠️ ROADMAP, CHƯA code (xem §10.7)
 │   ├── db_base.py                  ← Abstract interface (60+ methods)
 │   ├── tcp_server.py               ← TCP :6666, rate limiter, event queue push
 │   ├── event_queue.py              ← 7 priority queues (Redis/memory)
@@ -266,7 +266,7 @@ class FIMCollector:
 # server_core.py: Khởi tạo
 class ServerCore:
     def __init__(self):
-        self.db = DatabaseManager()  # or PostgresDatabase / ElasticsearchDatabase / ClickHouseBackend
+        self.db = DatabaseManager()  # or PostgresDatabase / ElasticsearchDatabase (ClickHouse: roadmap)
         self.event_queue = EventQueue()           # 7 priority queues
         self.tcp_server = TCPServer(..., event_queue=self.event_queue)
         self.event_worker_pool = EventWorkerPool(event_queue, db, num_workers=8, batch_size=100)
@@ -374,7 +374,7 @@ Khi có threat alert, tab Điều tra tự động gom evidence trong ±15 phút
   → 4 Ingest Servers (ports 6667-6670, rate limit 10 conn/min/ip)
     → Event Queue Layer (Redis/RabbitMQ)
       → 8 Worker Threads (batch 100, adaptive poll)
-        → Database (SQLite/Postgres+TimescaleDB/Elasticsearch/ClickHouse)
+        → Database (SQLite/Postgres+TimescaleDB/Elasticsearch; ClickHouse = roadmap)
           → Flask+Waitress (8 threads) + API Cache → Dashboard SSE
 ```
 
@@ -389,7 +389,7 @@ Khi có threat alert, tab Điều tra tự động gom evidence trong ±15 phút
 | **WAL Mode** | PRAGMA journal_mode=WAL, cache 32MB, mmap 256MB | SQLite read+write đồng thời |
 | **DB Indexes** | 30+ indexes (machine_id, timestamp, severity) + v3.7.2 FIM baseline 3 indexes | Query <10ms thay vì full scan |
 | **API Cache** | Redis GET/SET + PostgreSQL Materialized Views + v3.7.2 FIM 60s cache | Giảm tải DB cho dashboard |
-| **ClickHouse** | Columnar ZSTD, TTL auto-cleanup, LowCardinality | Nén 5-10x, query 10-100x nhanh hơn |
+| **ClickHouse** *(roadmap)* | Columnar ZSTD, TTL auto-cleanup, LowCardinality | Nén 5-10x, query 10-100x nhanh hơn — CHƯA code |
 | **Dashboard Polling** | v3.7.1: 120s stats, 60s panorama, 300s active view | Giảm 75-80% query định kỳ |
 | **Stats COUNT** | v3.7.1: chỉ đếm 24h + cache 30s | COUNT(*) 600K → 50K rows |
 | **FIM Agent Limit** | v3.7.2: Priority hashing (EXE>DLL>System32>Config>Temp) + MAX 500/path + chunk sync 200 | Baseline 5000+ files → ≤500 prioritized |
@@ -411,11 +411,11 @@ Khi có threat alert, tab Điều tra tự động gom evidence trong ±15 phút
 | SQLite (WAL) | <50 | 32MB | Zero config, single file |
 | PostgreSQL+TimescaleDB | 50-500 | 2-8GB | Hypertable, connection pool, materialized views |
 | Elasticsearch | 500+ | 16-32GB | Full-text search, Kibana, ILM |
-| **ClickHouse** | **500+** | **2-4GB** | Columnar, nén ZSTD, TTL, on-premises tối ưu |
+| **ClickHouse** *(roadmap)* | 500+ | 2-4GB | Columnar, nén ZSTD, TTL — CHƯA code |
 
 ### 4.4 Performance Metrics
 
-| Chỉ số | SQLite (WAL) | PostgreSQL | ClickHouse |
+| Chỉ số | SQLite (WAL) | PostgreSQL | ClickHouse *(roadmap)* |
 |--------|-------------|------------|------------|
 | Events/s write | 5K-10K | 10K-50K | 50K-100K |
 | Dashboard load | <1s (v3.9.0) | <500ms | <200ms |
@@ -447,7 +447,7 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 | v3.8.0 | 2026-07 | Sysmon EID 3 Network, Alert Suppression, Agent Watchdog, MISP Threat Intel, Enrollment & Revocation |
 | v3.7.2 | 2026-07 | FIM Baseline: Priority Hashing + Chunk Sync + Pagination + Cache |
 | v3.7.1 | 2026-07 | Dashboard Performance: 24h window, cache, reduced polling |
-| v3.7.0 | 2026-07 | Named Pipe IPC, Incident Investigation, ClickHouse backend |
+| v3.7.0 | 2026-07 | Named Pipe IPC, Incident Investigation, ClickHouse backend *(kế hoạch — không ra mắt)* |
 | v3.6.8 | 2026-06 | Network log pipeline fix, dashboard dropdown |
 | **v3.9.16** | **2026-08** | **5 cải thiện bảo mật: +4 Sysmon EID (4,16,17,18), +17 correlation rules (Ransomware, Kerberos, Exfil, Injection Chain, ETW Tampering), DNS/ICMP entropy analyzer, ProcessTreeBuilder tích hợp CorrelationEngine** |
 | **v3.9.17** | **2026-08** | **5 security hardening: Certificate Pinning, Dead-man's Switch, Auto-Isolation Ransomware, IPC ACL Fix, Command Signing (HMAC), Remote Memory Dump** |
@@ -925,7 +925,7 @@ Từ phân tích code `event_worker.py` và `db_manager.py`:
 | **<50 máy** (hiện tại tổ chức của bạn) | SQLite + batch insert | 0đ — thêm 30 dòng code |
 | **50-200 máy** | PostgreSQL + TimescaleDB | 0đ — cài PostgreSQL trên cùng máy |
 | **200-500 máy** | PostgreSQL server riêng (8GB RAM) | Máy chủ riêng hoặc VPS |
-| **500+ máy** | ClickHouse + Nginx TCP LB | 2-4GB RAM cho ClickHouse |
+| **500+ máy** | ClickHouse + Nginx TCP LB *(roadmap)* | 2-4GB RAM cho ClickHouse |
 
 ### 10.7 Backend Database Hiện Có — Thực Trạng Code
 

@@ -3,6 +3,7 @@ Syslog Server for GIAM-SAT Server
 Listens on UDP port 514 for syslog messages from routers/network devices
 """
 
+import os
 import socket
 import threading
 import time
@@ -83,9 +84,30 @@ class SyslogServer(threading.Thread):
 
             sock.settimeout(2)
 
+            # v5.0.3 (MEDIUM-11): per-source packet rate limit so an unauthenticated
+            # UDP flood cannot spawn unbounded parser threads / DB writes
+            _MAX_PPS = int(os.environ.get("GIAMSAT_SYSLOG_MAX_PPS", "200"))
+            _rate = {}
+            _rate_lock = threading.Lock()
+
             while self.running:
                 try:
                     data, address = sock.recvfrom(8192)
+                    src = address[0]
+                    with _rate_lock:
+                        now = time.time()
+                        # periodic GC of idle source keys
+                        if len(_rate) > 500:
+                            idle = [k for k, v in _rate.items() if now - v[0] > 60]
+                            for k in idle:
+                                _rate.pop(k, None)
+                        w, c = _rate.get(src, (now, 0))
+                        if now - w > 1.0:
+                            w, c = now, 0
+                        c += 1
+                        _rate[src] = (w, c)
+                        if c > _MAX_PPS:
+                            continue  # drop the flood silently
                     t = threading.Thread(
                         target=self._process_syslog,
                         args=(data, address),

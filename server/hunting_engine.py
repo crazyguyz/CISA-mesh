@@ -412,8 +412,11 @@ class HuntingEngine:
                     values = [values]
                 sub_clauses = []
                 for v in values:
-                    sub_clauses.append(f"{field} LIKE ?")
-                    params.append(f"%{v}%")
+                    # v5.0.3 (LOW-3): escape LIKE wildcards so user values containing
+                    # % or _ match literally instead of matching nearly every row
+                    ev = str(v).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    sub_clauses.append(f"{field} LIKE ? ESCAPE '\\\\'")
+                    params.append(f"%{ev}%")
                 where_clauses.append("(" + " OR ".join(sub_clauses) + ")")
             elif "equals" in cond:
                 values = cond["equals"]

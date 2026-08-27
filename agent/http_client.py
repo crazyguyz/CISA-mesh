@@ -8,8 +8,9 @@ import os
 import json
 import ssl
 import urllib.request
+import urllib.parse
 
-_CACHE_CTX = None
+_CACHE_CTX = {}
 
 
 def _tls_from_env_or_config(config=None):
@@ -35,14 +36,35 @@ def base(host, port, config=None):
     return f"{scheme(config)}://{host}:{port}"
 
 
-def _ssl_ctx(config=None):
+def _is_ip_literal(host):
+    try:
+        import ipaddress
+        ipaddress.ip_address(host or "")
+        return True
+    except Exception:
+        return False
+
+
+def _host_from_url(url):
+    try:
+        return urllib.parse.urlparse(url).hostname
+    except Exception:
+        return None
+
+
+def _ssl_ctx(config=None, host=None, _no_name_check=False):
     global _CACHE_CTX
     if scheme(config) == "http":
         return None
-    if _CACHE_CTX is not None:
-        return _CACHE_CTX
+    key = (host, _no_name_check)
+    if _CACHE_CTX.get(key) is not None:
+        return _CACHE_CTX[key]
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
+    # v5.0.3 (LOW-6): enable hostname verification for DNS-name connections
+    # (the generated cert carries DNSName SANs for hostname/giamsat-server).
+    # IP-literal connections keep CA-pinned verification only (the cert has no
+    # IP SAN beyond 127.0.0.1); the no-host default preserves legacy callers.
+    ctx.check_hostname = False if (host is None or _no_name_check or _is_ip_literal(host)) else True
     try:
         from tls_utils import get_cert_dir, get_pinned_fingerprint_from_config
         cert_dir = get_cert_dir()
@@ -51,15 +73,25 @@ def _ssl_ctx(config=None):
             ctx.load_verify_locations(ca_file)
     except Exception:
         ctx = None
-    _CACHE_CTX = ctx
+    _CACHE_CTX[key] = ctx
     return ctx
 
 
 def urlopen(url, data=None, headers=None, timeout=10, config=None):
     """urlopen with the right scheme context. Raises on error (caller handles)."""
     req = urllib.request.Request(url, data=data, headers=headers or {"Content-Type": "application/json"})
-    ctx = _ssl_ctx(config)
-    return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+    host = _host_from_url(url)
+    ctx = _ssl_ctx(config, host)
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+    except ssl.SSLCertVerificationError as e:
+        # v5.0.3 (LOW-6): only the hostname did not match (verify_code 62) while
+        # the chain validated against the pinned CA -> retry with name-check off.
+        # The server is still authenticated by CA pinning; other TLS errors raise.
+        if getattr(e, "verify_code", None) == 62:
+            ctx2 = _ssl_ctx(config, host, _no_name_check=True)
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx2)
+        raise
 
 
 def post_json(url, payload, timeout=10, config=None):

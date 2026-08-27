@@ -647,6 +647,14 @@ class PostgresDatabase:
     def register_machine(self, machine_id, hostname, ip_address, platform="Windows", version="1.0.0"):
         if not self._connected:
             return
+        # v5.0.3 (LOW-9): never store raw agent-supplied hostname (stored-XSS source)
+        try:
+            from agent_auth import sanitize_hostname, validate_machine_id
+            hostname = sanitize_hostname(hostname)
+            if not validate_machine_id(machine_id):
+                return False
+        except Exception:
+            pass
         try:
             self._execute(
                 """INSERT INTO machines (machine_id, hostname, ip_address, platform, version, first_seen, last_seen, is_online)
@@ -783,13 +791,19 @@ class PostgresDatabase:
         if not self._connected:
             return
         try:
+            # v5.0.3 (LOW-9): never store raw agent-supplied hostname
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = sanitize_hostname(msg.get("hostname", ""))
+            except Exception:
+                _hn = msg.get("hostname", "")
             self._execute(
                 """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
                    source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
                    ON CONFLICT (dedup_key) DO NOTHING""",
                 (
-                    msg.get("machine_id", ""), msg.get("hostname", ""),
+                    msg.get("machine_id", ""), _hn,
                     msg.get("type", ""), msg.get("subtype", ""),
                     msg.get("event_id", ""), msg.get("event_type", ""),
                     msg.get("source", ""), msg.get("computer", ""),
@@ -819,9 +833,15 @@ class PostgresDatabase:
             return
         try:
             mid = msg.get("machine_id", "")
+            # v5.0.3 (LOW-9): never store raw agent-supplied hostname
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = sanitize_hostname(msg.get("hostname", ""))
+            except Exception:
+                _hn = msg.get("hostname", "")
             self._execute(
                 "INSERT INTO heartbeats (machine_id, hostname, timestamp) VALUES (%s,%s,%s)",
-                (mid, msg.get("hostname", ""), msg.get("timestamp", ""))
+                (mid, _hn, msg.get("timestamp", ""))
             )
             # Update machine online status (matches SQLite behavior)
             self._execute(

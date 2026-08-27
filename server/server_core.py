@@ -343,7 +343,10 @@ class ServerCore:
                                 _ts = _ts.replace(tzinfo=timezone.utc).timestamp()
                                 gap_min = max(0, int((now - _ts) / 60))
                             except Exception:
-                                gap_min = 10
+                                # v5.0.3 (LOW-4): machine never heartbeated (last_seen
+                                # empty/unparseable) - do NOT alert as if it dropped
+                                # offline after being online (was a hardcoded 10min FP)
+                                gap_min = 0
                             level = 2 if gap_min > 30 else (1 if gap_min > 5 else 0)
                             if level and _offline_alerted.get(mid, 0) < level:
                                 severity = "HIGH" if level == 2 else "MEDIUM"

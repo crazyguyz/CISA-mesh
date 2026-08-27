@@ -76,17 +76,25 @@ def check_auth(permission="api"):
 def check_agent_psk(data=None):
     """Verify the agent PSK (shared secret) for agent-facing HTTP endpoints.
     v4.5.5 SECURITY: fail-closed — if GIAMSAT_AGENT_PSK is not configured, reject.
-    Uses constant-time comparison to prevent timing attacks.
+    v5.0.3 (LOW-9): per-machine PSK takes priority when the machine_id has an
+    entry in GIAMSAT_PER_MACHINE_PSK / GIAMSAT_PER_MACHINE_PSK_FILE; also
+    validates machine_id charset. Constant-time comparison.
     Returns True if valid, False otherwise.
     """
+    from agent_auth import verify_agent_psk, validate_machine_id
     expected = os.environ.get("GIAMSAT_AGENT_PSK", "")
     if not expected:
         return False  # fail-closed: no PSK configured -> reject
     token = ""
+    machine_id = ""
     if isinstance(data, dict):
         token = (data.get("psk") or "").strip()
+        machine_id = str(data.get("machine_id") or "").strip()
     if not token:
         token = (request.headers.get("X-Agent-PSK") or "").strip()
+    if not machine_id:
+        machine_id = str(request.headers.get("X-Machine-ID") or "").strip()
+    if machine_id and not validate_machine_id(machine_id):
+        return False
     # v4.5.4 SECURITY: do NOT accept PSK via query string (leaks into access logs).
-    import hmac as _hmac
-    return _hmac.compare_digest(token, expected)
+    return verify_agent_psk(token, expected, machine_id)

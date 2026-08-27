@@ -233,7 +233,7 @@ def register(app, core):
 </div>
 <div class="machine-detail" style="display:none;">
 <table>
-<tr><th>Machine ID</th><td>{mid}</td></tr>'''
+<tr><th>Machine ID</th><td>{_html_mod.escape(mid)}</td></tr>'''
             if user_info.get("user_name"):
                 cards_html += f'<tr><th>Người dùng</th><td>{_html_mod.escape(user_info.get("user_name",""))} ({_html_mod.escape(user_info.get("employee_id",""))})</td></tr>'
             if user_info.get("email"):
