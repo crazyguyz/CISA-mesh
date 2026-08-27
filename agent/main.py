@@ -5,6 +5,24 @@ Version auto-read from agent_version.txt
 import os
 import sys
 
+# ===== v5.0.2: WINDOWED BUILD - no console flash at boot =====
+# Built with console=False (PyInstaller windowed): Windows never creates a console
+# window, so the black box that flashed for up to 10-15s on low-spec machines (and
+# that users accidentally closed, killing the agent) is gone. In windowed mode
+# sys.stdout/stderr are None - redirect them so print() can never crash.
+try:
+    if getattr(sys, 'frozen', False) and not sys.stdout:
+        class _NullWriter:
+            def write(self, _s):
+                return 0
+            def flush(self):
+                pass
+            def isatty(self):
+                return False
+        sys.stdout = sys.stderr = _NullWriter()
+except Exception:
+    pass
+
 # ===== LINE 1: GET VERSION =====
 def _get_version():
     """Read version from agent_version.txt (embedded in EXE via PyInstaller)."""

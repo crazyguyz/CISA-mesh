@@ -21,6 +21,24 @@ import tempfile
 import urllib.request
 import subprocess
 import threading
+# ===== v5.0.2: WINDOWED BUILD - no console flash at boot =====
+# Built with console=False (PyInstaller windowed) so Task Scheduler launches show
+# no black console window (users can no longer accidentally close the updater).
+# In windowed mode sys.stdout/stderr are None - redirect them so the _log() helper
+# (print(..., flush=True)) can never crash.
+try:
+    if getattr(sys, 'frozen', False) and not sys.stdout:
+        class _NullWriter:
+            def write(self, _s):
+                return 0
+            def flush(self):
+                pass
+            def isatty(self):
+                return False
+        sys.stdout = sys.stderr = _NullWriter()
+except Exception:
+    pass
+
 try:
     from http_client import base as _web_base, _ssl_ctx as _web_ssl_ctx
     def _web_open(req, timeout=15, config=None):

@@ -89,8 +89,14 @@ if (-not (Test-Path $agentSpec)) { Write-FAIL "GiamSatAgent.spec not found!"; ex
 if (-not (Test-Path $updaterSpec)) { Write-FAIL "updater.spec not found!"; exit 1 }
 $spec1 = Get-Content $agentSpec -Raw
 $spec2 = Get-Content $updaterSpec -Raw
-if ($spec1 -match "console\s*=\s*False" -or $spec2 -match "console\s*=\s*False") { Write-FAIL "console=False in spec!"; exit 1 }
-Write-OK "Both specs: console=True"
+# v5.0.2: windowed (console=False) build - prevents the black console window that
+# flashed at boot via Task Scheduler and could be closed by users, killing the
+# agent/updater. main.py + updater.py redirect stdout/stderr for windowed mode.
+if ($spec1 -match "console\s*=\s*True" -or $spec2 -match "console\s*=\s*True") {
+    Write-INFO "WARN: specs still have console=True - a black console window will flash at boot. Set console=False in both .spec files for a hidden launch."
+} else {
+    Write-OK "Both specs: console=False (windowed - no console flash)"
+}
 
 # STEP 5: Build GiamSatAgent.exe
 Write-STEP "STEP 5: Building GiamSatAgent.exe (~24 MB)..."

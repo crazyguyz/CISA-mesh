@@ -36,6 +36,7 @@ git pull
 - Back up before updating: `server\giamsat_data.db`, `users.json`, `.env` (if present).
 - ⚠️ `server\version.txt` là **phiên bản agent-build** — server dùng nó để so sánh với phiên bản agent báo lên (`update_available = agent_version != version.txt`). Phải để **khớp với bản GiamSatAgent.exe đang phát hành**, nếu không agent sẽ tải đi tải lại mãi (vòng lặp update). `build-agent.ps1` tự ghi đúng vào cả 2 file mỗi lần build.
 - ⚠️ `server\version.txt` is the **agent-build version** — the server compares it to the version each agent reports (`update_available = agent_version != version.txt`). It MUST match the shipped `GiamSatAgent.exe`, otherwise agents loop forever (update loop). `build-agent.ps1` writes the correct value to both files on every build.
+- 💡 **Agent/Updater chạy ẩn hoàn toàn (v5.0.2+):** cả 2 EXE được build **windowed (`console=False`)** → Task Scheduler khởi động mà **không hiện cửa sổ console đen** nữa (người dùng không thể vô ý đóng khiến agent/updater tắt). `main.py` + `updater.py` tự redirect stdout/stderr khi chạy windowed. Khi build mới, `build-agent.ps1` sẽ báo `console=False (windowed - no console flash)`.
 
 ---
 
