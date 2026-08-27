@@ -409,7 +409,7 @@ function loadSyslog() {
         el.innerHTML = '<div class="text-muted mb-1" style="font-size:11px;">' + t('dash.foundRecords', [total]) + (search||facility||severity||sourceIp?t('dash.filtered'):'') + '</div>' +
             tableWrap([t('dash.time'),t('dash.source'),'Facility',t('dash.severity'),t('dash.content')], data.map(function(e){ return '<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">'+escapeHtml((e.timestamp||'').substring(0,19))+'</td><td>'+escapeHtml(e.hostname||e.source_ip||'-')+'</td><td><span class="badge bg-dark" style="font-size:9px;">'+escapeHtml(e.facility||'?')+'</span></td><td><span class="badge '+(e.severity==='error'||e.severity==='critical'?'bg-danger':e.severity==='warning'?'bg-warning text-dark':'bg-secondary')+'">'+escapeHtml(e.severity||'?')+'</span></td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+escapeHtml(e.message||'')+'">'+escapeHtml((e.message||'').substring(0,120))+'</td></tr>'; }));
     }).catch(function(e){
-        el.innerHTML='<div class="text-center text-muted py-3">⚠ '+t('ui.loadSyslogErr')+''+e.message+'<br><small style="font-size:11px;color:#6a8aaa;">'+t('ui.syslogHint')+'</small></div>';
+        el.innerHTML='<div class="text-center text-muted py-3">⚠ '+t('ui.loadSyslogErr')+''+escapeHtml(e.message)+'<br><small style="font-size:11px;color:#6a8aaa;">'+t('ui.syslogHint')+'</small></div>';
     });
 }
 
@@ -2423,7 +2423,7 @@ function loadFimBaselineMachines(){
         });
         el.innerHTML = html;
     }).catch(e => {
-        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+': ' + e.message + '</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+': ' + escapeHtml(e.message) + '</div>';
     });
 }
 
@@ -2625,8 +2625,8 @@ function testRule(){
     const resultEl = document.getElementById('testRuleResult');
     if (!ruleJson || !eventJson) { resultEl.innerHTML = '<div class="alert alert-warning py-1">'+t('ui.enterRuleEventJson')+'</div>'; return; }
     let rule, event;
-    try { rule = JSON.parse(ruleJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.ruleJsonInvalid') + e.message + '</div>'; return; }
-    try { event = JSON.parse(eventJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.eventJsonInvalid') + e.message + '</div>'; return; }
+    try { rule = JSON.parse(ruleJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.ruleJsonInvalid') + escapeHtml(e.message) + '</div>'; return; }
+    try { event = JSON.parse(eventJson); } catch(e) { resultEl.innerHTML = '<div class="alert alert-danger py-1">'+t('ui.eventJsonInvalid') + escapeHtml(e.message) + '</div>'; return; }
     resultEl.innerHTML = '<div class="text-muted"><i class="bi bi-hourglass-split"></i> '+t('ui.testing')+'</div>';
     fetch('/api/rules/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rule, event})})
         .then(r => r.json()).then(d => {
@@ -3150,7 +3150,7 @@ function loadEmailView(){
     });
     fetch('/api/machines').then(r=>r.json()).then(ms=>{
         const sel = document.getElementById('emailMachine');
-        sel.innerHTML = '<option value="">'+t('opt.selectMachineEmail')+'</option>' + ms.map(m=>'<option value="'+m.machine_id+'">'+(m.hostname||m.machine_id)+' ('+(m.user_name||'?')+')</option>').join('');
+        sel.innerHTML = '<option value="">'+t('opt.selectMachineEmail')+'</option>' + ms.map(m=>'<option value="'+escapeHtml(m.machine_id)+'">'+escapeHtml(m.hostname||m.machine_id)+' ('+escapeHtml(m.user_name||'?')+')</option>').join('');
     });
     // Email tabs
     document.querySelectorAll('[data-tab-em]').forEach(el=>{
@@ -3233,7 +3233,7 @@ function sendEmailAlert(){
     fetch('/api/email/send', {method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({machine_id:mid, template_id:tid, subject, body, to_email:to})
     }).then(r=>r.json()).then(d=>{
-        if(d.success){ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#88dd99;">✅ '+d.message+'</span>'; showToast('✅ Đã gửi email!'); }
+        if(d.success){ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#88dd99;">✅ '+escapeHtml(d.message)+'</span>'; showToast('✅ Đã gửi email!'); }
         else { document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.errPrefix')+(d.error||t('ui.errGeneric'))+'</span>'; }
     }).catch(e=>{ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.connErrShort')+'</span>'; });
 }
@@ -3251,8 +3251,8 @@ function testEmailConfig(){
     document.getElementById('emailTestResult').innerHTML = '<span style="color:#ffcc66;">'+t('ui.sendingTestEmail')+'</span>';
     fetch('/api/email/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({to})})
         .then(r=>r.json()).then(d=>{
-            if(d.success) document.getElementById('emailTestResult').innerHTML = '<span style="color:#88dd99;">✅ '+d.message+'</span>';
-            else document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ '+d.error+'</span>';
+            if(d.success) document.getElementById('emailTestResult').innerHTML = '<span style="color:#88dd99;">✅ '+escapeHtml(d.message)+'</span>';
+            else document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">❌ '+escapeHtml(d.error)+'</span>';
         }).catch(e=>{ document.getElementById('emailTestResult').innerHTML = '<span style="color:#ff8888;">'+t('ui.connErrShort')+'</span>'; });
 }
 
@@ -4212,7 +4212,7 @@ function runCleanup() {
         } else {
             resultEl.innerHTML = '<div class="alert alert-danger py-2">'+t('ui.errPrefix') + (data.error || t('ui.errGeneric')) + '</div>';
         }
-    }).catch(e => { resultEl.innerHTML = '<div class="alert alert-danger py-2">'+t('ui.errPrefix') + e.message + '</div>'; });
+    }).catch(e => { resultEl.innerHTML = '<div class="alert alert-danger py-2">'+t('ui.errPrefix') + escapeHtml(e.message) + '</div>'; });
 }
 
 // ===== v3.2: THREAT HUNTING (AI-Powered) =====
@@ -4251,7 +4251,7 @@ function startHunting() {
             loadHunting(data.campaign_id);
         }, 2000);
     }).catch(function(e) {
-        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.connErr')+'' + e.message + '</div>';
+        el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.connErr')+'' + escapeHtml(e.message) + '</div>';
     });
 }
 
@@ -4275,7 +4275,7 @@ function loadHunting(campaignId) {
             renderHuntResults(data);
         })
         .catch(function(e) {
-            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.errPrefix') + e.message + '</div>';
+            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.errPrefix') + escapeHtml(e.message) + '</div>';
             if (huntPollInterval) { clearInterval(huntPollInterval); huntPollInterval = null; }
         });
 }
@@ -4436,7 +4436,7 @@ function loadIncidentTimeline(threatId) {
             document.querySelectorAll('#incidentSidebar > div').forEach(d => d.style.background = d.style.background.replace('rgba(0,212,170,0.12)','').replace('rgba(255,255,255,0.04)',''));
         })
         .catch(e => {
-            timelineEl.innerHTML = '<div class="text-center text-muted py-5">'+t('ui.errPrefix') + e.message + '</div>';
+            timelineEl.innerHTML = '<div class="text-center text-muted py-5">'+t('ui.errPrefix') + escapeHtml(e.message) + '</div>';
         });
 }
 
