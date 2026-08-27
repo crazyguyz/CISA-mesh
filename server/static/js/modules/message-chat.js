@@ -149,7 +149,7 @@ window.messageChat = (function() {
       if (m.email) userInfo += ' ✉ ' + m.email;
       html += '<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #2a3a4a;font-size:12px;transition:background 0.15s;" ' +
         'onmouseover="this.style.background=\'#2a3a4a\'" onmouseout="this.style.background=\'\'" ' +
-        'onclick="messageChat.selectMachine(\'' + m.machine_id + '\')">' +
+        'onclick="messageChat.selectMachine(\'' + escJs(m.machine_id) + '\')">' +
         dot + '<strong>' + esc(m.hostname || m.machine_id) + '</strong>' + badge +
         '<span style="color:#6a8aaa;margin-left:8px;">' + (m.ip_address || '-') + '</span>' +
         '<span style="color:#b0c8e0;margin-left:8px;">' + userInfo + '</span>' +
@@ -289,8 +289,8 @@ window.messageChat = (function() {
       var color = isReplied ? '#88dd99' : (online ? '#ffcc66' : '#6a7a8a');
 
       html += '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:5px 8px;font-size:11px;cursor:pointer;min-width:100px;" ' +
-        'title="' + hostname + ': ' + (isReplied ? t('chat.replied', [(reply.reply||'').substring(0, 60)]) : t('chat.waiting')) + '" ' +
-        (isReplied ? 'onclick="alert(\'🖥 ' + esc(hostname) + '\\n\\n📝 Tra loi: ' + esc(reply.reply||'') + '\\n\\n⏱ Luc: ' + (reply.replied_at||'?') + '\')"' : '') + '>' +
+        'title="' + escapeHtml(hostname) + ': ' + (isReplied ? t('chat.replied', [(reply.reply||'').substring(0, 60)]) : t('chat.waiting')) + '" ' +
+        (isReplied ? 'onclick="alert(\'🖥 ' + escJs(hostname) + '\\n\\n📝 Tra loi: ' + escJs(reply.reply||'') + '\\n\\n⏱ Luc: ' + escJs(reply.replied_at||'?') + '\')"' : '') + '>' +
         '<span style="color:' + color + ';font-weight:600;">' + icon + ' ' + esc(hostname) + '</span>' +
         '</div>';
     });
@@ -305,7 +305,7 @@ window.messageChat = (function() {
     var targetEl = document.getElementById('msgChatTarget');
     var statusEl = document.getElementById('msgChatStatus');
     if (targetEl) {
-      if (machineLabel) targetEl.innerHTML = '→ <strong>' + machineLabel + '</strong>';
+      if (machineLabel) targetEl.innerHTML = '→ <strong>' + escapeHtml(machineLabel) + '</strong>';
       else targetEl.innerHTML = '';
     }
     if (statusEl) statusEl.textContent = status || '';

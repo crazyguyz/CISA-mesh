@@ -1,4 +1,5 @@
-function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
 function escJs(s){return String(s).replace(/\\/g,'\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 function fmtBytes(b){b=parseInt(b)||0;if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
 
@@ -1452,11 +1453,11 @@ function loadMachines() {
             sel.innerHTML = '<option value="">' + t('opt.selectMachineN',[ms.length]) + '</option>' +
                 ms.map(m => {
                     const status = m.is_online == 1 ? '🟢' : '🔴';
-                    const notesSuffix = m.notes ? ' - ' + m.notes.substring(0, 30) : '';
-                    const userLabel = m.user_name ? '👤 ' + m.user_name + (m.email ? ' (' + m.email + ')' : '') : t('dash.noUser');
-                    const label = status + ' ' + (m.hostname || m.machine_id) + ' — ID: ' + m.machine_id + ' — ' + userLabel + ' — ' + (m.ip_address || '?') + notesSuffix;
+                    const notesSuffix = m.notes ? ' - ' + escapeHtml(m.notes.substring(0, 30)) : '';
+                    const userLabel = m.user_name ? '👤 ' + escapeHtml(m.user_name) + (m.email ? ' (' + escapeHtml(m.email) + ')' : '') : t('dash.noUser');
+                    const label = status + ' ' + escapeHtml(m.hostname || m.machine_id) + ' — ID: ' + escapeHtml(m.machine_id) + ' — ' + userLabel + ' — ' + escapeHtml(m.ip_address || '?') + notesSuffix;
                     const selected = (selectedMachine === m.machine_id) ? ' selected' : '';
-                    return '<option value="' + m.machine_id + '" data-hostname="' + escapeHtml(m.hostname || m.machine_id) + '"' + selected + '>' + label + '</option>';
+                    return '<option value="' + escapeHtml(m.machine_id) + '" data-hostname="' + escapeHtml(m.hostname || m.machine_id) + '"' + selected + '>' + label + '</option>';
                 }).join('');
             // Restore selected value if still valid
             if (curVal && ms.find(m => m.machine_id === curVal)) {
@@ -2028,7 +2029,7 @@ function loadMachineConfig(mid){
         function _diffIcon(path,label){
             var d=diffMap[path];
             if(!d)return'';
-            var oldV=d.baseline_value||'-',newV=d.current_value||'-';
+            var oldV=escapeHtml(d.baseline_value||'-'),newV=escapeHtml(d.current_value||'-');
             return' <span title="'+t('ui.changed')+''+label+'\n'+t('ui.before')+''+oldV+'\n'+t('ui.current')+''+newV+'" style="cursor:help;color:#ffcc66;font-size:14px;">⚠️</span>';
         }
         // Helper: check if any sub-path under prefix has diff
@@ -2042,7 +2043,7 @@ function loadMachineConfig(mid){
             for(var k in diffMap){
                 if(k.indexOf(prefix)===0){
                     var d=diffMap[k];
-                    items.push('<div style="font-size:10px;color:#ffcc66;padding:1px 0;">⚠ <b>'+d.field+'</b>: <span style="text-decoration:line-through;color:#ff8888;">'+(d.baseline_value||'-')+'</span> → <span style="color:#88ff88;">'+(d.current_value||'-')+'</span></div>');
+                    items.push('<div style="font-size:10px;color:#ffcc66;padding:1px 0;">⚠ <b>'+escapeHtml(d.field)+'</b>: <span style="text-decoration:line-through;color:#ff8888;">'+escapeHtml(d.baseline_value||'-')+'</span> → <span style="color:#88ff88;">'+escapeHtml(d.current_value||'-')+'</span></div>');
                 }
             }
             return items.join('');
@@ -2054,9 +2055,9 @@ function loadMachineConfig(mid){
             html+='<div style="font-size:11px;color:#ffcc66;margin-bottom:4px;">'+t('ui.changeDetails')+'</div>';
             diffs.forEach(function(d){
                 html+='<div style="font-size:10px;padding:2px 0;border-bottom:1px solid #2a1a0a;">';
-                html+='<span style="color:#ffaa44;">📌 '+d.path+'</span><br>';
-                html+='<span style="color:#ff8888;text-decoration:line-through;">'+t('ui.before')+''+(d.baseline_value||'-')+'</span> → ';
-                html+='<span style="color:#88ff88;">'+t('ui.current')+''+(d.current_value||'-')+'</span>';
+                html+='<span style="color:#ffaa44;">📌 '+escapeHtml(d.path)+'</span><br>';
+                html+='<span style="color:#ff8888;text-decoration:line-through;">'+t('ui.before')+''+escapeHtml(d.baseline_value||'-')+'</span> → ';
+                html+='<span style="color:#88ff88;">'+t('ui.current')+''+escapeHtml(d.current_value||'-')+'</span>';
                 html+='</div>';
             });
             html+='</div>';
@@ -2067,8 +2068,8 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(osChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-windows"></i> ' + t('dash.os') + (osChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>' + t('dash.osShort') + '</th><td>'+_diffIcon('os.name', t('dash.osShort'))+' '+(cfg.os.name||'-')+' '+(cfg.os.release||'')+' (Build '+(cfg.os.build||'?')+')</td></tr>';
-            html+='<tr><th>Phiên bản</th><td>'+_diffIcon('os.version',t('cfg.version'))+' '+(cfg.os.version||'-')+'</td></tr>';
+            html+='<tr><th>' + t('dash.osShort') + '</th><td>'+_diffIcon('os.name', t('dash.osShort'))+' '+escapeHtml(cfg.os.name||'-')+' '+escapeHtml(cfg.os.release||'')+' (Build '+escapeHtml(cfg.os.build||'?')+')</td></tr>';
+            html+='<tr><th>Phiên bản</th><td>'+_diffIcon('os.version',t('cfg.version'))+' '+escapeHtml(cfg.os.version||'-')+'</td></tr>';
             html+='</tbody></table>';
             if(osChanged)html+=_diffDetails('os.');
             html+='</div>';
@@ -2079,10 +2080,10 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(mbChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-motherboard"></i> Mainboard'+(mbChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('motherboard.manufacturer',t('cfg.mainboard'))+' '+(cfg.motherboard.manufacturer||'-')+'</td></tr>';
-            html+='<tr><th>Model</th><td>'+_diffIcon('motherboard.product','Model Mainboard')+' '+(cfg.motherboard.product||'-')+'</td></tr>';
-            if(cfg.motherboard.version)html+='<tr><th>Version</th><td>'+_diffIcon('motherboard.version','Version Mainboard')+' '+(cfg.motherboard.version)+'</td></tr>';
-            if(cfg.motherboard.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('motherboard.serial','Serial Mainboard')+' '+(cfg.motherboard.serial)+'</td></tr>';
+            html+='<tr><th>Hãng</th><td>'+_diffIcon('motherboard.manufacturer',t('cfg.mainboard'))+' '+escapeHtml(cfg.motherboard.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>Model</th><td>'+_diffIcon('motherboard.product','Model Mainboard')+' '+escapeHtml(cfg.motherboard.product||'-')+'</td></tr>';
+            if(cfg.motherboard.version)html+='<tr><th>Version</th><td>'+_diffIcon('motherboard.version','Version Mainboard')+' '+escapeHtml(cfg.motherboard.version)+'</td></tr>';
+            if(cfg.motherboard.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('motherboard.serial','Serial Mainboard')+' '+escapeHtml(cfg.motherboard.serial)+'</td></tr>';
             html+='</tbody></table>';
             if(mbChanged)html+=_diffDetails('motherboard.');
             html+='</div>';
@@ -2092,10 +2093,10 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(biosChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-cpu"></i> BIOS'+(biosChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('bios.manufacturer',t('cfg.biosMaker'))+' '+(cfg.bios.manufacturer||'-')+'</td></tr>';
-            html+='<tr><th>Version</th><td>'+_diffIcon('bios.name',t('cfg.biosName'))+' '+(cfg.bios.name||'-')+' v'+(cfg.bios.version||'')+'</td></tr>';
-            if(cfg.bios.release_date)html+='<tr><th>Ngày phát hành</th><td>'+_diffIcon('bios.release_date',t('cfg.biosRelease'))+' '+(cfg.bios.release_date)+'</td></tr>';
-            if(cfg.bios.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('bios.serial','Serial BIOS')+' '+(cfg.bios.serial)+'</td></tr>';
+            html+='<tr><th>Hãng</th><td>'+_diffIcon('bios.manufacturer',t('cfg.biosMaker'))+' '+escapeHtml(cfg.bios.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>Version</th><td>'+_diffIcon('bios.name',t('cfg.biosName'))+' '+escapeHtml(cfg.bios.name||'-')+' v'+escapeHtml(cfg.bios.version||'')+'</td></tr>';
+            if(cfg.bios.release_date)html+='<tr><th>Ngày phát hành</th><td>'+_diffIcon('bios.release_date',t('cfg.biosRelease'))+' '+escapeHtml(cfg.bios.release_date)+'</td></tr>';
+            if(cfg.bios.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('bios.serial','Serial BIOS')+' '+escapeHtml(cfg.bios.serial)+'</td></tr>';
             html+='</tbody></table>';
             if(biosChanged)html+=_diffDetails('bios.');
             html+='</div>';
@@ -2106,9 +2107,9 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(cpuChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-cpu-fill"></i> CPU'+(cpuChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>' + t('dash.name') + '</th><td>'+_diffIcon('cpu.name','Tên CPU')+' '+(cfg.cpu.name||'-')+'</td></tr>';
+            html+='<tr><th>' + t('dash.name') + '</th><td>'+_diffIcon('cpu.name','Tên CPU')+' '+escapeHtml(cfg.cpu.name||'-')+'</td></tr>';
             html+='<tr><th>' + t('dash.clockSpeed') + '</th><td>'+_diffIcon('cpu.max_clock_speed_mhz', t('dash.cpuClock'))+' '+(cfg.cpu.max_clock_speed_mhz?Math.round(cfg.cpu.max_clock_speed_mhz/1000*10)/10+' GHz':'-')+'</td></tr>';
-            html+='<tr><th>Số nhân</th><td>'+_diffIcon('cpu.cores',t('cfg.cpuCores'))+' '+(cfg.cpu.cores||'-')+' cores / '+(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
+            html+='<tr><th>Số nhân</th><td>'+_diffIcon('cpu.cores',t('cfg.cpuCores'))+' '+escapeHtml(cfg.cpu.cores||'-')+' cores / '+escapeHtml(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
             html+='</tbody></table>';
             if(cpuChanged)html+=_diffDetails('cpu.');
             html+='</div>';
@@ -2131,7 +2132,7 @@ function loadMachineConfig(mid){
                     html+='<td>'+_diffIcon('ram.sticks['+i+'].speed_mhz','Bus RAM #'+(i+1))+' '+bus+'</td>';
                     html+='<td>'+_diffIcon('ram.sticks['+i+'].memory_type',t('cfg.ramType',[i+1]))+' '+(s.memory_type||'-')+'</td>';
                     html+='<td>'+_diffIcon('ram.sticks['+i+'].form_factor','Form RAM #'+(i+1))+' '+(s.form_factor||'-')+'</td>';
-                    html+='<td style="font-family:monospace;font-size:10px;">'+_diffIcon('ram.sticks['+i+'].part_number','Part Number RAM #'+(i+1))+' '+(s.part_number||'-')+'</td></tr>';
+                    html+='<td style="font-family:monospace;font-size:10px;">'+_diffIcon('ram.sticks['+i+'].part_number','Part Number RAM #'+(i+1))+' '+escapeHtml(s.part_number||'-')+'</td></tr>';
                 });
                 html+='</tbody></table>';
             }
@@ -2148,7 +2149,7 @@ function loadMachineConfig(mid){
                 var rowStyle='';
                 if(_hasDiff('disks['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
                 html+='<tr'+rowStyle+'><td>'+_diffIcon('disks['+i+'] (số lượng)',t('cfg.diskQty'))+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('disks['+i+'].model',t('cfg.diskModel',[i+1]))+' '+(d.model||'-')+'</td>';
+                html+='<td>'+_diffIcon('disks['+i+'].model',t('cfg.diskModel',[i+1]))+' '+escapeHtml(d.model||'-')+'</td>';
                 html+='<td>'+_diffIcon('disks['+i+'].size_gb',t('cfg.diskCapacity',[i+1]))+' '+(d.size_gb||0)+' GB</td>';
                 html+='<td>'+_diffIcon('disks['+i+'].interface',t('cfg.diskStd',[i+1]))+' '+(d.interface||'-')+'</td>';
                 html+='<td>'+_diffIcon('disks['+i+'].media_type',t('cfg.diskType',[i+1]))+' '+(d.media_type||'-')+'</td></tr>';
@@ -2205,10 +2206,10 @@ function loadMachineConfig(mid){
                 var rowStyle='';
                 if(_hasDiff('installed_software['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
                 html+='<tr'+rowStyle+'><td>'+_diffIcon('installed_software['+i+'] (số lượng)',t('cfg.swQty'))+' '+(i+1)+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].name',t('cfg.swNameN',[i+1]))+' '+(sw.name||'-')+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].version',t('cfg.swVerN',[i+1]))+' '+(sw.version||'-')+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].publisher','NXB PM #'+(i+1))+' '+(sw.publisher||'-')+'</td>';
-                html+='<td>'+_diffIcon('installed_software['+i+'].install_date',t('cfg.swDateN',[i+1]))+' '+(sw.install_date||'-')+'</td></tr>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].name',t('cfg.swNameN',[i+1]))+' '+escapeHtml(sw.name||'-')+'</td>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].version',t('cfg.swVerN',[i+1]))+' '+escapeHtml(sw.version||'-')+'</td>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].publisher','NXB PM #'+(i+1))+' '+escapeHtml(sw.publisher||'-')+'</td>';
+                html+='<td>'+_diffIcon('installed_software['+i+'].install_date',t('cfg.swDateN',[i+1]))+' '+escapeHtml(sw.install_date||'-')+'</td></tr>';
             });
             html+='</tbody></table>';
             if(swChanged)html+=_diffDetails('installed_software.');
@@ -2348,19 +2349,19 @@ function _actionButtons(type, item) {
     if (!mid) return '';
     var h = '<td style="white-space:nowrap;text-align:center;">';
     // Forensic snapshot - always available
-    h += '<button class="btn btn-xs btn-outline-info py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + mid + '\',\'' + host + '\',\'forensic_snapshot\',\'\')" title="Forensic Snapshot">&#128269;</button>';
+    h += '<button class="btn btn-xs btn-outline-info py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + escJs(mid) + '\',\'' + escJs(host) + '\',\'forensic_snapshot\',\'\')" title="Forensic Snapshot">&#128269;</button>';
     if (type === 'threats') {
         if (item.pid || item.process_name) {
             var pv = item.pid || item.process_name || '';
-            h += '<button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + mid + '\',\'' + host + '\',\'kill_process\',\'' + pv + '\')" title="Kill Process">&#128298;</button>';
+            h += '<button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + escJs(mid) + '\',\'' + escJs(host) + '\',\'kill_process\',\'' + escJs(pv) + '\')" title="Kill Process">&#128298;</button>';
         }
         if (item.source_ip || item.dst_ip) {
             var ip = item.source_ip || item.dst_ip || '';
-            h += '<button class="btn btn-xs btn-outline-warning py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + mid + '\',\'' + host + '\',\'firewall_block\',\'' + ip + '\')" title="Block IP">&#128683;</button>';
+            h += '<button class="btn btn-xs btn-outline-warning py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + escJs(mid) + '\',\'' + escJs(host) + '\',\'firewall_block\',\'' + escJs(ip) + '\')" title="Block IP">&#128683;</button>';
         }
     } else if (type === 'yara') {
         if (item.file) {
-            h += '<button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + mid + '\',\'' + host + '\',\'quarantine_file\',\'' + (item.file||'') + '\')" title="Quarantine File">&#128230;</button>';
+            h += '<button class="btn btn-xs btn-outline-danger py-0 px-1" style="font-size:9px;margin:1px;" onclick="event.stopPropagation();executeResponseAction(\'' + escJs(mid) + '\',\'' + escJs(host) + '\',\'quarantine_file\',\'' + escJs(item.file||'') + '\')" title="Quarantine File">&#128230;</button>';
         }
     }
     h += '</td>';
@@ -3350,7 +3351,7 @@ function renderAttackOverview(data) {
                 kcHtml += '<div><strong style="color:#ff9966;">' + escapeHtml(m.hostname) + '</strong> <span class="badge bg-danger" style="font-size:9px;">' + t('kc.incident') + '</span>';
                 kcHtml += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + t('kc.tactics', [m.tactic_count]) + ': ' + m.tactics.map(escapeHtml).join(', ') + '</div></div>';
                 kcHtml += '<div style="display:flex;align-items:center;gap:6px;"><span class="badge bg-danger" style="font-size:12px;">' + m.tactic_count + '</span>';
-                kcHtml += '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 8px;" onclick="openIncidentForMachine(\'' + escapeHtml(m.machine_id) + '\',\'' + escapeHtml(m.hostname) + '\')">🔍 ' + t('kc.investigate') + '</button></div></div>';
+                kcHtml += '<button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:1px 8px;" onclick="openIncidentForMachine(\'' + escJs(m.machine_id) + '\',\'' + escJs(m.hostname) + '\')">🔍 ' + t('kc.investigate') + '</button></div></div>';
             });
         }
         kcHtml += '</div>';
