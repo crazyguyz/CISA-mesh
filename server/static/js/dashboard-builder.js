@@ -313,7 +313,9 @@ var DbBuilder = {
         }
         if (val == null) val = '0';
         if (typeof val === 'number') val = val.toLocaleString();
-        body.innerHTML = '<div style="text-align:center;padding:16px;"><div style="font-size:32px;font-weight:700;color:#00d4aa;">' + val + '</div><div style="font-size:11px;color:#c8d8e8;">' + (cfg.title || '') + '</div></div>';
+        // v5.0.3 (XSS): widget value can be a string from agent data (hostname,
+        // description...) -> escape before innerHTML (was raw, stored-XSS sink)
+        body.innerHTML = '<div style="text-align:center;padding:16px;"><div style="font-size:32px;font-weight:700;color:#00d4aa;">' + escapeHtml(String(val)) + '</div><div style="font-size:11px;color:#c8d8e8;">' + escapeHtml(cfg.title || '') + '</div></div>';
     },
 
     _renderTable: function (wid, data, cfg) {
@@ -332,15 +334,22 @@ var DbBuilder = {
             cols = Object.keys(items[0] || {}).filter(function (c) { return HIDDEN_COLUMNS.indexOf(c) < 0; });
         }
         var html = '<table class="dashboard-table"><thead><tr>';
-        cols.forEach(function (c) { html += '<th>' + c + '</th>'; });
+        cols.forEach(function (c) { html += '<th>' + escapeHtml(c) + '</th>'; });
         html += '</tr></thead><tbody>';
         items.slice(0, 20).forEach(function (row) {
             html += '<tr>';
             cols.forEach(function (c) {
                 var v = row[c] !== undefined ? row[c] : '';
-                if (c === 'is_online') v = (v == 1) ? '<span style="color:#00d4aa;">● Online</span>' : '<span style="color:#ff4444;">● Offline</span>';
-                if (typeof v === 'object') v = JSON.stringify(v);
-                html += '<td>' + String(v).substring(0, 200) + '</td>';
+                var cellHtml;
+                if (c === 'is_online') {
+                    cellHtml = (v == 1) ? '<span style="color:#00d4aa;">● Online</span>' : '<span style="color:#ff4444;">● Offline</span>';
+                } else {
+                    // v5.0.3 (XSS): cell values are agent-controlled (hostname,
+                    // description, raw events) -> escape before innerHTML
+                    if (typeof v === 'object') v = JSON.stringify(v);
+                    cellHtml = escapeHtml(String(v)).substring(0, 200);
+                }
+                html += '<td>' + cellHtml + '</td>';
             });
             html += '</tr>';
         });

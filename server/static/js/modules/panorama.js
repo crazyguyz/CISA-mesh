@@ -9,7 +9,7 @@ window.loadPanorama = function() {
     fetch('/api/panorama').then(function(r) { return r.json(); }).then(function(data) {
         if (data.error) { el.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(data.error) + '</div>'; return; }
         renderPanorama(data, el);
-    }).catch(function(e) { el.innerHTML = '<div class="alert alert-danger m-3">' + t('pano.loadErr', [escapeHtml(e.message)]) + '</div>'; });
+    }).catch(function(e) { el.innerHTML = '<div class="alert alert-danger m-3">' + t('pano.loadErr', [e.message]) + '</div>'; });
 };
 
 function renderPanorama(data, el) {

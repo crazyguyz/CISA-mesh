@@ -2077,7 +2077,11 @@
     var s = (key in dict) ? dict[key] : key;
     if (args && args.length) {
       for (var i = 0; i < args.length; i++) {
-        s = s.replace('{' + i + '}', args[i]);
+        // v5.0.3 (XSS): substitution args flow into innerHTML in many call
+        // sites (machine ids, hostnames, server error text) and can carry
+        // stored HTML - escape every arg here so t('...', [untrusted]) is
+        // safe by default. Callers that previously pre-escaped were updated.
+        s = s.replace('{' + i + '}', escapeHtml(String(args[i])));
       }
     }
     return s;

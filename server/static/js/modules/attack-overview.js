@@ -25,7 +25,7 @@ window.loadAttackOverview = function() {
             window._killchainData = kc && !kc.error ? kc : null;
             window.renderAttackOverview(data);
         }).catch(function() { window._killchainData = null; window.renderAttackOverview(data); });
-    }).catch(function(e) { el.innerHTML = '<div class="alert alert-danger m-3">' + t('ao.loadErr', [escapeHtml(e.message)]) + '</div>'; });
+    }).catch(function(e) { el.innerHTML = '<div class="alert alert-danger m-3">' + t('ao.loadErr', [e.message]) + '</div>'; });
 };
 
 window.renderAttackOverview = function(data) {
