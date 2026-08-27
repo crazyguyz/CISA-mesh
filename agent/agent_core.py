@@ -435,6 +435,11 @@ class AgentCore:
         self._processed_execs_lock = threading.Lock()
         self._processed_execs_max = 2000  # Cleanup at 2000 to prevent memory leak
 
+        # v5.0.3 (MEDIUM-6): command nonce cache - reject replays inside the
+        # timestamp window (each signed command executes at most once).
+        self._nonce_cache = {}
+        self._nonce_lock = threading.Lock()
+
         # v3.9.0: Network traffic 3-tier aggregation
         self._net_agg = {}          # key -> {count, first_seen, last_seen, bytes}
         self._net_agg_lock = threading.Lock()
@@ -809,6 +814,30 @@ class AgentCore:
             if abs(int(time.time()) - cmd_ts) > 300:
                 print(f"[!] REPLAY/STALE: Command '{cmd.get('action', '?')}' timestamp outside 5min window")
                 return False
+
+            # v5.0.3 (MEDIUM-6): nonce - reject replays within the timestamp window
+            try:
+                nonce = str(cmd.get("_nonce", "") or "")
+            except Exception:
+                nonce = ""
+            if not nonce:
+                print(f"[!] REPLAY: Command '{cmd.get('action', '?')}' missing nonce - rejected")
+                return False
+            with self._nonce_lock:
+                now = time.time()
+                # GC nonces older than the 5-minute validity window
+                try:
+                    expired = [k for k, t in self._nonce_cache.items() if now - t > 300]
+                    for k in expired:
+                        self._nonce_cache.pop(k, None)
+                except Exception:
+                    pass
+                if nonce in self._nonce_cache:
+                    print(f"[!] REPLAY: Command '{cmd.get('action', '?')}' duplicate nonce - rejected")
+                    return False
+                self._nonce_cache[nonce] = now
+                if len(self._nonce_cache) > 5000:
+                    self._nonce_cache = dict(list(self._nonce_cache.items())[-3000:])
 
             return True
         except Exception as e:

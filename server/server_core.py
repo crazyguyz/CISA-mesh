@@ -442,6 +442,8 @@ class ServerCore:
         # v4.13 (P2): global API rate limit per IP (in-memory sliding window).
         # Agent-facing endpoints, SSE and health are exempt (they authenticate via PSK).
         _api_rate = {}
+        _api_rate_last = {}      # v5.0.3 (MEDIUM-4): ip -> last request ts (idle GC)
+        _api_rate_ops = 0
         _api_rate_lock = threading.Lock()
         _API_RATE_LIMIT = int(os.environ.get("GIAMSAT_API_RATE_LIMIT", "600"))
         _API_RATE_WINDOW = 60
@@ -455,12 +457,21 @@ class ServerCore:
             ip = request.remote_addr or "?"
             now = time.time()
             with _api_rate_lock:
+                # v5.0.3 (MEDIUM-4): periodic GC - drop IP keys idle for > window
+                _api_rate_ops += 1
+                if _api_rate_ops % 500 == 0:
+                    idle = [k for k, ts in _api_rate_last.items() if now - ts > _API_RATE_WINDOW]
+                    for k in idle:
+                        _api_rate.pop(k, None)
+                        _api_rate_last.pop(k, None)
                 lst = [t for t in _api_rate.get(ip, []) if now - t < _API_RATE_WINDOW]
                 if len(lst) >= _API_RATE_LIMIT:
                     _api_rate[ip] = lst
+                    _api_rate_last[ip] = now
                     return jsonify({"error": "Rate limit exceeded", "code": "RATE_LIMITED"}), 429
                 lst.append(now)
                 _api_rate[ip] = lst
+                _api_rate_last[ip] = now
             return None
 
         # Server Self-Monitor middleware

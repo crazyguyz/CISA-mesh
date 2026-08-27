@@ -51,6 +51,7 @@ PASSWORD_POLICY = {
 # Brute-force protection
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 15
+MAX_2FA_ATTEMPTS = 5    # v5.0.3 (MEDIUM-1): wrong TOTP code attempts before 2FA lockout
 
 # v2.5.3: Default admin - will only be used if no users exist on first run
 _first_run_admin_password = None
@@ -119,6 +120,9 @@ class AuthManager:
         self._brute_lock = threading.Lock()
         # v4.13 (P2): pending 2FA logins {token: {username, expires}}
         self.pending_2fa = {}
+        # v5.0.3 (MEDIUM-1): 2FA code-attempt lockout + pending-entry GC
+        self._pending_fails = {}    # username -> {"attempts": N, "locked_until": ts}
+        self._pending_2fa_lock = threading.Lock()
 
         # v2.5.3: File encryption key (persists across restarts)
         self._file_key = self._get_or_create_file_key()
@@ -421,6 +425,7 @@ class AuthManager:
         # is verified via /api/login/2fa (short-lived pending token).
         if user.get("totp_enabled"):
             import secrets as _secrets
+            self._gc_pending_2fa()
             pending = _secrets.token_hex(16)
             self.pending_2fa[pending] = {"username": username, "expires": time.time() + 120}
             return {"success": True, "require_2fa": True, "pending": pending, "role": user.get("role", "viewer")}
@@ -478,9 +483,17 @@ class AuthManager:
                    if isinstance(v, (int, float)) and v < now]
         for k in expired:
             self.token_blacklist.pop(k, None)
-        # cap size (oldest-first fallback)
+        # v5.0.3 (MEDIUM-10): when over the cap, prefer evicting entries whose
+        # known expiry is EARLIEST (expired ones first); only fall back to
+        # oldest-insert for entries with unknown expiry (True) so a logged-out
+        # token cannot resurrect by being evicted before its JWT expires.
         if len(self.token_blacklist) > 1000:
-            for _ in range(len(self.token_blacklist) - 900):
+            overflow = len(self.token_blacklist) - 900
+            with_exp = [(v, k) for k, v in self.token_blacklist.items()
+                        if isinstance(v, (int, float))]
+            for _, k in sorted(with_exp)[:overflow]:
+                self.token_blacklist.pop(k, None)
+            while len(self.token_blacklist) > 900:
                 try:
                     self.token_blacklist.pop(next(iter(self.token_blacklist)))
                 except (StopIteration, KeyError):
@@ -547,6 +560,46 @@ class AuthManager:
                     "totp_enabled": bool(d.get("totp_enabled"))} for u, d in self.users.items()}
 
     # ---- v4.13 (P2): TOTP 2FA (RFC 6238, pure Python, no deps) ----
+    def _gc_pending_2fa(self):
+        """v5.0.3 (MEDIUM-1): drop expired pending logins (memory-leak guard)."""
+        try:
+            with self._pending_2fa_lock:
+                now = time.time()
+                expired = [k for k, v in self.pending_2fa.items() if now > v.get("expires", 0)]
+                for k in expired:
+                    self.pending_2fa.pop(k, None)
+                # keep the dict bounded
+                if len(self.pending_2fa) > 2000:
+                    for _ in range(len(self.pending_2fa) - 1000):
+                        try:
+                            self.pending_2fa.pop(next(iter(self.pending_2fa)))
+                        except (StopIteration, KeyError):
+                            break
+        except Exception:
+            pass
+
+    def _check_2fa_lockout(self, username):
+        """v5.0.3 (MEDIUM-1): lockout after MAX_2FA_ATTEMPTS wrong codes (15 min)."""
+        with self._pending_2fa_lock:
+            f = self._pending_fails.get(username)
+            if f and f.get("locked_until", 0) > time.time():
+                return int((f["locked_until"] - time.time()) / 60) + 1
+            if f and f.get("locked_until", 0) and f["locked_until"] <= time.time():
+                self._pending_fails.pop(username, None)
+        return 0
+
+    def _record_2fa_fail(self, username):
+        with self._pending_2fa_lock:
+            f = self._pending_fails.get(username, {"attempts": 0})
+            f["attempts"] = f.get("attempts", 0) + 1
+            if f["attempts"] >= MAX_2FA_ATTEMPTS:
+                f["locked_until"] = time.time() + LOCKOUT_DURATION_MINUTES * 60
+            self._pending_fails[username] = f
+
+    def _clear_2fa_fails(self, username):
+        with self._pending_2fa_lock:
+            self._pending_fails.pop(username, None)
+
     def totp_verify(self, username, code):
         user = self.users.get(username)
         if not user or not user.get("totp_secret"):
@@ -564,24 +617,46 @@ class AuthManager:
                 h = hmac.new(key, msg, hashlib.sha1).digest()
                 o = h[-1] & 0x0F
                 val = (struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 1000000
-                if f"{val:06d}" == code:
+                # v5.0.3 (MEDIUM-1): constant-time comparison
+                if hmac.compare_digest(f"{val:06d}".encode(), code.encode()):
                     return True
         except Exception:
             return False
         return False
 
-    def enable_totp(self, username):
-        """Generate a TOTP secret (2FA activates only after confirm_totp)."""
+    def enable_totp(self, username, current_code=None, is_admin_reset=False):
+        """Generate a TOTP secret (2FA activates only after confirm_totp).
+        v5.0.3 (MEDIUM-3): re-enrolling an account that already has 2FA enabled
+        requires the CURRENT code, so a stolen session cannot silently swap the
+        secret and lock the owner out (admins bypass via admin_reset_totp)."""
         with self.lock:
             if username not in self.users:
                 return {"success": False, "error": "Người dùng không tồn tại."}
-            import base64 as _b64
-            secret = _b64.b32encode(os.urandom(20)).decode().rstrip("=")
+            already_enabled = bool(self.users[username].get("totp_enabled"))
+        if already_enabled and not is_admin_reset:
+            if not current_code or not self.totp_verify(username, current_code):
+                return {"success": False, "error": "2FA đã kích hoạt. Phải nhập mã xác thực hiện tại để cấp lại secret.", "code": "NEED_CURRENT_CODE"}
+        import base64 as _b64
+        secret = _b64.b32encode(os.urandom(20)).decode().rstrip("=")
+        with self.lock:
             self.users[username]["totp_secret"] = secret
             self.users[username]["totp_pending"] = True
             self._save_users()
         uri = f"otpauth://totp/GIAM-SAT:{username}?secret={secret}&issuer=GIAM-SAT"
         return {"success": True, "secret": secret, "otpauth_uri": uri}
+
+    def admin_reset_totp(self, username):
+        """v5.0.3 (MEDIUM-3): admin-only force reset of another account's 2FA
+        (no current code needed). Clears the lockout counter too."""
+        with self.lock:
+            if username not in self.users:
+                return {"success": False, "error": "Người dùng không tồn tại."}
+            self.users[username]["totp_enabled"] = False
+            self.users[username]["totp_secret"] = ""
+            self.users[username]["totp_pending"] = False
+            self._save_users()
+        self._clear_2fa_fails(username)
+        return {"success": True}
 
     def confirm_totp(self, username, code):
         with self.lock:
@@ -606,20 +681,31 @@ class AuthManager:
         return {"success": True}
 
     def complete_2fa_login(self, pending, code):
-        """Finalize login with a verified TOTP code -> issues the real token."""
+        """Finalize login with a verified TOTP code -> issues the real token.
+        v5.0.3 (MEDIUM-1): rate-limited wrong-code attempts + lockout,
+        GC expired pending entries, returns the verified username for audit."""
+        self._gc_pending_2fa()
         p = self.pending_2fa.get(pending)
         if not p or time.time() > p.get("expires", 0):
             return {"success": False, "error": "Phiên xác thực hết hạn. Vui lòng đăng nhập lại.", "code": "INVALID_TOKEN"}
         username = p["username"]
         user = self.users.get(username)
         if not user or not user.get("totp_enabled"):
+            self.pending_2fa.pop(pending, None)
             return {"success": False, "error": "2FA chưa được kích hoạt.", "code": "INVALID_TOKEN"}
+        # v5.0.3 (MEDIUM-1): lockout on repeated wrong codes
+        locked_for = self._check_2fa_lockout(username)
+        if locked_for:
+            return {"success": False, "error": f"2FA bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau {locked_for} phút.", "code": "ACCOUNT_LOCKED"}
         if not self.totp_verify(username, code):
-            return {"success": False, "error": "Mã xác thực không đúng.", "code": "INVALID_CODE"}
+            self._record_2fa_fail(username)
+            attempts_left = MAX_2FA_ATTEMPTS - self._pending_fails.get(username, {}).get("attempts", 0)
+            return {"success": False, "error": f"Mã xác thực không đúng. Còn {max(attempts_left, 0)} lần thử.", "code": "INVALID_CODE", "username": username}
         self.pending_2fa.pop(pending, None)
+        self._clear_2fa_fails(username)
         must_change = user.get("must_change_password", False)
         token = self._generate_token(username, user.get("role", "viewer"), must_change)
-        result = {"success": True, "token": token, "role": user.get("role", "viewer")}
+        result = {"success": True, "token": token, "role": user.get("role", "viewer"), "username": username}
         if must_change:
             result["must_change_password"] = True
         return result

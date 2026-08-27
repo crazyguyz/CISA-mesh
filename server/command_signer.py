@@ -9,6 +9,7 @@ import os
 import json
 import hmac
 import hashlib
+import secrets
 import time
 
 
@@ -31,6 +32,9 @@ def sign_command(command_data):
     cmd.pop("_sig_data", None)
     # v4.5.4: add timestamp for replay protection (agent rejects stale commands)
     cmd["_ts"] = int(time.time())
+    # v5.0.3 (MEDIUM-6): per-command nonce so the agent can reject replays even
+    # inside the timestamp window (a captured command is executed only once).
+    cmd["_nonce"] = secrets.token_hex(16)
     # Sign the whole command (all fields) so params/version/message cannot be tampered
     sign_data = json.dumps(cmd, sort_keys=True, ensure_ascii=False)
     sig = hmac.new(key.encode("utf-8"), sign_data.encode("utf-8"), hashlib.sha256).hexdigest()

@@ -80,24 +80,48 @@ def register(app, core):
         code = data.get("code", "")
         result = core.auth.complete_2fa_login(pending, code)
         if result and result.get("success"):
-            core.db.insert_audit_log(result["role"] and data.get("pending", "2fa"), "login_2fa", "2FA verified", request.remote_addr)
+            # v5.0.3 (MEDIUM-2): audit the REAL username, not the pending token
+            audit_user = result.get("username") or data.get("pending", "2fa")
+            core.db.insert_audit_log(audit_user, "login_2fa", "2FA verified", request.remote_addr)
             resp = jsonify({
                 "success": True, "token": result["token"], "role": result["role"],
                 "must_change_password": result.get("must_change_password", False)
             })
             resp.set_cookie("giamsat_token", result["token"], httponly=True, samesite="Strict")
             return resp
+        # v5.0.3 (MEDIUM-2): log the failed 2FA attempt with the real username
+        if result and result.get("code") in ("INVALID_CODE", "ACCOUNT_LOCKED"):
+            fail_user = result.get("username") or "?"
+            try:
+                core.db.insert_audit_log(fail_user, "login_2fa_fail", f"2FA {result.get('code')}", request.remote_addr)
+            except Exception:
+                pass
         return jsonify({"success": False, "error": result.get("error", "Mã xác thực không đúng.") if result else "Lỗi"}), 401
 
     @app.route("/api/users/<username>/2fa/enroll", methods=["POST"])
     def api_user_enroll_2fa(username):
-        """v4.13 (P2): generate TOTP secret (admin, or self)."""
+        """v4.13 (P2): generate TOTP secret (admin, or self).
+        v5.0.3 (MEDIUM-3): re-enroll requires the CURRENT code when 2FA is on."""
         admin, err, code = check_auth("settings")
         if err: return err, code
-        result = core.auth.enable_totp(username)
+        data = request.json or {}
+        result = core.auth.enable_totp(username, current_code=data.get("current_code") or None)
         if result.get("success"):
             core.db.insert_audit_log(admin, "totp_enroll", f"Enrolled 2FA for {username}", request.remote_addr)
             return jsonify({"success": True, "secret": result["secret"], "otpauth_uri": result["otpauth_uri"]})
+        return jsonify({"success": False, "error": result.get("error", "Failed")}), 400
+
+    @app.route("/api/users/<username>/2fa/reset", methods=["POST"])
+    def api_user_reset_2fa(username):
+        """v5.0.3 (MEDIUM-3): admin-only force reset of a user's 2FA."""
+        admin, err, code = check_auth("settings")
+        if err: return err, code
+        if admin == username:
+            return jsonify({"success": False, "error": "Không thể tự reset 2FA của chính mình bằng đường này."}), 400
+        result = core.auth.admin_reset_totp(username)
+        if result.get("success"):
+            core.db.insert_audit_log(admin, "totp_reset", f"Admin reset 2FA for {username}", request.remote_addr)
+            return jsonify({"success": True})
         return jsonify({"success": False, "error": result.get("error", "Failed")}), 400
 
     @app.route("/api/users/<username>/2fa/confirm", methods=["POST"])

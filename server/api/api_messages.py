@@ -69,9 +69,15 @@ def register(app, core):
 
     @app.route("/api/message/list/<machine_id>", methods=["GET"])
     def message_list(machine_id):
-        _, err, code = check_auth("api")
+        username, err, code = check_auth("api")
         if err:
             return err, code
+        # v5.0.3 (MEDIUM-9): viewers must not see the UltraView password
+        try:
+            _role = (core.auth.users.get(username) or {}).get("role", "viewer")
+        except Exception:
+            _role = "viewer"
+        mask_uv_pwd = (_role == "viewer")
 
         rows = core.db.conn.execute(
             "SELECT msg_id,sender,title,message,reply,require_reply,status,direction,created_at,replied_at,msg_type,category,ultraview_id,ultraview_password "
@@ -86,7 +92,7 @@ def register(app, core):
                 "status": r[6], "direction": r[7] or "server",
                 "created_at": r[8] or "", "replied_at": r[9] or "",
                 "msg_type": r[10] or "chat", "category": r[11] or "",
-                "ultraview_id": r[12] or "", "ultraview_password": r[13] or ""
+                "ultraview_id": r[12] or "", "ultraview_password": "" if mask_uv_pwd else (r[13] or "")
             })
         return jsonify({"messages": msgs})
 
