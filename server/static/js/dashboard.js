@@ -2879,7 +2879,7 @@ function loadAgentUpdateStatus() {
                 const members = g.members || [];
                 html += '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin:8px;padding:12px;">';
                 html += '<div class="d-flex justify-content-between align-items-center mb-2">';
-                html += '<strong style="color:#e4e7eb;">📁 ' + g.name + '</strong>';
+                html += '<strong style="color:#e4e7eb;">📁 ' + escapeHtml(g.name) + '</strong>';
                 html += '<button class="btn btn-sm btn-warning" onclick="pushUpdateToGroup(' + g.id + ')" style="font-size:10px;"><i class="bi bi-cloud-upload"></i> Push Update Group</button>';
                 html += '</div>';
                 html += '<small class="text-muted">' + t('ui.groupsMembers',[members.length]) + '</small>';
@@ -2892,12 +2892,12 @@ function loadAgentUpdateStatus() {
                         const needsUpdate = agentVer !== serverVersion;
                         const online = info.is_online == 1;
                         html += '<tr>';
-                        html += '<td>' + (m.hostname || m.machine_id) + '</td>';
-                        html += '<td style="font-family:monospace;font-size:10px;">' + (m.machine_id || '').substring(0, 12) + '...</td>';
-                        html += '<td><span class="badge ' + (needsUpdate ? 'bg-warning text-dark' : 'bg-success') + '">' + agentVer + '</span>' + (needsUpdate ? ' <span style="color:#ff4444;">' + t('dash.needsUpdate') + '</span>' : '') + '</td>';
-                        html += '<td><span class="badge bg-info">' + serverVersion + '</span></td>';
+                        html += '<td>' + escapeHtml(m.hostname || m.machine_id) + '</td>';
+                        html += '<td style="font-family:monospace;font-size:10px;">' + escapeHtml((m.machine_id || '').substring(0, 12)) + '...</td>';
+                        html += '<td><span class="badge ' + (needsUpdate ? 'bg-warning text-dark' : 'bg-success') + '">' + escapeHtml(agentVer) + '</span>' + (needsUpdate ? ' <span style="color:#ff4444;">' + t('dash.needsUpdate') + '</span>' : '') + '</td>';
+                        html += '<td><span class="badge bg-info">' + escapeHtml(serverVersion) + '</span></td>';
                         html += '<td>' + (online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>') + '</td>';
-                        html += '<td><button class="btn btn-sm btn-warning py-0 px-1" onclick="pushUpdateToMachine(\'' + m.machine_id + '\')" ' + (online ? '' : 'disabled') + '><i class="bi bi-cloud-upload"></i> Push</button><button class="btn btn-sm btn-danger py-0 px-1 ms-1" onclick="event.stopPropagation();resetUserInfoToMachine(\'' + m.machine_id + '\')" ' + (online ? '' : 'disabled') + ' title="Xoa thong tin nguoi dung & reset"><i class="bi bi-person-x"></i></button></td>';
+                        html += '<td><button class="btn btn-sm btn-warning py-0 px-1" onclick="pushUpdateToMachine(\'' + escJs(m.machine_id) + '\')" ' + (online ? '' : 'disabled') + '><i class="bi bi-cloud-upload"></i> Push</button><button class="btn btn-sm btn-danger py-0 px-1 ms-1" onclick="event.stopPropagation();resetUserInfoToMachine(\'' + escJs(m.machine_id) + '\')" ' + (online ? '' : 'disabled') + ' title="Xoa thong tin nguoi dung & reset"><i class="bi bi-person-x"></i></button></td>';
                         html += '</tr>';
                     });
                     html += '</tbody></table>';
@@ -4116,7 +4116,7 @@ function sweepIoc() {
             }).then(r => r.json()).then(d => renderIocResults(d))
               .catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.scanErr')+'</div>'; });
         } catch(e) {
-            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.jsonInvalid')+'' + e.message + '</div>';
+            el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.jsonInvalid')+'' + escapeHtml(e.message) + '</div>';
         }
     } else {
         el.innerHTML = '<div class="text-center text-muted py-3">'+t('ioc.enterJson')+'</div>';
@@ -4134,7 +4134,7 @@ function renderIocResults(data) {
         data.results.map(r => {
             const confidence = r.ioc_confidence || 70;
             const confColor = confidence >= 80 ? '#ff4444' : '#ffcc66';
-            return '<tr><td><span class="badge bg-danger">' + (r.ioc_type || '?') + '</span></td><td style="font-family:monospace;font-size:10px;">' + (r.ioc_value || '') + '</td><td>' + (r.table || '?') + '</td><td>' + (r.column || '?') + '</td><td style="font-size:10px;">' + (r.matched_value || '').substring(0,80) + '</td><td style="font-size:10px;">' + (r.timestamp || '').substring(0,19) + '</td><td>' + (r.hostname || '-') + '</td><td><span style="color:' + confColor + ';font-weight:bold;">' + confidence + '%</span></td></tr>';
+            return '<tr><td><span class="badge bg-danger">' + escapeHtml(r.ioc_type || '?') + '</span></td><td style="font-family:monospace;font-size:10px;">' + escapeHtml(r.ioc_value || '') + '</td><td>' + escapeHtml(r.table || '?') + '</td><td>' + escapeHtml(r.column || '?') + '</td><td style="font-size:10px;">' + escapeHtml((r.matched_value || '').substring(0,80)) + '</td><td style="font-size:10px;">' + escapeHtml((r.timestamp || '').substring(0,19)) + '</td><td>' + escapeHtml(r.hostname || '-') + '</td><td><span style="color:' + confColor + ';font-weight:bold;">' + confidence + '%</span></td></tr>';
         })
     );
     showToast('✅ IOC Sweep: ' + data.matches + ' matches found');
