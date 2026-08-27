@@ -2512,19 +2512,19 @@ function showFimBaselineDetail(fId) {
     // Header with score
     body += '<div style="background:' + levelBg + ';border-left:4px solid ' + levelColor + ';padding:10px 14px;border-radius:6px;margin-bottom:12px;">';
     body += '<div style="font-size:18px;font-weight:700;color:' + levelColor + ';">Suspicion Score: ' + score + '/100 <span style="font-size:13px;">(' + levelLabel + ')</span></div>';
-    body += '<div style="font-size:11px;color:#8892a4;margin-top:4px;">' + (reasonsArr.length ? reasonsArr.map(function(r){return '\u2022 ' + r;}).join('<br>') : 'Khong co ly do dac biet') + '</div>';
+    body += '<div style="font-size:11px;color:#8892a4;margin-top:4px;">' + (reasonsArr.length ? reasonsArr.map(function(r){return '\u2022 ' + escapeHtml(r);}).join('<br>') : 'Khong co ly do dac biet') + '</div>';
     body += '</div>';
     
     // File details table
     body += '<table class="table table-data" style="font-size:11px;margin-bottom:0;">';
-    body += '<tr><th style="width:130px;">Duong dan day du</th><td style="font-family:monospace;font-size:10px;word-break:break-all;color:#e4e7eb;">' + (f.path || '-') + '</td></tr>';
-    body += '<tr><th>Hash (SHA256)</th><td style="font-family:monospace;font-size:9px;word-break:break-all;color:#00d4aa;">' + (f.file_hash || '-') + '</td></tr>';
+    body += '<tr><th style="width:130px;">Duong dan day du</th><td style="font-family:monospace;font-size:10px;word-break:break-all;color:#e4e7eb;">' + escapeHtml(f.path || '-') + '</td></tr>';
+    body += '<tr><th>Hash (SHA256)</th><td style="font-family:monospace;font-size:9px;word-break:break-all;color:#00d4aa;">' + escapeHtml(f.file_hash || '-') + '</td></tr>';
     if (changed && f.file_hash_old) {
-        body += '<tr><th>Hash cu (truoc khi doi)</th><td style="font-family:monospace;font-size:9px;word-break:break-all;color:#ff8844;">' + (f.file_hash_old || '-') + '</td></tr>';
+        body += '<tr><th>Hash cu (truoc khi doi)</th><td style="font-family:monospace;font-size:9px;word-break:break-all;color:#ff8844;">' + escapeHtml(f.file_hash_old || '-') + '</td></tr>';
     }
     body += '<tr><th>Kich thuoc</th><td>' + (f.file_size ? (f.file_size > 1024 ? (f.file_size/1024).toFixed(2)+' KB (' + f.file_size + ' bytes)' : f.file_size + ' bytes') : '-') + '</td></tr>';
-    body += '<tr><th>Owner</th><td>' + (f.owner || '-') + '</td></tr>';
-    body += '<tr><th>Quyen (Permissions)</th><td style="font-family:monospace;">' + (f.permissions || '-') + '</td></tr>';
+    body += '<tr><th>Owner</th><td>' + escapeHtml(f.owner || '-') + '</td></tr>';
+    body += '<tr><th>Quyen (Permissions)</th><td style="font-family:monospace;">' + escapeHtml(f.permissions || '-') + '</td></tr>';
     body += '<tr><th>Thay doi lan dau</th><td>' + (f.first_seen || '-') + '</td></tr>';
     body += '<tr><th>Kiem tra lan cuoi</th><td>' + (f.last_checked || '-') + '</td></tr>';
     body += '<tr><th>Sua doi gan nhat</th><td>' + (f.last_modified || '-') + '</td></tr>';
@@ -2545,14 +2545,14 @@ function loadRules(){
         if (!rules.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noRules') + '</div>'; return; }
         window._cachedRules = rules;
         el.innerHTML = rules.map((r, i) => {
-            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + r.id + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + (r.name||'?') + '</strong><br><small class="text-muted">' + (r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">'+t('ui.conditions') + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + (r.mitre||'?') + ' | Tactic: ' + (r.tactic||'?') + (r.logic ? ' | Logic: ' + r.logic : '') + (r.rule_type ? ' | Type: ' + r.rule_type : '') + '</small></div></div>';
+            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + escapeHtml(r.id) + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + escapeHtml(r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(r.name||'?') + '</strong><br><small class="text-muted">' + escapeHtml(r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">'+t('ui.conditions') + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + escapeHtml(r.mitre||'?') + ' | Tactic: ' + escapeHtml(r.tactic||'?') + (r.logic ? ' | Logic: ' + escapeHtml(r.logic) : '') + (r.rule_type ? ' | Type: ' + escapeHtml(r.rule_type) : '') + '</small></div></div>';
         }).join('');
         // Add delegated click handler
         el.querySelectorAll('[data-rule-index]').forEach(div => {
             div.addEventListener('click', function() {
                 const idx = parseInt(this.getAttribute('data-rule-index'));
                 if (window._cachedRules && window._cachedRules[idx]) {
-                    showDetailModal('📋 Rule ' + window._cachedRules[idx].id,
+                    showDetailModal('📋 Rule ' + escapeHtml(window._cachedRules[idx].id),
                         '<pre style="color:#d0e8d8;font-size:11px;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">' + 
                         JSON.stringify(window._cachedRules[idx], null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + 
                         '</pre>');
@@ -4320,9 +4320,9 @@ function loadIncidentView() {
                 const ts = (t.timestamp || '').substring(0, 19);
 
                 html += '<div class="p-2" style="border-bottom:1px solid #2a3a4a;cursor:pointer;background:' + sevBg + ';" onclick="loadIncidentTimeline(' + t.id + ')" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'' + sevBg + '\'">';
-                html += '<div style="font-size:11px;color:' + sevColor + ';font-weight:600;">' + ruleName + '</div>';
-                html += '<div style="font-size:10px;color:#8892a4;">' + (t.hostname || '') + ' · ' + ts + '</div>';
-                if (desc) html += '<div style="font-size:10px;color:#6a7a8a;">' + desc + '</div>';
+                html += '<div style="font-size:11px;color:' + sevColor + ';font-weight:600;">' + escapeHtml(ruleName) + '</div>';
+                html += '<div style="font-size:10px;color:#8892a4;">' + escapeHtml(t.hostname || '') + ' · ' + ts + '</div>';
+                if (desc) html += '<div style="font-size:10px;color:#6a7a8a;">' + escapeHtml(desc) + '</div>';
                 html += '</div>';
             });
 
@@ -4385,9 +4385,9 @@ function loadIncidentTimeline(threatId) {
 
             // Alert header
             html += '<div style="background:rgba(255,68,68,0.1);border-left:4px solid ' + sevColor + ';padding:12px;border-radius:6px;margin-bottom:16px;">';
-            html += '<div style="font-size:14px;color:' + sevColor + ';font-weight:700;">🔴 ' + (threat.rule_name || threat.rule_id || 'Unknown') + '</div>';
-            html += '<div style="font-size:11px;color:#8892a4;">' + (threat.description || '') + '</div>';
-            html += '<div style="font-size:10px;color:#6a7a8a;margin-top:4px;">🖥 ' + (threat.hostname || threat.machine_id || '') + ' · ⏱ ' + (threat.timestamp || '') + '</div>';
+            html += '<div style="font-size:14px;color:' + sevColor + ';font-weight:700;">🔴 ' + escapeHtml(threat.rule_name || threat.rule_id || 'Unknown') + '</div>';
+            html += '<div style="font-size:11px;color:#8892a4;">' + escapeHtml(threat.description || '') + '</div>';
+            html += '<div style="font-size:10px;color:#6a7a8a;margin-top:4px;">🖥 ' + escapeHtml(threat.hostname || threat.machine_id || '') + ' · ⏱ ' + escapeHtml(threat.timestamp || '') + '</div>';
             html += '<div style="margin-top:6px;">' + evSummary + '</div>';
             html += '</div>';
 
@@ -4411,13 +4411,13 @@ function loadIncidentTimeline(threatId) {
                     if (isAnchor) bg = 'background:rgba(255,68,68,0.1);border:1px solid rgba(255,68,68,0.3);';
                     else if (severity === 'HIGH') bg = 'background:rgba(255,136,68,0.05);';
 
-                    const sourceBadge = e.source ? '<span class="badge bg-dark me-1" style="font-size:8px;">' + e.source + '</span>' : '';
+                    const sourceBadge = e.source ? '<span class="badge bg-dark me-1" style="font-size:8px;">' + escapeHtml(e.source) + '</span>' : '';
 
                     html += '<div style="position:relative;padding:6px 10px;margin-bottom:8px;border-radius:4px;' + bg + '">';
                     html += '<div style="position:absolute;left:-27px;top:8px;font-size:14px;">' + icon + '</div>';
                     html += '<div style="display:flex;justify-content:space-between;align-items:start;">';
                     html += '<div style="flex:1;">';
-                    html += '<div style="font-size:11px;color:#d0d8e0;">' + sourceBadge + title + '</div>';
+                    html += '<div style="font-size:11px;color:#d0d8e0;">' + sourceBadge + escapeHtml(title) + '</div>';
                     if (desc) html += '<div style="font-size:10px;color:#6a7a8a;margin-top:2px;">' + desc + '</div>';
                     html += '</div>';
                     html += '<div style="font-size:9px;color:#5a6a7a;white-space:nowrap;min-width:50px;text-align:right;" title="' + fullTs + '">' + ts + '</div>';
