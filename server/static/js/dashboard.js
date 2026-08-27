@@ -1,4 +1,5 @@
-function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function escJs(s){return String(s).replace(/\\/g,'\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');}
 function fmtBytes(b){b=parseInt(b)||0;if(b<1024)return b+' B';if(b<1048576)return (b/1024).toFixed(1)+' KB';if(b<1073741824)return (b/1048576).toFixed(1)+' MB';return (b/1073741824).toFixed(2)+' GB';}
 
 var selectedMachine = null;
@@ -714,13 +715,13 @@ function loadSysmon() {
             // Build detail column
             let detail = '';
             if (eid === 1) {
-                detail = (e.command_line || '').substring(0, 80);
+                detail = escapeHtml((e.command_line || '').substring(0, 80));
                 if (e.parent_process) detail += '<br><small style="color:#666;">Parent: ' + escapeHtml(e.parent_process) + '</small>';
             } else if (eid === 3) {
-                detail = (e.src_ip || '?') + ':' + (e.src_port || '?') + ' → ' + (e.dst_ip || '?') + ':' + (e.dst_port || '?');
+                detail = escapeHtml(e.src_ip || '?') + ':' + escapeHtml(e.src_port || '?') + ' → ' + escapeHtml(e.dst_ip || '?') + ':' + escapeHtml(e.dst_port || '?');
             } else if (eid === 7) {
-                detail = (e.dll_name || e.image_loaded || '').substring(0, 80);
-                if (e.signed) detail += ' <span class="badge ' + (e.signed === 'true' ? 'bg-success' : 'bg-warning') + '" style="font-size:9px;">signed:' + e.signed + '</span>';
+                detail = escapeHtml((e.dll_name || e.image_loaded || '').substring(0, 80));
+                if (e.signed) detail += ' <span class="badge ' + (e.signed === 'true' ? 'bg-success' : 'bg-warning') + '" style="font-size:9px;">signed:' + escapeHtml(e.signed) + '</span>';
             } else if (eid === 8) {
                 detail = '→ ' + escapeHtml(e.target_process || '');
                 if (e.injection_type) detail += ' (' + escapeHtml(e.injection_type) + ')';
@@ -736,7 +737,7 @@ function loadSysmon() {
             }
 
             const rowColor = sev === 'CRITICAL' ? 'background:#1a0000!important;' : sev === 'HIGH' ? 'background:#1a1000!important;' : '';
-            html += '<tr style="' + rowColor + 'cursor:pointer;" onclick="showSysmonDetail(' + JSON.stringify(e).replace(/"/g, '"') + ')">';
+            html += '<tr style="' + rowColor + 'cursor:pointer;" data-sysmon=\'' + JSON.stringify(e).replace(/'/g, '&#39;') + '\' onclick="showSysmonDetail(this)">';
             html += '<td style="font-size:10px;color:#666;white-space:nowrap;">' + ts + '</td>';
             html += '<td><span class="badge bg-dark" style="font-size:9px;">' + eid + '</span></td>';
             html += '<td style="font-size:12px;">' + procName + '<br><small style="color:#555;font-size:9px;">PID:' + (e.pid || '?') + ' | ' + escapeHtml(e.hostname || '') + '</small></td>';
@@ -810,6 +811,11 @@ function loadMemory() {
 
 // v2.6.2: Sysmon detail popup
 function showSysmonDetail(event) {
+    // v5.0.3 (CRITICAL-3 FIX): read the event from a data-* attribute (JSON.parse)
+    // instead of an inline JSON-in-attribute call that broke on quotes.
+    if (event && event.dataset && event.dataset.sysmon) {
+        try { event = JSON.parse(event.dataset.sysmon); } catch (e) { event = {}; }
+    }
     let detailHtml = '<div style="max-height:500px;overflow-y:auto;font-size:12px;">';
     detailHtml += '<table class="table table-sm table-dark">';
     for (const [key, val] of Object.entries(event)) {
@@ -880,15 +886,15 @@ function buildGroupedByMachine(data, type, title) {
         if (latest) {
             if (type === 'threats') latestSummary = '<span style="color:#ff8888;">[' + (latest.severity||'?') + '] ' + (latest.rule_name||latest.rule_id||'?') + '</span> - ' + ((latest.description||'').substring(0, 80));
             else if (type === 'vulns') latestSummary = '<span style="color:#ff8888;">' + (latest.cve||'?') + '</span> ' + (latest.severity||'?') + ' - ' + (latest.software||'') + ' ' + (latest.version||'');
-            else if (type === 'yara') latestSummary = '<span style="color:#ff6644;">' + (latest.rule_name||'?') + '</span> - ' + ((latest.description||'').substring(0, 80));
-            else if (type === 'sca') latestSummary = '<span class="badge ' + (latest.status==='PASS'?'bg-success':latest.status==='FAIL'?'bg-danger':'bg-warning text-dark') + '">' + (latest.status||'?') + '</span> ' + (latest.title||latest.check_id||'?');
+            else if (type === 'yara') latestSummary = '<span style="color:#ff6644;">' + escapeHtml(latest.rule_name||'?') + '</span> - ' + escapeHtml((latest.description||'').substring(0, 80));
+            else if (type === 'sca') latestSummary = '<span class="badge ' + (latest.status==='PASS'?'bg-success':latest.status==='FAIL'?'bg-danger':'bg-warning text-dark') + '">' + escapeHtml(latest.status||'?') + '</span> ' + escapeHtml(latest.title||latest.check_id||'?');
         }
 
         html += '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:8px;cursor:pointer;" onclick="toggleMachineGroup(\'grp_' + type + '_' + idx + '\')">';
         html += '<div class="d-flex justify-content-between align-items-center p-3" style="border-bottom:1px solid #1e2a3a;">';
         html += '<div style="flex:1;">';
-        html += '<strong style="color:#e4e7eb;font-size:14px;">🖥 ' + hostname + '</strong> ';
-        html += '<small class="text-muted" style="font-size:10px;">(' + mid.substring(0,12) + '...)</small>';
+        html += '<strong style="color:#e4e7eb;font-size:14px;">🖥 ' + escapeHtml(hostname) + '</strong> ';
+        html += '<small class="text-muted" style="font-size:10px;">(' + escapeHtml(mid.substring(0,12)) + '...)</small>';
         html += '<div style="margin-top:4px;">' + sevBadges.join(' ') + ' <span class="badge bg-dark">' + itemCount + ' alerts</span></div>';
         html += '<div style="margin-top:4px;font-size:11px;color:#8892a4;">'+t('ui.latest')+'' + latestSummary + '</div>';
         html += '<div style="margin-top:2px;font-size:10px;color:#5a6a7a;">⏱ ' + (group.latest ? group.latest.substring(0,19) : '-') + '</div>';
@@ -901,22 +907,22 @@ function buildGroupedByMachine(data, type, title) {
         if (type === 'threats') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + (e.rule_id||'-') + '</td><td>' + (e.rule_name||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (e.severity||'?') + '</span></td><td style="font-family:monospace;">' + (e.cve||'-') + '</td><td>' + (e.software||'-') + ' v' + (e.version||'?') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setVulnStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('vulns', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + (e.severity||'?') + '</span></td><td style="font-family:monospace;">' + escapeHtml(e.cve||'-') + '</td><td>' + escapeHtml(e.software||'-') + ' v' + escapeHtml(e.version||'?') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setVulnStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('vulns', e) + '</tr>';
             });
         } else if (type === 'yara') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Rule Name</th><th>File</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td style="color:#ff6644;font-weight:600;">' + (e.rule_name||'?') + '</td><td style="font-family:monospace;font-size:10px;">' + (e.file||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setYaraStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('yara', e) + '</tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td style="color:#ff6644;font-weight:600;">' + escapeHtml(e.rule_name||'?') + '</td><td style="font-family:monospace;font-size:10px;">' + escapeHtml(e.file||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setYaraStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('yara', e) + '</tr>';
             });
         } else if (type === 'sca') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>Trạng thái</th><th>Check ID</th><th>Tiêu đề</th><th>' + t('dash.desc') + '</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.status==='PASS'?'bg-success':e.status==='FAIL'?'bg-danger':'bg-warning text-dark') + '">' + (e.status||'?') + '</span></td><td>' + (e.check_id||'-') + '</td><td>' + (e.title||'-') + '</td><td style="max-width:300px;">' + (e.description||'-').substring(0,120) + '</td></tr>';
+                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.status==='PASS'?'bg-success':e.status==='FAIL'?'bg-danger':'bg-warning text-dark') + '">' + (e.status||'?') + '</span></td><td>' + escapeHtml(e.check_id||'-') + '</td><td>' + escapeHtml(e.title||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td></tr>';
             });
         }
         html += '</tbody></table></div>';
@@ -1845,9 +1851,9 @@ document.addEventListener('click', function(e) {
             showDetailModal(title, body);
             return;
         }
-        let b = ''; if(data.description) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">'+t('ui.description')+'</div><div class="card-body py-2" style="font-size:11px;color:#d0d8e0;">'+(data.description||'-')+'</div></div>';
-        if(data.raw_data) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">Raw Data</div><div class="card-body py-2" style="font-family:monospace;font-size:10px;color:#888;word-break:break-all;">'+String(data.raw_data).substring(0,2000)+'</div></div>';
-        showDetailModal(t('dash.details') + ' - '+typ+' ('+(data.hostname||data.machine_id||'?')+')', b+'<table class="table table-data" style="font-size:11px;"><tbody>'+Object.entries(data).filter(([k])=>!['raw_data','data_json','fingerprint','rendered_at'].includes(k)).map(([k,v])=>'<tr><th style="width:180px;">'+k+'</th><td>'+(typeof v==='object'?JSON.stringify(v,null,2):String(v||'-'))+'</td></tr>').join('')+'</tbody></table>');
+        let b = ''; if(data.description) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">'+t('ui.description')+'</div><div class="card-body py-2" style="font-size:11px;color:#d0d8e0;">'+escapeHtml(data.description||'-')+'</div></div>';
+        if(data.raw_data) b += '<div class="card mb-2" style="background:#0f1923;border-color:#2a3a4a;"><div class="card-header py-1" style="font-size:11px;">Raw Data</div><div class="card-body py-2" style="font-family:monospace;font-size:10px;color:#888;word-break:break-all;">'+escapeHtml(String(data.raw_data).substring(0,2000))+'</div></div>';
+        showDetailModal(t('dash.details') + ' - '+typ+' ('+escapeHtml(data.hostname||data.machine_id||'?')+')', b+'<table class="table table-data" style="font-size:11px;"><tbody>'+Object.entries(data).filter(([k])=>!['raw_data','data_json','fingerprint','rendered_at'].includes(k)).map(([k,v])=>'<tr><th style="width:180px;">'+escapeHtml(k)+'</th><td>'+escapeHtml(typeof v==='object'?JSON.stringify(v,null,2):String(v||'-'))+'</td></tr>').join('')+'</tbody></table>');
     } catch(ex) {}
 });
 
