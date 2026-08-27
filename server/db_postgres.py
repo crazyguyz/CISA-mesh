@@ -1,4 +1,4 @@
-﻿"""
+"""
 PostgreSQL Database Adapter for GIAM-SAT Server v3.0.0
 Full implementation for scalability to 1000+ agents with connection pooling.
 
@@ -2583,6 +2583,25 @@ class PostgresDatabase:
                  f.get("first", 0), f.get("last", 0)))
         except Exception:
             pass
+
+    def batch_insert_netflow(self, flows):
+        # v5.0.3: batch insert NetFlow flows.
+        if not self._connected or not flows:
+            return
+        try:
+            sql = ('INSERT INTO netflow_flows (exporter_ip, src_ip, dst_ip, src_port, dst_port, '
+                   'protocol, tcp_flags, packets, bytes, first, last) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)')
+            params = [(f.get("exporter_ip", ""), f.get("src_ip", ""), f.get("dst_ip", ""),
+                       f.get("src_port", 0), f.get("dst_port", 0), f.get("protocol", 0),
+                       f.get("tcp_flags", 0), f.get("packets", 0), f.get("bytes", 0),
+                       f.get("first", 0), f.get("last", 0)) for f in flows]
+            self._executemany(sql, params)
+        except Exception:
+            for f in flows:
+                try:
+                    self.insert_netflow_flow(f)
+                except Exception:
+                    pass
 
     def get_netflow_flows(self, limit=100, since_hours=None):
         if not self._connected:

@@ -1,4 +1,4 @@
-﻿"""Database Manager for GIAM-SAT Server"""
+"""Database Manager for GIAM-SAT Server"""
 import sqlite3
 import os
 import threading
@@ -1193,6 +1193,20 @@ class DatabaseManager:
                  f.get("tcp_flags", 0), f.get("packets", 0), f.get("bytes", 0),
                  f.get("first", 0), f.get("last", 0))
             )
+            self.conn.commit()
+
+    def batch_insert_netflow(self, flows):
+        # v5.0.3: batch insert NetFlow flows (one commit).
+        if not flows:
+            return
+        with self.lock:
+            sql = "INSERT INTO netflow_flows (exporter_ip, src_ip, dst_ip, src_port, dst_port, protocol, tcp_flags, packets, bytes, first, last) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+            self.conn.executemany(
+                sql,
+                [(f.get("exporter_ip", ""), f.get("src_ip", ""), f.get("dst_ip", ""),
+                  f.get("src_port", 0), f.get("dst_port", 0), f.get("protocol", 0),
+                  f.get("tcp_flags", 0), f.get("packets", 0), f.get("bytes", 0),
+                  f.get("first", 0), f.get("last", 0)) for f in flows])
             self.conn.commit()
 
     def get_netflow_flows(self, limit=100, since_hours=None):

@@ -18,6 +18,14 @@ from datetime import datetime
 
 LISTEN_PORT = int(os.environ.get("GIAMSAT_NETFLOW_PORT", "2055"))
 
+# v5.0.3 (HIGH-3): DoS hardening
+MAX_TEMPLATE_EXPORTERS = 256      # distinct (exporter_ip, source_id) keys
+MAX_TEMPLATES_PER_KEY = 64        # template ids per exporter key
+TEMPLATE_TTL = 600                # seconds; stale templates are evicted
+MAX_PKT_PER_SEC = 2000            # per-exporter packet rate cap (drop beyond)
+BATCH_FLOWS = 200                 # flows buffered before one insert
+BATCH_WINDOW = 1.0                # seconds; partial batches flushed on this timer
+
 
 class NetflowCollector(threading.Thread):
     """UDP collector for NetFlow v5/v9 (IPv4)."""
@@ -31,6 +39,10 @@ class NetflowCollector(threading.Thread):
         self.sock = None
         # v9 template cache: (exporter_ip, source_id) -> {template_id: [(field_type, field_len), ...]}
         self._templates = {}
+        self._templ_seen = {}      # key -> last activity (TTL eviction)
+        self._rate = {}            # exporter_ip -> (window_start, packet_count)
+        self._batch = []           # pending flows (batch insert)
+        self._batch_lock = threading.Lock()
         self._stats = {"packets": 0, "flows": 0, "errors": 0, "v5": 0, "v9": 0}
 
     # ------------------------------------------------------------------ setup
@@ -44,6 +56,8 @@ class NetflowCollector(threading.Thread):
         except Exception as e:
             print(f"[!] NetFlow Collector: cannot bind {self.host}:{self.port} - {e}")
             return
+        # v5.0.3 (HIGH-3): background flusher for partial batches
+        threading.Thread(target=self._batch_flusher, daemon=True).start()
         while self.running:
             try:
                 data, addr = self.sock.recvfrom(65535)
@@ -55,6 +69,22 @@ class NetflowCollector(threading.Thread):
                 continue
             self._handle(data, addr[0])
 
+    def _batch_flusher(self):
+        """v5.0.3: flush partial flow batches every BATCH_WINDOW seconds."""
+        while self.running:
+            time.sleep(BATCH_WINDOW)
+            try:
+                with self._batch_lock:
+                    if self._batch:
+                        batch = self._batch
+                        self._batch = []
+                    else:
+                        batch = None
+                if batch:
+                    self._flush(batch)
+            except Exception:
+                pass
+
     def stop(self):
         self.running = False
         try:
@@ -62,9 +92,28 @@ class NetflowCollector(threading.Thread):
                 self.sock.close()
         except Exception:
             pass
+        # Flush any remaining buffered flows
+        try:
+            with self._batch_lock:
+                batch = self._batch
+                self._batch = []
+            if batch:
+                self._flush(batch)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ dispatcher
     def _handle(self, data, exporter_ip):
+        # v5.0.3 (HIGH-3): per-exporter packet rate limit (drop floods before parsing)
+        now = time.time()
+        w, c = self._rate.get(exporter_ip, (now, 0))
+        if now - w > 1.0:
+            w, c = now, 0
+        c += 1
+        self._rate[exporter_ip] = (w, c)
+        if c > MAX_PKT_PER_SEC:
+            self._stats["errors"] += 1
+            return
         self._stats["packets"] += 1
         try:
             if len(data) < 20:
@@ -137,6 +186,17 @@ class NetflowCollector(threading.Thread):
         return flows
 
     def _parse_v9_templates(self, key, body):
+        # v5.0.3 (HIGH-3): evict stale templates + refuse new exporters beyond the cap
+        try:
+            stale = [k for k, t in self._templ_seen.items() if time.time() - t > TEMPLATE_TTL]
+            for k in stale:
+                self._templates.pop(k, None)
+                self._templ_seen.pop(k, None)
+        except Exception:
+            pass
+        if len(self._templates) >= MAX_TEMPLATE_EXPORTERS and key not in self._templates:
+            self._stats["errors"] += 1
+            return
         pos = 0
         while pos + 4 <= len(body):
             tid, fcount = struct.unpack("!HH", body[pos:pos + 4])
@@ -149,6 +209,11 @@ class NetflowCollector(threading.Thread):
                 pos += 4
                 fields.append((ftype, flen))
             self._templates.setdefault(key, {})[tid] = fields
+            self._templ_seen[key] = time.time()
+            if len(self._templates[key]) > MAX_TEMPLATES_PER_KEY:
+                # keep only the most recent MAX_TEMPLATES_PER_KEY template ids
+                keys_sorted = sorted(self._templates[key].keys(), key=lambda t: self._templ_seen.get((key, t), 0), reverse=True)[:MAX_TEMPLATES_PER_KEY]
+                self._templates[key] = {t: self._templates[key][t] for t in keys_sorted}
 
     def _decode_v9_records(self, fields, body, unix_secs, exporter_ip):
         """Decode data records from a template. Variable-length (0xFFFF) fields
@@ -200,10 +265,28 @@ class NetflowCollector(threading.Thread):
 
     # ------------------------------------------------------------------- store
     def _insert(self, f):
+        """v5.0.3 (HIGH-3): buffer flows and batch-insert instead of one commit/flow."""
         if not self.db:
             return
+        with self._batch_lock:
+            self._batch.append(f)
+            if len(self._batch) >= BATCH_FLOWS:
+                batch = self._batch
+                self._batch = []
+            else:
+                batch = None
+        if batch:
+            self._flush(batch)
+
+    def _flush(self, batch):
+        if not batch:
+            return
         try:
-            self.db.insert_netflow_flow(f)
+            if hasattr(self.db, "batch_insert_netflow"):
+                self.db.batch_insert_netflow(batch)
+            else:
+                for f in batch:
+                    self.db.insert_netflow_flow(f)
         except Exception:
             pass
 
