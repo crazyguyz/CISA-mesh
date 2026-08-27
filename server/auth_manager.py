@@ -575,6 +575,14 @@ class AuthManager:
                             self.pending_2fa.pop(next(iter(self.pending_2fa)))
                         except (StopIteration, KeyError):
                             break
+                # v5.0.3 (ra soat): also drop expired 2FA-fail lockout entries
+                if self._pending_fails:
+                    stale = [k for k, v in self._pending_fails.items()
+                             if (v.get("locked_until", 0) or 0) <= now and v.get("locked_until", 0)]
+                    for k in stale:
+                        self._pending_fails.pop(k, None)
+                    if len(self._pending_fails) > 1000:
+                        self._pending_fails = dict(list(self._pending_fails.items())[-500:])
         except Exception:
             pass
 
@@ -600,16 +608,13 @@ class AuthManager:
         with self._pending_2fa_lock:
             self._pending_fails.pop(username, None)
 
-    def totp_verify(self, username, code):
-        user = self.users.get(username)
-        if not user or not user.get("totp_secret"):
-            return False
+    def _totp_check(self, secret, code):
+        """RFC 6238 verification against ONE secret (constant-time)."""
         try:
             code = str(code).strip()
             if not code.isdigit() or len(code) != 6:
                 return False
             import hmac, hashlib, base64, struct
-            secret = user["totp_secret"]
             key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8))
             counter = int(time.time()) // 30
             for i in range(-1, 2):
@@ -617,12 +622,19 @@ class AuthManager:
                 h = hmac.new(key, msg, hashlib.sha1).digest()
                 o = h[-1] & 0x0F
                 val = (struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 1000000
-                # v5.0.3 (MEDIUM-1): constant-time comparison
                 if hmac.compare_digest(f"{val:06d}".encode(), code.encode()):
                     return True
         except Exception:
             return False
         return False
+
+    def totp_verify(self, username, code):
+        """Verify against the ACTIVE secret. During a pending re-enroll the OLD
+        secret stays active until the new one is confirmed (no lockout on abort)."""
+        user = self.users.get(username)
+        if not user or not user.get("totp_secret"):
+            return False
+        return self._totp_check(user["totp_secret"], code)
 
     def enable_totp(self, username, current_code=None, is_admin_reset=False):
         """Generate a TOTP secret (2FA activates only after confirm_totp).
@@ -639,8 +651,16 @@ class AuthManager:
         import base64 as _b64
         secret = _b64.b32encode(os.urandom(20)).decode().rstrip("=")
         with self.lock:
-            self.users[username]["totp_secret"] = secret
-            self.users[username]["totp_pending"] = True
+            if already_enabled and not is_admin_reset:
+                # v5.0.3 (ra soat): stage the new secret WITHOUT touching the active
+                # one - if the owner abandons the re-enroll, their old codes keep
+                # working (no self-lockout); the swap happens on confirm_totp.
+                self.users[username]["totp_pending_secret"] = secret
+                self.users[username]["totp_pending"] = True
+            else:
+                self.users[username]["totp_secret"] = secret
+                self.users[username]["totp_pending_secret"] = ""
+                self.users[username]["totp_pending"] = True
             self._save_users()
         uri = f"otpauth://totp/GIAM-SAT:{username}?secret={secret}&issuer=GIAM-SAT"
         return {"success": True, "secret": secret, "otpauth_uri": uri}
@@ -653,6 +673,7 @@ class AuthManager:
                 return {"success": False, "error": "Người dùng không tồn tại."}
             self.users[username]["totp_enabled"] = False
             self.users[username]["totp_secret"] = ""
+            self.users[username]["totp_pending_secret"] = ""
             self.users[username]["totp_pending"] = False
             self._save_users()
         self._clear_2fa_fails(username)
@@ -662,9 +683,16 @@ class AuthManager:
         with self.lock:
             if username not in self.users:
                 return {"success": False, "error": "Người dùng không tồn tại."}
-        if not self.totp_verify(username, code):
+            pending_secret = self.users[username].get("totp_pending_secret") or ""
+        # v5.0.3 (ra soat): confirm verifies the PENDING secret (re-enroll case);
+        # for a fresh enroll pending_secret is empty -> verify the staged secret.
+        check_secret = pending_secret if pending_secret else self.users.get(username, {}).get("totp_secret", "")
+        if not check_secret or not self._totp_check(check_secret, code):
             return {"success": False, "error": "Mã xác thực không đúng."}
         with self.lock:
+            if pending_secret:
+                self.users[username]["totp_secret"] = pending_secret
+            self.users[username]["totp_pending_secret"] = ""
             self.users[username]["totp_enabled"] = True
             self.users[username]["totp_pending"] = False
             self._save_users()
@@ -676,6 +704,7 @@ class AuthManager:
         with self.lock:
             self.users[username]["totp_enabled"] = False
             self.users[username]["totp_secret"] = ""
+            self.users[username]["totp_pending_secret"] = ""
             self.users[username]["totp_pending"] = False
             self._save_users()
         return {"success": True}

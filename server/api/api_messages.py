@@ -276,6 +276,12 @@ def register(app, core):
 
         machine_id = (data.get("machine_id") or "").strip()
         hostname = (data.get("hostname") or "").strip()
+        # v5.0.3 (LOW-9): sanitize agent-supplied identity at this boundary too
+        try:
+            from agent_auth import sanitize_hostname
+            hostname = sanitize_hostname(hostname)
+        except Exception:
+            pass
         message = (data.get("message") or "").strip()[:1000]
         title = (data.get("title") or "Tin nhắn từ máy trạm")[:100]
         # v5.0.1: structured support tickets (free-form chat replaced on the workstation)

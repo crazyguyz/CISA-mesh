@@ -782,7 +782,10 @@ class PostgresDatabase:
             str(data.get("machine_id", "")),
             str(data.get("event_id", "")),
             str(data.get("source", "")),
-            str(data.get("time", "")),
+            # v5.0.3 (LOW-1 parity): hash the NORMALIZED time so C-asctime and ISO
+            # variants of the same event produce the same key (matches the stored
+            # _normalize_time value in insert_event).
+            str(PostgresDatabase._normalize_time(str(data.get("time", "")))),
             str(data.get("description", ""))[:500],
         ])
         return hashlib.md5(key.encode("utf-8", errors="ignore")).hexdigest()

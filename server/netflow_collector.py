@@ -111,6 +111,15 @@ class NetflowCollector(threading.Thread):
             w, c = now, 0
         c += 1
         self._rate[exporter_ip] = (w, c)
+        # v5.0.3 (ra soat): GC idle exporter keys so a flood of spoofed source
+        # IPs cannot grow this dict forever (mirrors the API rate-limit GC)
+        if len(self._rate) % 1000 == 0:
+            try:
+                idle = [k for k, v in self._rate.items() if now - v[0] > 60]
+                for k in idle:
+                    self._rate.pop(k, None)
+            except Exception:
+                pass
         if c > MAX_PKT_PER_SEC:
             self._stats["errors"] += 1
             return
