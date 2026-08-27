@@ -70,7 +70,7 @@ E:\giamsat\
 | Enrollment & Revocation | v3.8.0 | Enrollment token xác thực agent mới + Certificate Revocation (is_revoked flag) |
 | Sysmon Collector | v3.9.16 | 16 EID (1-18,22) + Timestomping + MOTW Evasion + Tampering Detection |
 | Memory Scanner | v3.8.0 | Process Hollowing, name spoofing, system process injection |
-| Correlation Engine | v1.0 | 76 THREAT rules + 11 CROSS-machine rules, MITRE ATT&CK mapped |
+| Correlation Engine | v1.0 | **2062 rules chạy AGENT-side** (mỗi máy tự evaluate sự kiện local) + **11 CROSS-machine rules chạy SERVER-side** (tương quan liên máy), MITRE ATT&CK mapped |
 | FIM + Whodata | v3.7.2 | Real-time watchdog + Priority Hashing (EXE/DLL đỉnh) + Chunk Sync 200 |
 | Network 3-Tier Aggregation | v3.9.0 | T1 internal (60s agg) + T2 suspicious (real-time) + T3 external (agg) + baseline 24h |
 | Network Smart Aggregation | v3.9.3 | Aggregate-only T1+T3 (bỏ first-occurrence), flush chỉ active (count>0), cleanup TTL 300s | 90K→~3,750/day (**96%↓**) |

@@ -1,3 +1,14 @@
+# ============================================================================
+# GIAM-SAT Correlation Rules (v5.0.3) — DETECTION POINT: AGENT-SIDE
+# Bộ rule YAML này chạy trên TỪNG AGENT: mỗi máy tự nạp CORRELATION_RULES ở
+# agent/correlation_engine.py và đánh giá sự kiện LOCAL của chính nó.
+# SERVER chỉ chạy các rule CROSS-* (11 rule, hardcode trong
+# server/correlation_engine_server.py) để tương quan LIÊN MÁY.
+# Deploy bản mới: màn hình Rules -> "Cập nhật Rules" (copy YAML sang
+# agent/rules/ + gửi lệnh reload_rules cho các agent) rồi restart server.
+# Không chạy bộ 2073 rule này server-side để tránh trùng cảnh báo (agent + server
+# cùng bắn) và FP storm — agent đã là nơi detect từng host.
+# ============================================================================
 metadata:
   name: GIAM-SAT Correlation Rules
   version: 2.1.0

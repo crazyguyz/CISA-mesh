@@ -44,7 +44,14 @@ def register(app, core):
                 return jsonify({"success": False, "error": "Rules file not found"}), 500
             rules = data.get("rules", [])
             from correlation_engine_server import CROSS_MACHINE_RULES
-            return jsonify({"rules": rules, "count": len(rules), "cross_machine_rules": len(CROSS_MACHINE_RULES)})
+            return jsonify({
+                "rules": rules, "count": len(rules), "cross_machine_rules": len(CROSS_MACHINE_RULES),
+                # v5.0.3 (P2#11): detection architecture is documented - the YAML rule
+                # set runs AGENT-side (each machine evaluates its own events); the
+                # server-side engine runs ONLY the CROSS-* machine rules below.
+                "detection_point": "agent",
+                "note": f"{len(rules)} YAML rules chạy trên từng AGENT (mỗi máy tự đánh giá sự kiện local); server chỉ chạy {len(CROSS_MACHINE_RULES)} rule CROSS-* (tương quan liên máy). Deploy = 'Cập nhật Rules' -> copy YAML + reload agents."
+            })
         except Exception as e:
             return jsonify({"success": False, "error": str(e)[:200]}), 500
 

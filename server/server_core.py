@@ -549,17 +549,23 @@ class ServerCore:
             print(f"[*] Using Waitress production server (threads=16)")
             try:
                 if web_ssl_ctx:
-                    # v4.14 (FIX): only pass ssl_context when TLS is actually on - some
-                    # Waitress builds raise ValueError 'Unknown adjustment ssl_context'
-                    # even for ssl_context=None.
-                    waitress.serve(app, host=self.web_host, port=self.web_port, threads=16,
-                                   ssl_context=web_ssl_ctx, url_scheme=web_scheme)
+                    # v5.0.3 (LOW-2): Waitress has NO ssl_context parameter in any
+                    # version (the old code always TypeError'd and fell back to the
+                    # Werkzeug dev server). Terminate TLS ourselves by wrapping the
+                    # listening socket, then hand the socket to Waitress via _sock.
+                    import socket as _sock_mod
+                    _lsock = _sock_mod.socket(_sock_mod.AF_INET, _sock_mod.SOCK_STREAM)
+                    _lsock.setsockopt(_sock_mod.SOL_SOCKET, _sock_mod.SO_REUSEADDR, 1)
+                    _lsock.bind((self.web_host, self.web_port))
+                    _lsock.listen(2048)
+                    _ssl_listener = web_ssl_ctx.wrap_socket(_lsock, server_side=True)
+                    waitress.serve(app, _sock=_ssl_listener, url_scheme="https", threads=16)
                 else:
                     waitress.serve(app, host=self.web_host, port=self.web_port, threads=16)
-            except (TypeError, ValueError):
-                # Older Waitress without SSL support (TypeError or ValueError) -> Flask dev server
+            except TypeError:
+                # Older Waitress without _sock support -> last-resort Flask dev server
                 if web_ssl_ctx:
-                    print("[!] Waitress has no SSL support - falling back to Flask dev server (HTTPS)")
+                    print("[!] Waitress has no socket-override support - falling back to Flask dev server (HTTPS)")
                     app.run(host=self.web_host, port=self.web_port, debug=False, threaded=True,
                             ssl_context=web_ssl_ctx)
                 else:
