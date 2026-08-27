@@ -110,7 +110,7 @@ var DbBuilder = {
 
         // Fill field dropdowns
         var opts = src.fields.map(function (f) {
-            return '<option value="' + f.name + '">' + f.label + ' (' + f.type + ')</option>';
+            return '<option value="' + escapeHtml(f.name) + '">' + escapeHtml(f.label) + ' (' + escapeHtml(f.type) + ')</option>';
         }).join('');
         ['wizField', 'wizCols', 'wizLabel', 'wizValue'].forEach(function (id) {
             var el = document.getElementById(id);
@@ -256,7 +256,7 @@ var DbBuilder = {
         div.style.gridColumn = 'span ' + (cfg.width || 3);
         div.innerHTML = '' +
             '<div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,0,0.2);border-bottom:1px solid #2a3a4a;font-size:12px;font-weight:600;color:#eef4f8;">' +
-            '<span>' + (cfg.title || 'Widget') + '</span>' +
+            '<span>' + escapeHtml(cfg.title || 'Widget') + '</span>' +
             '<div>' +
             '<button class="btn btn-sm btn-outline-info py-0 px-1 me-1" onclick="DbBuilder._loadData(\'' + wid + '\')" style="font-size:9px;" title="Refresh"><i class="bi bi-arrow-repeat"></i></button>' +
             '<button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="DbBuilder.removeWidget(\'' + wid + '\')" style="font-size:9px;" title="' + t('db.remove') + '"><i class="bi bi-x"></i></button>' +

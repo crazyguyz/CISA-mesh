@@ -93,8 +93,8 @@ window.renderAttackOverview = function(data) {
         chains.forEach(function(chain) {
             var sevColor = chain.severity === 'CRITICAL' ? '#ff4444' : '#ff9966';
             var sevBg = chain.severity === 'CRITICAL' ? '#3a1a1a' : '#3a2a1a';
-            html += '<div style="background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:8px 10px;margin-bottom:6px;border-radius:4px;cursor:pointer;" onclick="window.highlightChain(\'' + chain.id + '\')" ondblclick="window.showChainDetail(\'' + chain.id + '\')" title="Click de highlight - Double-click de xem chi tiet">';
-            html += '<div style="font-size:12px;color:' + sevColor + ';font-weight:600;">' + chain.id + ' - ' + chain.root_hostname + '</div>';
+            html += '<div style="background:' + sevBg + ';border-left:3px solid ' + sevColor + ';padding:8px 10px;margin-bottom:6px;border-radius:4px;cursor:pointer;" onclick="window.highlightChain(\'' + escJs(chain.id) + '\')" ondblclick="window.showChainDetail(\'' + escJs(chain.id) + '\')" title="Click de highlight - Double-click de xem chi tiet">';
+            html += '<div style="font-size:12px;color:' + sevColor + ';font-weight:600;">' + escapeHtml(chain.id) + ' - ' + escapeHtml(chain.root_hostname) + '</div>';
             html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">' + chain.steps.length + ' steps | ' + chain.severity + '</div>';
             chain.steps.slice(0, 4).forEach(function(step) {
                 var icon = step.type === 'beaconing' ? '\ud83d\udce1' : '\u26a0';

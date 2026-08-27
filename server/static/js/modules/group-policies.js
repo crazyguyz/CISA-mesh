@@ -391,7 +391,7 @@
         var toast = document.createElement('div');
         toast.className = 'alert alert-' + type + ' alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
         toast.style.cssText = 'z-index:9999;max-width:400px;';
-        toast.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        toast.innerHTML = escapeHtml(msg) + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
         document.body.appendChild(toast);
         setTimeout(function() { toast.remove(); }, 4000);
     }

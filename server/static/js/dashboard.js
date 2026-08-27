@@ -1864,7 +1864,7 @@ document.addEventListener('click', function(e) {
 });
 document.addEventListener('click', function(e) {
     const card = e.target.closest('div[data-vuln]'); if(!card) return;
-    try { const d=JSON.parse(card.getAttribute('data-vuln')); showDetailModal('CVE: '+(d.cve||'?')+' ['+(d.severity||'?')+']','<table class="table table-data" style="font-size:11px;"><tbody><tr><th>CVE</th><td>'+d.cve+'</td></tr><tr><th>' + t('dash.severity') + '</th><td>'+d.severity+'</td></tr><tr><th>' + t('dash.software') + '</th><td>'+(d.software||'-')+' v'+(d.version||'?')+'</td></tr><tr><th>' + t('dash.desc') + '</th><td>'+d.description+'</td></tr></tbody></table>'); } catch(ex) {}
+    try { const d=JSON.parse(card.getAttribute('data-vuln')); showDetailModal('CVE: '+escapeHtml(d.cve||'?')+' ['+escapeHtml(d.severity||'?')+']','<table class="table table-data" style="font-size:11px;"><tbody><tr><th>CVE</th><td>'+escapeHtml(d.cve)+'</td></tr><tr><th>' + t('dash.severity') + '</th><td>'+escapeHtml(d.severity)+'</td></tr><tr><th>' + t('dash.software') + '</th><td>'+escapeHtml(d.software||'-')+' v'+escapeHtml(d.version||'?')+'</td></tr><tr><th>' + t('dash.desc') + '</th><td>'+escapeHtml(d.description)+'</td></tr></tbody></table>'); } catch(ex) {}
 });
 
 // ===== SEND COMMAND =====
@@ -2239,10 +2239,10 @@ function loadGroups(){
         groups.forEach(g => {
             html += '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:8px;padding:12px;">';
             html += '<div class="d-flex justify-content-between align-items-center mb-2">';
-            html += '<strong style="color:#e4e7eb;">📁 ' + g.name + '</strong>';
+            html += '<strong style="color:#e4e7eb;">📁 ' + escapeHtml(g.name) + '</strong>';
             html += '<div><button class="btn btn-del btn-sm py-0 px-1" onclick="deleteGroup(' + g.id + ')"><i class="bi bi-trash3"></i></button></div>';
             html += '</div>';
-            html += '<small class="text-muted">' + (g.description || '') + ' | ' + t('ui.groupsMembers',[g.members ? g.members.length : 0]) + '</small>';
+            html += '<small class="text-muted">' + escapeHtml(g.description || '') + ' | ' + t('ui.groupsMembers',[g.members ? g.members.length : 0]) + '</small>';
             if (g.members && g.members.length) {
                 html += '<div style="margin-top:4px;">' + g.members.map(m => '<span class="badge bg-info me-1" style="cursor:pointer;" onclick="removeFromGroup(\'' + m.machine_id + '\',' + g.id + ')" title="' + t('ui.remFromGroupTitle') + '">' + (m.hostname || m.machine_id) + ' ✕</span>').join('') + '</div>';
             }
@@ -2632,7 +2632,7 @@ function testRule(){
         .then(r => r.json()).then(d => {
             if (d.success) {
                 if (d.triggered) {
-                    resultEl.innerHTML = '<div class="alert alert-success py-1">✅ Rule TRIGGERED! ' + d.alerts.length + ' alert(s):<br>' + d.alerts.map(a => '<strong>' + a.rule_id + ': ' + a.rule_name + '</strong> [' + a.severity + ']').join('<br>') + '</div>';
+                    resultEl.innerHTML = '<div class="alert alert-success py-1">✅ Rule TRIGGERED! ' + d.alerts.length + ' alert(s):<br>' + d.alerts.map(a => '<strong>' + escapeHtml(a.rule_id) + ': ' + escapeHtml(a.rule_name) + '</strong> [' + escapeHtml(a.severity) + ']').join('<br>') + '</div>';
                 } else {
                     resultEl.innerHTML = '<div class="alert alert-info py-1">'+t('ui.notTriggered')+'</div>';
                 }
@@ -3403,7 +3403,7 @@ function renderAttackOverview(data) {
             // Steps preview
             chain.steps.slice(0, 4).forEach(step => {
                 const icon = step.type === 'beaconing' ? '\\ud83d\\udce1' : '\\u26a0';
-                html += '<div style="font-size:10px;color:#c0d4e0;margin-top:2px;">' + icon + ' ' + (step.command || step.rule_name || step.description || '').substring(0, 60) + '</div>';
+                html += '<div style="font-size:10px;color:#c0d4e0;margin-top:2px;">' + icon + ' ' + escapeHtml((step.command || step.rule_name || step.description || '').substring(0, 60)) + '</div>';
             });
             if (chain.steps.length > 4) html += '<div style="font-size:9px;color:#5a6a7a;">' + t('ao.moreSteps', [chain.steps.length - 4]) + '</div>';
             html += '</div>';
@@ -3707,7 +3707,7 @@ function showChainDetail(chainId) {
         body += '<td><span class="badge ' + (step.type === 'beaconing' ? 'bg-danger' : 'bg-warning text-dark') + '">' + (step.type || '?') + '</span></td>';
         body += '<td>' + (step.rule_id || step.rule_name || '-') + '</td>';
         body += '<td><span style="color:' + sColor + ';">' + (step.severity || '?') + '</span></td>';
-        body += '<td style="max-width:300px;font-size:10px;">' + (step.command || step.description || '-').substring(0,120) + '</td></tr>';
+        body += '<td style="max-width:300px;font-size:10px;">' + escapeHtml((step.command || step.description || '-').substring(0,120)) + '</td></tr>';
     });
     body += '</tbody></table>';
     if (chain.beaconing_target) {
@@ -4079,7 +4079,7 @@ function loadAnomaly() {
                 const sevColor = a.severity === 'HIGH' ? '#ff4444' : '#ffcc66';
                 const score = a.anomaly_score || '?';
                 const reasons = (a.description || '').substring(0, 200);
-                return '<tr><td style="font-size:10px;">' + (a.timestamp || '').substring(0,19) + '</td><td>' + (a.hostname || '-') + '</td><td><span style="color:' + sevColor + ';font-weight:bold;">' + (a.severity || '?') + '</span></td><td><span class="badge bg-warning text-dark">' + score + '</span></td><td style="font-size:10px;">' + reasons + '</td></tr>';
+                return '<tr><td style="font-size:10px;">' + (a.timestamp || '').substring(0,19) + '</td><td>' + escapeHtml(a.hostname || '-') + '</td><td><span style="color:' + sevColor + ';font-weight:bold;">' + escapeHtml(a.severity || '?') + '</span></td><td><span class="badge bg-warning text-dark">' + score + '</span></td><td style="font-size:10px;">' + escapeHtml(reasons) + '</td></tr>';
             })
         );
     }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
@@ -4582,7 +4582,7 @@ function showPendingList() {
                     html += '<div>';
                     html += '<strong style="color:#eef4f8;">' + (p.hostname || p.machine_id) + '</strong> ';
                     html += '<span class="badge bg-danger">' + actionLabel + '</span>';
-                    html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">Rule: ' + (p.rule_id || '?') + ' | ' + (p.description || '') + '</div>';
+                    html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">Rule: ' + escapeHtml(p.rule_id || '?') + ' | ' + escapeHtml(p.description || '') + '</div>';
                     html += '</div>';
                     html += '<div style="display:flex;gap:4px;">';
                     html += '<button class="btn btn-success btn-sm py-0 px-2" style="font-size:10px;" onclick="approvePending(\'' + p.id + '\', \'approve\')">✅</button>';
@@ -4616,7 +4616,7 @@ function showApprovalModal(approval) {
     html += '<table class="table table-sm table-dark" style="font-size:12px;">';
     html += '<tr><td style="width:120px;">'+t('ui.machineRow')+'</td><td><strong>' + (approval.hostname || approval.machine_id) + '</strong></td></tr>';
     html += '<tr><td>'+t('ui.action')+'</td><td><span class="badge bg-danger">' + actionLabel + '</span></td></tr>';
-    html += '<tr><td>Rule</td><td>' + (approval.rule_id || '?') + '</td></tr>';
+    html += '<tr><td>Rule</td><td>' + escapeHtml(approval.rule_id || '?') + '</td></tr>';
     html += '<tr><td>'+t('ui.description')+'</td><td>' + (approval.description || '') + '</td></tr>';
     html += '</table>';
     html += '<div class="d-flex gap-2">';
