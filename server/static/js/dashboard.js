@@ -204,11 +204,11 @@ function saveMachineNotes() {
                 document.getElementById('detailNotesEdit').style.display = 'none';
                 showToast(t('dash.noteSaved'));
             } else {
-                showToast('Lỗi: ' + (data.error || 'Không lưu được'));
+                showToast(t('dash.hd.saveErr', [data.error || t('dash.hd.saveFail')]));
             }
-        } catch(e) { showToast('Lỗi phân tích phản hồi'); }
+        } catch(e) { showToast(t('dash.hd.respParseErr')); }
     };
-    xhr.onerror = function() { showToast('Lỗi kết nối'); };
+    xhr.onerror = function() { showToast(t('dash.hd.connErr')); };
     xhr.send(JSON.stringify({notes: notes}));
 }
 
@@ -268,8 +268,8 @@ function toggleAllLogTypes(el) {
 // ===== AI ASSISTANT - Auto fetch all + export =====
 function autoFetchAndExportAssistContext() {
     const types = getSelectedLogTypes();
-    if (types.length === 0) { showToast('⚠ Chọn ít nhất một loại log!'); return; }
-    showToast('⏳ Đang thu thập dữ liệu...');
+    if (types.length === 0) { showToast(t('dash.hd.selLogType')); return; }
+    showToast(t('dash.hd.collecting'));
     let completed = 0;
     const allData = {};
 
@@ -999,7 +999,7 @@ function loadAgentlessDevices() {
 function addAgentlessDevice() {
     const name = document.getElementById('agName').value.trim();
     const ip = document.getElementById('agIp').value.trim();
-    if (!name || !ip) { showToast('⚠ Nhập tên và IP!'); return; }
+    if (!name || !ip) { showToast(t('dash.hd.needNameIp')); return; }
     const data = {
         name, ip,
         device_type: document.getElementById('agType').value,
@@ -1008,9 +1008,9 @@ function addAgentlessDevice() {
     };
     fetch('/api/agentless/devices', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
         .then(r => r.json()).then(d => {
-            if (d.success) { showToast('✅ Đã thêm ' + name); loadAgentlessDevices(); }
-            else { showToast('❌ Lỗi: ' + (d.error || 'Unknown')); }
-        }).catch(() => showToast('❌ Lỗi kết nối'));
+            if (d.success) { showToast(t('dash.hd.added', [name])); loadAgentlessDevices(); }
+            else { showToast(t('dash.hd.errColon', [d.error || 'Unknown'])); }
+        }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function deleteAgentlessDevice(index) {
@@ -1697,14 +1697,14 @@ function connectSSE() {
             // Show real-time toast for update/reset results
             var action = msg.action || '';
             if (action === 'agent_update') {
-              if (msg.status === 'success') showToast('✅ '+(msg.hostname||msg.machine_id)+': Update thành công - '+(msg.output||''));
-              else showToast('❌ '+(msg.hostname||msg.machine_id)+': Update thất bại - '+(msg.error||msg.output||'Lỗi'));
+              if (msg.status === 'success') showToast(t('dash.hd.updOk', [msg.hostname||msg.machine_id, msg.output||'']));
+              else showToast(t('dash.hd.updFail', [msg.hostname||msg.machine_id, msg.error||msg.output||t('dash.hd.err')]));
               // Refresh agent update view if open
               if (currentView === 'agentupdate') loadAgentUpdateView();
             }
             if (action === 'reset_user') {
-              if (msg.status === 'completed') showToast('🔄 '+(msg.hostname||msg.machine_id)+': Reset user info thành công, agent đang restart...');
-              else showToast('❌ '+(msg.hostname||msg.machine_id)+': Reset thất bại - '+(msg.error||''));
+              if (msg.status === 'completed') showToast(t('dash.hd.resetOk', [msg.hostname||msg.machine_id]));
+              else showToast(t('dash.hd.resetFail', [msg.hostname||msg.machine_id, msg.error||'']));
               if (currentView === 'agentupdate') loadAgentUpdateView();
             }
             // Refresh agent update log tab if currently visible
@@ -1869,10 +1869,10 @@ document.addEventListener('click', function(e) {
 
 // ===== SEND COMMAND =====
 function sendCommand() {
-    if(!selectedMachine){showToast('⚠ Chọn máy trạm trước!');return;}
+    if(!selectedMachine){showToast(t('dash.hd.selMachineFirst'));return;}
     const action=document.getElementById('cmdAction').value;
     const command=document.getElementById('cmdInput').value.trim();
-    if(!command){showToast('⚠ Nhập lệnh!');return;}
+    if(!command){showToast(t('dash.hd.needCmd'));return;}
     const output=document.getElementById('cmdOutput');
     const exec_id='cmd_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
     const ts=new Date().toLocaleTimeString();
@@ -1948,12 +1948,12 @@ function runAssistant(){
     const machine_id=document.getElementById('assistScope').value;
     const custom_prompt=document.getElementById('assistCustomPrompt').value.trim();
     const fileInput=document.getElementById('assistFileInput');
-    if(!api_key){showToast('Vui lòng nhập API Key!');return;}
-    if(!custom_prompt){showToast('Vui lòng nhập prompt / yêu cầu phân tích!');return;}
+    if(!api_key){showToast(t('dash.hd.needApiKey'));return;}
+    if(!custom_prompt){showToast(t('dash.hd.needPrompt'));return;}
     document.getElementById('assistResult').style.display='none';
     document.getElementById('assistError').style.display='none';
     document.getElementById('assistLoading').style.display='';
-    showToast('⏳ Đang thu thập dữ liệu và gửi AI...');
+    showToast(t('dash.hd.collectingAi'));
 
     // Check if user uploaded file first
     if(fileInput&&fileInput.files&&fileInput.files.length>0){
@@ -1997,7 +1997,7 @@ function sendToAssistant(contextData){
         const hEl=document.getElementById('assistHistory'),ts=new Date().toLocaleString();
         assistHistoryList.unshift({ts,provider,model,question:custom_prompt,fullResponse:data.response});
         hEl.innerHTML=assistHistoryList.map((h,i)=>`<div class="card mb-1" style="background:var(--bg-dark);border-color:var(--border-color);"><div class="card-body py-2 px-3" style="font-size:11px;cursor:pointer;" onclick="showHistoryDetail(${i})"><span class="text-muted">${escapeHtml(h.ts)}</span> <span class="badge bg-info" style="font-size:9px;">${escapeHtml(h.provider)}</span> <span style="color:#d0d8e0;"> - ${escapeHtml(h.question.substring(0,80))}...</span></div></div>`).join('');
-        showToast('✅ Phân tích hoàn tất');
+        showToast(t('dash.hd.aiDone'));
     }).catch(err=>{document.getElementById('assistLoading').style.display='none';document.getElementById('assistError').textContent=''+t('ui.errPrefix')+''+err.message;document.getElementById('assistError').style.display='';});
 }
 function showHistoryDetail(i){const h=assistHistoryList[i];if(!h)return;showDetailModal(t('ui.history'),`<div style="white-space:pre-wrap;color:#d0e8d8;font-size:12px;"><strong>❓</strong> ${escapeHtml(h.question)}\n\n<strong>🤖</strong> ${escapeHtml(h.fullResponse||t('ui.empty'))}</div>`);}
@@ -2069,7 +2069,7 @@ function loadMachineConfig(mid){
             html+='<h6 class="text-info"><i class="bi bi-windows"></i> ' + t('dash.os') + (osChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
             html+='<tr><th>' + t('dash.osShort') + '</th><td>'+_diffIcon('os.name', t('dash.osShort'))+' '+escapeHtml(cfg.os.name||'-')+' '+escapeHtml(cfg.os.release||'')+' (Build '+escapeHtml(cfg.os.build||'?')+')</td></tr>';
-            html+='<tr><th>Phiên bản</th><td>'+_diffIcon('os.version',t('cfg.version'))+' '+escapeHtml(cfg.os.version||'-')+'</td></tr>';
+            html+='<tr><th>'+t('cfg.version')+'</th><td>'+_diffIcon('os.version',t('cfg.version'))+' '+escapeHtml(cfg.os.version||'-')+'</td></tr>';
             html+='</tbody></table>';
             if(osChanged)html+=_diffDetails('os.');
             html+='</div>';
@@ -2080,7 +2080,7 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(mbChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-motherboard"></i> Mainboard'+(mbChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('motherboard.manufacturer',t('cfg.mainboard'))+' '+escapeHtml(cfg.motherboard.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>'+t('dash.hd.vendor')+'</th><td>'+_diffIcon('motherboard.manufacturer',t('cfg.mainboard'))+' '+escapeHtml(cfg.motherboard.manufacturer||'-')+'</td></tr>';
             html+='<tr><th>Model</th><td>'+_diffIcon('motherboard.product','Model Mainboard')+' '+escapeHtml(cfg.motherboard.product||'-')+'</td></tr>';
             if(cfg.motherboard.version)html+='<tr><th>Version</th><td>'+_diffIcon('motherboard.version','Version Mainboard')+' '+escapeHtml(cfg.motherboard.version)+'</td></tr>';
             if(cfg.motherboard.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('motherboard.serial','Serial Mainboard')+' '+escapeHtml(cfg.motherboard.serial)+'</td></tr>';
@@ -2093,9 +2093,9 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(biosChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-cpu"></i> BIOS'+(biosChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>Hãng</th><td>'+_diffIcon('bios.manufacturer',t('cfg.biosMaker'))+' '+escapeHtml(cfg.bios.manufacturer||'-')+'</td></tr>';
+            html+='<tr><th>'+t('dash.hd.vendor')+'</th><td>'+_diffIcon('bios.manufacturer',t('cfg.biosMaker'))+' '+escapeHtml(cfg.bios.manufacturer||'-')+'</td></tr>';
             html+='<tr><th>Version</th><td>'+_diffIcon('bios.name',t('cfg.biosName'))+' '+escapeHtml(cfg.bios.name||'-')+' v'+escapeHtml(cfg.bios.version||'')+'</td></tr>';
-            if(cfg.bios.release_date)html+='<tr><th>Ngày phát hành</th><td>'+_diffIcon('bios.release_date',t('cfg.biosRelease'))+' '+escapeHtml(cfg.bios.release_date)+'</td></tr>';
+            if(cfg.bios.release_date)html+='<tr><th>'+t('dash.hd.releaseDate')+'</th><td>'+_diffIcon('bios.release_date',t('cfg.biosRelease'))+' '+escapeHtml(cfg.bios.release_date)+'</td></tr>';
             if(cfg.bios.serial)html+='<tr><th>Serial</th><td style="font-family:monospace;">'+_diffIcon('bios.serial','Serial BIOS')+' '+escapeHtml(cfg.bios.serial)+'</td></tr>';
             html+='</tbody></table>';
             if(biosChanged)html+=_diffDetails('bios.');
@@ -2107,9 +2107,9 @@ function loadMachineConfig(mid){
             html+='<div class="mb-3" style="'+(cpuChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-cpu-fill"></i> CPU'+(cpuChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
             html+='<table class="table table-data"><tbody>';
-            html+='<tr><th>' + t('dash.name') + '</th><td>'+_diffIcon('cpu.name','Tên CPU')+' '+escapeHtml(cfg.cpu.name||'-')+'</td></tr>';
+            html+='<tr><th>' + t('dash.name') + '</th><td>'+_diffIcon('cpu.name',t('dash.name'))+' '+escapeHtml(cfg.cpu.name||'-')+'</td></tr>';
             html+='<tr><th>' + t('dash.clockSpeed') + '</th><td>'+_diffIcon('cpu.max_clock_speed_mhz', t('dash.cpuClock'))+' '+(cfg.cpu.max_clock_speed_mhz?Math.round(cfg.cpu.max_clock_speed_mhz/1000*10)/10+' GHz':'-')+'</td></tr>';
-            html+='<tr><th>Số nhân</th><td>'+_diffIcon('cpu.cores',t('cfg.cpuCores'))+' '+escapeHtml(cfg.cpu.cores||'-')+' cores / '+escapeHtml(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
+            html+='<tr><th>'+t('dash.hd.cores')+'</th><td>'+_diffIcon('cpu.cores',t('cfg.cpuCores'))+' '+escapeHtml(cfg.cpu.cores||'-')+' cores / '+escapeHtml(cfg.cpu.logical_processors||'-')+' threads</td></tr>';
             html+='</tbody></table>';
             if(cpuChanged)html+=_diffDetails('cpu.');
             html+='</div>';
@@ -2119,7 +2119,7 @@ function loadMachineConfig(mid){
             var ramChanged=_hasDiff('ram.');
             html+='<div class="mb-3" style="'+(ramChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-memory"></i> RAM'+(ramChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><tbody><tr><th>Tổng</th><td>'+_diffIcon('ram.total_gb',t('cfg.totalRam'))+' <strong>'+(cfg.ram.total_gb||0)+' GB</strong></td></tr></tbody></table>';
+            html+='<table class="table table-data"><tbody><tr><th>'+t('dash.hd.total')+'</th><td>'+_diffIcon('ram.total_gb',t('cfg.totalRam'))+' <strong>'+(cfg.ram.total_gb||0)+' GB</strong></td></tr></tbody></table>';
             if(cfg.ram.sticks&&cfg.ram.sticks.length){
                 html+='<table class="table table-data mt-1"><thead><tr><th>#</th><th>'+t('cfg.manufacturer')+'</th><th>'+t('cfg.capacity')+'</th><th>Bus</th><th>'+t('cfg.kind')+'</th><th>Form</th><th>Part Number</th></tr></thead><tbody>';
                 cfg.ram.sticks.forEach(function(s,i){
@@ -2182,7 +2182,7 @@ function loadMachineConfig(mid){
             var monChanged=_hasDiff('monitors.');
             html+='<div class="mb-3" style="'+(monChanged?'border-left:3px solid #ffcc66;padding-left:8px;':'')+'">';
             html+='<h6 class="text-info"><i class="bi bi-display"></i> ' + t('dash.monitor') + (monChanged?' <span style="color:#ffcc66;font-size:11px;">' + t('dash.changed') + '</span>':'')+'</h6>';
-            html+='<table class="table table-data"><thead><tr><th>#</th><th>' + t('dash.name') + '</th><th>Hãng</th><th>Độ phân giải</th><th>'+t('ui.type')+'</th></tr></thead><tbody>';
+            html+='<table class="table table-data"><thead><tr><th>#</th><th>' + t('dash.name') + '</th><th>'+t('dash.hd.vendor')+'</th><th>'+t('dash.hd.resolution')+'</th><th>'+t('ui.type')+'</th></tr></thead><tbody>';
             cfg.monitors.forEach(function(m,i){
                 var rowStyle='';
                 if(_hasDiff('monitors['+i+']'))rowStyle=' style="background:rgba(255,200,50,0.08);"';
@@ -2231,7 +2231,7 @@ function loadGroups(){
     fetch('/api/groups').then(r => r.json()).then(data => {
         const groups = data.groups || [];
         if (!groups.length) {
-            el.innerHTML = '<div class="p-3"><div class="text-center text-muted py-2">' + t('dash.noGroups') + '</div><div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">' + t('dash.createGroup') + '</strong><div class="row g-1 mt-1"><div class="col-4"><input class="search-box" id="grpName" placeholder="' + t('dash.groupName') + '" style="width:100%;font-size:11px;"></div><div class="col-6"><input class="search-box" id="grpDesc" placeholder="' + t('dash.groupDesc') + '" style="width:100%;font-size:11px;"></div><div class="col-2"><button class="btn btn-sm export-btn" onclick="createGroup()"><i class="bi bi-plus-circle"></i> Tạo</button></div></div></div></div>';
+            el.innerHTML = '<div class="p-3"><div class="text-center text-muted py-2">' + t('dash.noGroups') + '</div><div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">' + t('dash.createGroup') + '</strong><div class="row g-1 mt-1"><div class="col-4"><input class="search-box" id="grpName" placeholder="' + t('dash.groupName') + '" style="width:100%;font-size:11px;"></div><div class="col-6"><input class="search-box" id="grpDesc" placeholder="' + t('dash.groupDesc') + '" style="width:100%;font-size:11px;"></div><div class="col-2"><button class="btn btn-sm export-btn" onclick="createGroup()"><i class="bi bi-plus-circle"></i> ' + t('dash.hd.create') + '</button></div></div></div></div>';
             loadMachinesForGroupSelect();
             return;
         }
@@ -2250,7 +2250,7 @@ function loadGroups(){
             html += '<button class="btn btn-sm export-btn ms-1" onclick="addToGroup(' + g.id + ')" style="font-size:10px;">'+t('btn.add')+'</button></div>';
             html += '</div>';
         });
-        html += '<div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">' + t('dash.createGroup') + '</strong><div class="row g-1 mt-1"><div class="col-4"><input class="search-box" id="grpName" placeholder="' + t('dash.groupName') + '" style="width:100%;font-size:11px;"></div><div class="col-6"><input class="search-box" id="grpDesc" placeholder="' + t('dash.groupDesc') + '" style="width:100%;font-size:11px;"></div><div class="col-2"><button class="btn btn-sm export-btn" onclick="createGroup()"><i class="bi bi-plus-circle"></i> Tạo</button></div></div></div>';
+        html += '<div class="mt-2 p-2" style="background:#0a1a1a;border-radius:4px;"><strong style="font-size:11px;color:#ffcc66;">' + t('dash.createGroup') + '</strong><div class="row g-1 mt-1"><div class="col-4"><input class="search-box" id="grpName" placeholder="' + t('dash.groupName') + '" style="width:100%;font-size:11px;"></div><div class="col-6"><input class="search-box" id="grpDesc" placeholder="' + t('dash.groupDesc') + '" style="width:100%;font-size:11px;"></div><div class="col-2"><button class="btn btn-sm export-btn" onclick="createGroup()"><i class="bi bi-plus-circle"></i> ' + t('dash.hd.create') + '</button></div></div></div>';
         el.innerHTML = html;
         loadMachinesForGroupSelect();
     });
@@ -2285,32 +2285,32 @@ function loadMachinesForGroupSelect(){
 
 function createGroup(){
     const name = document.getElementById('grpName').value.trim();
-    if (!name) { showToast('⚠ Nhập tên group!'); return; }
+    if (!name) { showToast(t('dash.hd.needGroupName')); return; }
     const desc = document.getElementById('grpDesc').value.trim();
     fetch('/api/groups', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, description: desc, config:{}})})
         .then(r => r.json()).then(d => {
-            if (d.success) { showToast('✅ Đã tạo group: ' + name); loadGroups(); }
-            else { showToast('❌ ' + (d.error || 'Lỗi')); }
-        }).catch(() => showToast('❌ Lỗi kết nối'));
+            if (d.success) { showToast(t('dash.hd.groupCreated', [name])); loadGroups(); }
+            else { showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')])); }
+        }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function deleteGroup(id){
     if (!confirm(t('ui.confirmDelGroup'))) return;
     fetch('/api/groups/' + id, {method:'DELETE'}).then(r => r.json()).then(d => {
         if (d.success) { showToast(t('dash.deleteGroup')); loadGroups(); }
-        else { showToast('❌ Lỗi'); }
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+        else { showToast(t('dash.hd.errGeneric')); }
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function addToGroup(groupId){
     const sel = document.getElementById('addMachSelect_' + groupId);
     const machineId = sel ? sel.value : '';
-    if (!machineId) { showToast('⚠ Chọn máy!'); return; }
+    if (!machineId) { showToast(t('dash.hd.selMachine')); return; }
     fetch('/api/groups/' + groupId + '/members', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({machine_id: machineId})})
         .then(r => r.json()).then(d => {
             if (d.success) { showToast(t('ui.machineAdded')); loadGroups(); }
-            else { showToast('❌ Lỗi'); }
-        }).catch(() => showToast('❌ Lỗi kết nối'));
+            else { showToast(t('dash.hd.errGeneric')); }
+        }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function executeResponseAction(machineId, hostname, action, paramValue) {
@@ -2329,7 +2329,7 @@ function executeResponseAction(machineId, hostname, action, paramValue) {
             params = {file_path: paramValue};
         }
     }
-    showToast('\u23f3 Đang gửi lệnh ' + action + '...');
+    showToast(t('dash.hd.sending', [action]));
     fetch('/api/response/execute', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -2565,18 +2565,18 @@ function loadRules(){
 function reloadRules(){
     if (!confirm(t('ui.confirmHotReload'))) return;
     fetch('/api/rules/reload', {method:'POST'}).then(r => r.json()).then(d => {
-        if (d.success) { showToast('✅ Đã reload ' + d.agent_rules + ' agent rules + ' + d.cross_machine_rules + ' cross-machine rules'); loadRules(); }
-        else { showToast('❌ ' + (d.error || 'Lỗi')); }
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+        if (d.success) { showToast(t('dash.hd.reloaded', [d.agent_rules + ' agent rules + ' + d.cross_machine_rules + ' cross-machine'])); loadRules(); }
+        else { showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')])); }
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function deployRules(){
     if (!confirm(t('ui.confirmDeploy'))) return;
-    showToast('⏳ Đang deploy rules...');
+    showToast(t('dash.deploying'));
     fetch('/api/rules/deploy', {method:'POST'}).then(r => r.json()).then(d => {
-        if (d.success) { showToast('✅ Đã deploy rules đến ' + d.agents_notified + ' agent(s). Agent sẽ tự động reload.'); }
-        else { showToast('❌ ' + (d.error || 'Lỗi')); }
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+        if (d.success) { showToast(t('dash.hd.rulesDeployed', [d.agents_notified])); }
+        else { showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')])); }
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function newRuleTemplate(){
@@ -2602,10 +2602,10 @@ function newRuleTemplate(){
 
 function saveRule(){
     const jsonText = document.getElementById('editRuleJson').value.trim();
-    if (!jsonText) { showToast('⚠ Nhập JSON rule vào editor!'); return; }
+    if (!jsonText) { showToast(t('dash.hd.needRuleJson')); return; }
     let rule;
     try { rule = JSON.parse(jsonText); } catch(e) { showToast(''+t('ioc.jsonInvalid')+'' + e.message); return; }
-    if (!rule.id) { showToast('⚠ Rule cần có trường "id"!'); return; }
+    if (!rule.id) { showToast(t('dash.hd.ruleNeeds', ['"id"'])); return; }
     // Check if update or create
     const existing = window._cachedRules ? window._cachedRules.find(r => r.id === rule.id) : null;
     const method = existing ? 'PUT' : 'POST';
@@ -2947,7 +2947,7 @@ function loadAgentUpdateStatus() {
 
 function pushUpdateToMachine(machineId) {
     if (!confirm(t('dash.pushToMachine', [machineId]))) return;
-    showToast('⏳ Đang push update đến ' + machineId + '...');
+    showToast(t('dash.hd.pushingUpdate', [machineId]));
     fetch('/api/agent/push-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2956,32 +2956,32 @@ function pushUpdateToMachine(machineId) {
         if (d.success) {
             showToast(t('dash.pushedUpdate', [d.pushed, d.version]) + (d.failed > 0 ? ', ' + d.failed + t('dash.failed') : ''));
         } else {
-            showToast('❌ ' + (d.error || 'Lỗi'));
+            showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')]));
         }
         loadAgentUpdateView();
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function pushUpdateToGroup(groupId) {
     if (!confirm(t('dash.pushToGroup'))) return;
-    showToast('⏳ Đang push update group...');
+    showToast(t('dash.hd.pushGroup'));
     fetch('/api/agent/push-update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId })
     }).then(r => r.json()).then(d => {
         if (d.success) {
-            showToast('✅ Push update: ' + d.pushed + ' thành công, ' + d.failed + ' thất bại (version ' + d.version + ')');
+            showToast(t('dash.hd.pushResult', [d.pushed, d.failed, d.version]));
         } else {
-            showToast('❌ ' + (d.error || 'Lỗi'));
+            showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')]));
         }
         loadAgentUpdateView();
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function pushUpdateToAll() {
     if (!confirm(t('dash.pushToAll'))) return;
-    showToast('⏳ Đang push update tất cả...');
+    showToast(t('dash.hd.pushAll'));
     // Push to each online machine individually
     fetch('/api/machines').then(r => r.json()).then(ms => {
         const onlineMachines = ms.filter(m => m.is_online == 1);
@@ -3000,14 +3000,14 @@ function pushUpdateToAll() {
                 if (d.success) success += d.pushed;
                 fail += d.failed || 0;
                 if (done >= onlineMachines.length) {
-                    showToast('✅ Push xong: ' + success + ' thành công, ' + fail + ' thất bại');
+                    showToast(t('dash.hd.pushDone', [success, fail]));
                     loadAgentUpdateView();
                 }
             }).catch(() => {
                 done++;
                 fail++;
                 if (done >= onlineMachines.length) {
-                    showToast('✅ Push xong: ' + success + ' thành công, ' + fail + ' thất bại');
+                    showToast(t('dash.hd.pushDone', [success, fail]));
                     loadAgentUpdateView();
                 }
             });
@@ -3022,7 +3022,7 @@ function loadAgentUpdateLogs() {
             el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noUpdateLog') + '</div>';
             return;
         }
-        el.innerHTML = tableWrap([t('dash.time'), t('dash.machine'), 'Từ phiên bản', 'Đến phiên bản', t('dash.status'), t('dash.source'), 'Thông báo'],
+        el.innerHTML = tableWrap([t('dash.time'), t('dash.machine'), t('dash.hd.fromVer'), t('dash.hd.toVer'), t('dash.status'), t('dash.source'), t('dash.hd.notice')],
             logs.map(l => {
                 let statusBadge = '';
                 if (l.status === 'success') statusBadge = '<span class="badge bg-success">'+t('ui.success')+'</span>';
@@ -3044,7 +3044,7 @@ function loadAgentUpdateLogs() {
 
 // ===== v2.5.1: USER INFO RESET =====
 function resetUserInfoToMachine(machineId) {
-    if (!confirm(t('dash.resetUser', [machineId]) + '?\n\nAgent sẽ xóa thông tin người dùng và hiển thị lại bảng nhập thông tin khi khởi động lại.\n\nThao tác này sẽ:\n1. Gửi lệnh reset_user qua TCP 6666\n2. Agent xóa file user_info.json + agent_config.json + boot_tracker.json\n3. Agent tự restart để hiển thị config dialog')) return;
+    if (!confirm(t('dash.resetUser', [machineId]) + t('dash.hd.resetUserDetail'))) return;
     showToast(t('dash.sendingReset', [machineId]));
     fetch('/api/agent/reset-user', {
         method: 'POST',
@@ -3052,34 +3052,34 @@ function resetUserInfoToMachine(machineId) {
         body: JSON.stringify({ machine_id: machineId })
     }).then(r => r.json()).then(d => {
         if (d.success) {
-            showToast('✅ Đã gửi lệnh reset: ' + (d.message || ''));
+            showToast(t('dash.hd.resetSent', [d.message || '']));
         } else {
-            showToast('❌ ' + (d.error || 'Lỗi'));
+            showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')]));
         }
         loadAgentUpdateView();
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function resetUserInfoToGroup(groupId) {
-    if (!confirm(t('dash.resetUserGroup') + '?\n\nAgent sẽ xóa thông tin và hiển thị lại bảng nhập thông tin khi khởi động lại.')) return;
-    showToast('⏳ Đang gửi lệnh reset group...');
+    if (!confirm(t('dash.resetUserGroup') + t('dash.hd.resetUserDetail'))) return;
+    showToast(t('dash.hd.resetGroupSending'));
     fetch('/api/agent/reset-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId })
     }).then(r => r.json()).then(d => {
         if (d.success) {
-            showToast('✅ Reset: ' + d.pushed + ' thành công, ' + d.failed + ' thất bại');
+            showToast(t('dash.hd.resetResult', [d.pushed, d.failed]));
         } else {
-            showToast('❌ ' + (d.error || 'Lỗi'));
+            showToast(t('dash.hd.errColon', [d.error || t('dash.hd.err')]));
         }
         loadAgentUpdateView();
-    }).catch(() => showToast('❌ Lỗi kết nối'));
+    }).catch(() => showToast(t('dash.hd.connErrX')));
 }
 
 function resetUserInfoAll() {
-    if (!confirm(t('dash.resetUserAll') + '?\n\nAgent sẽ xóa thông tin và hiển thị lại bảng nhập thông tin khi khởi động lại.')) return;
-    showToast('⏳ Đang gửi lệnh reset tất cả...');
+    if (!confirm(t('dash.resetUserAll') + t('dash.hd.resetUserDetail'))) return;
+    showToast(t('dash.hd.resetAllSending'));
     fetch('/api/machines').then(r => r.json()).then(ms => {
         const onlineMachines = ms.filter(m => m.is_online == 1);
         if (onlineMachines.length === 0) {
@@ -3223,17 +3223,17 @@ document.getElementById('emailBody').addEventListener('input', updateEmailPrevie
 document.getElementById('emailSubject').addEventListener('input', updateEmailPreview);
 function sendEmailAlert(){
     const mid = document.getElementById('emailMachine').value;
-    if(!mid){ showToast('⚠ Chọn máy trạm!'); return; }
+    if(!mid){ showToast(t('dash.hd.selMachineStation')); return; }
     const tid = document.getElementById('emailTemplate').value;
     const subject = document.getElementById('emailSubject').value;
     const body = document.getElementById('emailBody').value;
     const to = document.getElementById('emailTo').value;
-    if(!subject||!body){ showToast('⚠ Nhập tiêu đề và nội dung!'); return; }
+    if(!subject||!body){ showToast(t('dash.hd.needTitleBody')); return; }
     document.getElementById('emailSendStatus').textContent = t('ui.sendingEmail');
     fetch('/api/email/send', {method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({machine_id:mid, template_id:tid, subject, body, to_email:to})
     }).then(r=>r.json()).then(d=>{
-        if(d.success){ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#88dd99;">✅ '+escapeHtml(d.message)+'</span>'; showToast('✅ Đã gửi email!'); }
+        if(d.success){ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#88dd99;">✅ '+escapeHtml(d.message)+'</span>'; showToast(t('dash.hd.emailSent')); }
         else { document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.errPrefix')+(d.error||t('ui.errGeneric'))+'</span>'; }
     }).catch(e=>{ document.getElementById('emailSendStatus').innerHTML = '<span style="color:#ff8888;">'+t('ui.connErrShort')+'</span>'; });
 }
@@ -3291,17 +3291,17 @@ function deleteSentEmail(id){
     if(!confirm(t('ui.confirmDelMailRecord'))) return;
     fetch('/api/email/sent/'+encodeURIComponent(id), {method:'DELETE'})
         .then(r=>r.json()).then(d=>{
-            if(d.success){ showToast('🗑 Đã xóa bản ghi'); loadEmailLog(); }
-            else showToast('❌ '+(d.error||'Lỗi xóa'));
-        }).catch(function(){ showToast('❌ Lỗi kết nối'); });
+            if(d.success){ showToast(t('dash.hd.recordDeleted')); loadEmailLog(); }
+            else showToast(t('dash.hd.errColon', [d.error||t('dash.hd.deleteErr')]));
+        }).catch(function(){ showToast(t('dash.hd.connErrX')); });
 }
 function clearSentEmails(){
     if(!confirm(t('ui.confirmClearMailLog'))) return;
     fetch('/api/email/sent/clear', {method:'POST'})
         .then(r=>r.json()).then(d=>{
-            if(d.success){ showToast('🗑 Đã xóa '+(d.deleted||0)+' bản ghi'); loadEmailLog(); }
-            else showToast('❌ '+(d.error||'Lỗi xóa'));
-        }).catch(function(){ showToast('❌ Lỗi kết nối'); });
+            if(d.success){ showToast(t('dash.hd.recordsDeleted', [d.deleted||0])); loadEmailLog(); }
+            else showToast(t('dash.hd.errColon', [d.error||t('dash.hd.deleteErr')]));
+        }).catch(function(){ showToast(t('dash.hd.connErrX')); });
 }
 
 
@@ -4186,7 +4186,7 @@ function runCleanup() {
     const types = Array.from(document.querySelectorAll('.cleanupTypeChk:checked')).map(cb => cb.value);
     const resultEl = document.getElementById('cleanupResult');
     
-    if (types.length === 0) { showToast('⚠ Chọn ít nhất 1 loại dữ liệu'); return; }
+    if (types.length === 0) { showToast(t('dash.hd.selData')); return; }
     if (!confirm(t('dash.cleanupConfirm2', [days, types.length]))) return;
     
     resultEl.innerHTML = '<div class="text-center py-2"><div class="spinner-border text-warning spinner-border-sm"></div> '+t('cleanup.running')+'</div>';
@@ -4225,7 +4225,7 @@ function startHunting() {
     const el = document.getElementById('huntResults');
     const campaignEl = document.getElementById('huntCampaignId');
 
-    if (!hypothesis) { showToast('⚠ Vui lòng nhập giả thuyết săn mối nguy'); return; }
+    if (!hypothesis) { showToast(t('dash.hd.needHunt')); return; }
 
     el.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">'+t('ai.investigating')+'<br><small style="font-size:11px;">'+t('ai.deepseekParsing')+'</small></p></div>';
     campaignEl.textContent = '';
@@ -4463,7 +4463,7 @@ function renderHuntResults(data) {
     var el = document.getElementById('huntResults');
     if (!data.results || data.results.length === 0) {
         el.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-check-circle text-success" style="font-size:24px;"></i><p class="mt-2">' + t('dash.noHuntResults') + '<br><small>' + t('dash.systemClean') + '</small></p></div>';
-        showToast('✅ Hunt hoàn tất: 0 matches - hệ thống sạch');
+        showToast(t('dash.hd.huntClean'));
         return;
     }
     var results = data.results;
@@ -4490,7 +4490,7 @@ function renderHuntResults(data) {
     );
     html += '<div class="text-center text-muted mt-1" style="font-size:10px;">' + t('ui.showingResults',[Math.min(results.length,100), data.match_count]) + '</div>';
     el.innerHTML = html;
-    showToast('✅ Hunt hoàn tất: ' + data.match_count + ' matches');
+    showToast(t('dash.hd.huntDone', [data.match_count + ' matches']));
 }
 
 // ===== v3.9.15: DASHBOARD TEMPLATE SYSTEM =====
@@ -4841,7 +4841,7 @@ function showImportDashboardModal() {
 
 function importDashboard() {
     var jsonText = document.getElementById('dashImportJson').value.trim();
-    if (!jsonText) { showToast('⚠ Vui lòng dán JSON template!'); return; }
+    if (!jsonText) { showToast(t('dash.hd.needJsonTemplate')); return; }
     try {
         var data = JSON.parse(jsonText);
     } catch(e) {
@@ -4856,7 +4856,7 @@ function importDashboard() {
     .then(function(r) { return r.json(); })
     .then(function(d) {
         if (d.status === 'imported') {
-            showToast('✅ Đã import dashboard: ' + d.name);
+            showToast(t('dash.hd.imported', [d.name]));
             loadDashboardList();
         } else {
             showToast('❌ ' + (d.error || 'Lỗi'));
