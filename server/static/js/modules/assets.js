@@ -325,10 +325,10 @@ var Assets = {
                 var assigned = a.assigned_to || (a.computer_asset_id ? 'PC' : '') || '-';
                 var actions = '';
                 if (opts.showActions) {
-                    actions = '<button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editAsset(\'' + a.asset_id + '\')">✏️</button>' +
-                        '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteAsset(\'' + a.asset_id + '\')">🗑</button>';
+                    actions = '<button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editAsset(\'' + Assets.escJs(a.asset_id) + '\')">✏️</button>' +
+                        '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteAsset(\'' + Assets.escJs(a.asset_id) + '\')">🗑</button>';
                     if (a.source === 'auto') {
-                        actions = '<button class="btn btn-sm btn-success py-0 px-1 ms-1" onclick="Assets.adoptAsset(\'' + a.asset_id + '\')">' + t('assets.adopt') + '</button>' + actions;
+                        actions = '<button class="btn btn-sm btn-success py-0 px-1 ms-1" onclick="Assets.adoptAsset(\'' + Assets.escJs(a.asset_id) + '\')">' + t('assets.adopt') + '</button>' + actions;
                     }
                 }
                 html += '<tr><td><code style="font-size:10px;">' + Assets.esc(a.display_id || a.asset_id) + '</code></td>' +
@@ -376,6 +376,11 @@ var Assets = {
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(s));
         return div.innerHTML;
+    },
+    // v5.0.4 (MEDIUM-2): JS-string escape for values embedded in onclick attributes
+    escJs: function(s) {
+        if (!s) return '';
+        return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     loadUsers: function() {

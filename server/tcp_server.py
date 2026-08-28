@@ -292,17 +292,20 @@ class TCPServer(threading.Thread):
     def _handle_register(self, msg, client_sock=None):
         """Validate agent PSK + issue per-machine enrollment token. Returns True if accepted."""
         # v4.5.5 SECURITY: fail-closed + constant-time PSK comparison
-        if not self.psk:
-            print("[!] REGISTRATION REJECTED: no GIAMSAT_AGENT_PSK configured on server (fail-closed). "
-                  "Set GIAMSAT_AGENT_PSK in .env AND set matching 'psk' in each agent's agent_config.json.")
-            return False
+        # v5.0.4 (MEDIUM-3): a per-machine secret works even when the global PSK
+        # is unset - fail-closed only when the machine has NEITHER.
+        from agent_auth import verify_agent_psk, validate_machine_id, sanitize_hostname, has_any_psk
         machine_id = str(msg.get("machine_id", "") or "").strip()
         hostname = msg.get("hostname", "")
         ip = msg.get("source_ip", "")
-        # v5.0.3 (LOW-9): validate the machine_id BEFORE trusting it anywhere
-        from agent_auth import verify_agent_psk, validate_machine_id, sanitize_hostname
         if not validate_machine_id(machine_id):
             print(f"[!] REGISTRATION REJECTED: invalid machine_id '{machine_id[:64]}' from {ip}")
+            return False
+        if not has_any_psk(machine_id):
+            print("[!] REGISTRATION REJECTED: no GIAMSAT_AGENT_PSK configured on server AND no "
+                  "per-machine secret for this machine (fail-closed). Set GIAMSAT_AGENT_PSK in .env "
+                  "and matching 'psk' in each agent's agent_config.json, or configure "
+                  "GIAMSAT_PER_MACHINE_PSK[_FILE].")
             return False
         if not verify_agent_psk(msg.get("psk", ""), self.psk, machine_id):
             print(f"[!] REGISTRATION REJECTED: {hostname} from {ip} - "

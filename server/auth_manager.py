@@ -576,9 +576,12 @@ class AuthManager:
                         except (StopIteration, KeyError):
                             break
                 # v5.0.3 (ra soat): also drop expired 2FA-fail lockout entries
+                # v5.0.4 (LOW-1): drop entries with no active lockout after 30 min
+                # (last_attempt TTL) - 1-4 failed codes no longer live forever.
                 if self._pending_fails:
                     stale = [k for k, v in self._pending_fails.items()
-                             if (v.get("locked_until", 0) or 0) <= now and v.get("locked_until", 0)]
+                             if ((v.get("locked_until", 0) or 0) <= now and v.get("locked_until", 0))
+                             or (now - (v.get("last_attempt", 0) or 0) > 1800)]
                     for k in stale:
                         self._pending_fails.pop(k, None)
                     if len(self._pending_fails) > 1000:
@@ -587,12 +590,15 @@ class AuthManager:
             pass
 
     def _check_2fa_lockout(self, username):
-        """v5.0.3 (MEDIUM-1): lockout after MAX_2FA_ATTEMPTS wrong codes (15 min)."""
+        """v5.0.3 (MEDIUM-1): lockout after MAX_2FA_ATTEMPTS wrong codes (15 min).
+        v5.0.4 (LOW-1): a non-locked entry older than 30 min is cleared too."""
         with self._pending_2fa_lock:
             f = self._pending_fails.get(username)
             if f and f.get("locked_until", 0) > time.time():
                 return int((f["locked_until"] - time.time()) / 60) + 1
             if f and f.get("locked_until", 0) and f["locked_until"] <= time.time():
+                self._pending_fails.pop(username, None)
+            if f and (time.time() - (f.get("last_attempt", 0) or 0) > 1800):
                 self._pending_fails.pop(username, None)
         return 0
 
@@ -600,6 +606,7 @@ class AuthManager:
         with self._pending_2fa_lock:
             f = self._pending_fails.get(username, {"attempts": 0})
             f["attempts"] = f.get("attempts", 0) + 1
+            f["last_attempt"] = time.time()
             if f["attempts"] >= MAX_2FA_ATTEMPTS:
                 f["locked_until"] = time.time() + LOCKOUT_DURATION_MINUTES * 60
             self._pending_fails[username] = f
@@ -725,7 +732,9 @@ class AuthManager:
         # v5.0.3 (MEDIUM-1): lockout on repeated wrong codes
         locked_for = self._check_2fa_lockout(username)
         if locked_for:
-            return {"success": False, "error": f"2FA bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau {locked_for} phút.", "code": "ACCOUNT_LOCKED"}
+            # v5.0.4 (LOW-2): include username so the API's audit log records the
+            # real user instead of "?" (INVALID_CODE already carried it).
+            return {"success": False, "error": f"2FA bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau {locked_for} phút.", "code": "ACCOUNT_LOCKED", "username": username}
         if not self.totp_verify(username, code):
             self._record_2fa_fail(username)
             attempts_left = MAX_2FA_ATTEMPTS - self._pending_fails.get(username, {}).get("attempts", 0)

@@ -1847,26 +1847,29 @@ document.addEventListener('click', function(e) {
             // Parse raw_data to get accurate IPs (DB may have 0.0.0.0)
             let rd = null;
             try { rd = typeof data.raw_data === 'string' ? JSON.parse(data.raw_data) : data.raw_data; } catch(ex) {}
+            // v5.0.4 (CRITICAL-2): EVERY value from agent/network data is escaped -
+            // HTTP URI/Host, DNS qname, IP, MAC can carry <img onerror> payloads.
+            const esc = escapeHtml;
             const sIp = (data.src_ip && data.src_ip !== '0.0.0.0') ? data.src_ip : (rd && rd.ip ? rd.ip.src : '-');
             const dIp = (data.dst_ip && data.dst_ip !== '0.0.0.0') ? data.dst_ip : (rd && rd.ip ? rd.ip.dst : '-');
             const sPort = data.src_port || (rd && rd.tcp ? rd.tcp.sport : (rd && rd.udp ? rd.udp.sport : 0));
             const dPort = data.dst_port || (rd && rd.tcp ? rd.tcp.dport : (rd && rd.udp ? rd.udp.dport : 0));
-            const title = '📡 Packet - '+(data.protocol||'?')+' '+sIp+':'+sPort+' → '+dIp+':'+dPort;
+            const title = '📡 Packet - '+esc(data.protocol||'?')+' '+esc(sIp)+':'+esc(sPort)+' → '+esc(dIp)+':'+esc(dPort);
 
             let body = '<div style="font-family:Consolas,monospace;font-size:11px;">';
             // Frame
-            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a3a5a;padding:4px 8px;color:#88ccff;font-weight:bold;">Frame ' + (data.size||'?') + ' bytes on wire</div>';
+            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a3a5a;padding:4px 8px;color:#88ccff;font-weight:bold;">Frame ' + esc(data.size||'?') + ' bytes on wire</div>';
             body += '<table class="table-data" style="font-size:10px;"><tbody>';
-            body += '<tr><th style="width:160px;">Arrival Time</th><td>' + (data.timestamp||'-') + '</td></tr>';
-            body += '<tr><th>Frame Length</th><td>' + (data.size||0) + ' bytes</td></tr>';
-            body += '<tr><th>Capture Length</th><td>' + (data.size||0) + ' bytes</td></tr>';
+            body += '<tr><th style="width:160px;">Arrival Time</th><td>' + esc(data.timestamp||'-') + '</td></tr>';
+            body += '<tr><th>Frame Length</th><td>' + esc(data.size||0) + ' bytes</td></tr>';
+            body += '<tr><th>Capture Length</th><td>' + esc(data.size||0) + ' bytes</td></tr>';
             body += '</tbody></table></div>';
 
             // Ethernet
-            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#2a3a1a;padding:4px 8px;color:#88dd99;">Ethernet II, Src: '+(data.src_mac||(rd&&rd.eth?rd.eth.src:'-'))+', Dst: '+(data.dst_mac||(rd&&rd.eth?rd.eth.dst:'-'))+'</div>';
+            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#2a3a1a;padding:4px 8px;color:#88dd99;">Ethernet II, Src: '+esc(data.src_mac||(rd&&rd.eth?rd.eth.src:'-'))+', Dst: '+esc(data.dst_mac||(rd&&rd.eth?rd.eth.dst:'-'))+'</div>';
             body += '<table class="table-data" style="font-size:10px;"><tbody>';
-            body += '<tr><th style="width:160px;">Source MAC</th><td>'+(data.src_mac||(rd&&rd.eth?rd.eth.src:'-'))+'</td></tr>';
-            body += '<tr><th>Dest MAC</th><td>'+(data.dst_mac||(rd&&rd.eth?rd.eth.dst:'-'))+'</td></tr>';
+            body += '<tr><th style="width:160px;">Source MAC</th><td>'+esc(data.src_mac||(rd&&rd.eth?rd.eth.src:'-'))+'</td></tr>';
+            body += '<tr><th>Dest MAC</th><td>'+esc(data.dst_mac||(rd&&rd.eth?rd.eth.dst:'-'))+'</td></tr>';
             body += '</tbody></table></div>';
 
             // IP
@@ -1879,47 +1882,47 @@ document.addEventListener('click', function(e) {
             const ipTtl = data.ip_ttl || (rd&&rd.ip?rd.ip.ttl:'?');
             const ipProto = data.ip_proto || (rd&&rd.ip?rd.ip.protocol:'?');
             const ipChk = data.ip_checksum || (rd&&rd.ip?rd.ip.checksum:'-');
-            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a2a3a;padding:4px 8px;color:#3399ff;">Internet Protocol Version '+ipVer+', Src: '+sIp+', Dst: '+dIp+'</div>';
+            body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a2a3a;padding:4px 8px;color:#3399ff;">Internet Protocol Version '+esc(ipVer)+', Src: '+esc(sIp)+', Dst: '+esc(dIp)+'</div>';
             body += '<table class="table-data" style="font-size:10px;"><tbody>';
-            body += '<tr><th style="width:160px;">Version</th><td>'+ipVer+'</td></tr>';
-            body += '<tr><th>Header Length</th><td>'+ipHdrLen+' bytes</td></tr>';
-            body += '<tr><th>Total Length</th><td>'+ipTotalLen+'</td></tr>';
-            body += '<tr><th>Identification</th><td>'+ipId+'</td></tr>';
-            body += '<tr><th>Flags</th><td>'+ipFlags+'</td></tr>';
-            body += '<tr><th>Fragment Offset</th><td>'+ipFrag+'</td></tr>';
-            body += '<tr><th>TTL</th><td>'+ipTtl+'</td></tr>';
-            body += '<tr><th>Protocol</th><td>'+ipProto+' ('+(data.protocol||'?')+')</td></tr>';
-            body += '<tr><th>Header Checksum</th><td>'+ipChk+'</td></tr>';
-            body += '<tr><th>Source IP</th><td style="color:#3399ff;">'+sIp+'</td></tr>';
-            body += '<tr><th>Dest IP</th><td style="color:#ff9966;">'+dIp+'</td></tr>';
+            body += '<tr><th style="width:160px;">Version</th><td>'+esc(ipVer)+'</td></tr>';
+            body += '<tr><th>Header Length</th><td>'+esc(ipHdrLen)+' bytes</td></tr>';
+            body += '<tr><th>Total Length</th><td>'+esc(ipTotalLen)+'</td></tr>';
+            body += '<tr><th>Identification</th><td>'+esc(ipId)+'</td></tr>';
+            body += '<tr><th>Flags</th><td>'+esc(ipFlags)+'</td></tr>';
+            body += '<tr><th>Fragment Offset</th><td>'+esc(ipFrag)+'</td></tr>';
+            body += '<tr><th>TTL</th><td>'+esc(ipTtl)+'</td></tr>';
+            body += '<tr><th>Protocol</th><td>'+esc(ipProto)+' ('+esc(data.protocol||'?')+')</td></tr>';
+            body += '<tr><th>Header Checksum</th><td>'+esc(ipChk)+'</td></tr>';
+            body += '<tr><th>Source IP</th><td style="color:#3399ff;">'+esc(sIp)+'</td></tr>';
+            body += '<tr><th>Dest IP</th><td style="color:#ff9966;">'+esc(dIp)+'</td></tr>';
             body += '</tbody></table></div>';
 
             if (data.protocol === 'TCP') {
                 const tcpFlags = data.tcp_flags_hex || '-';
                 const tcpFlagsDetail = data.tcp_flags_detail || '';
-                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a1a1a;padding:4px 8px;color:#ff8888;">Transmission Control Protocol, Src Port: '+sPort+', Dst Port: '+dPort+', Seq: '+(data.tcp_seq||0)+', Ack: '+(data.tcp_ack||0)+', Len: '+(data.tcp_payload_len||0)+'</div>';
+                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a1a1a;padding:4px 8px;color:#ff8888;">Transmission Control Protocol, Src Port: '+esc(sPort)+', Dst Port: '+esc(dPort)+', Seq: '+esc(data.tcp_seq||0)+', Ack: '+esc(data.tcp_ack||0)+', Len: '+esc(data.tcp_payload_len||0)+'</div>';
                 body += '<table class="table-data" style="font-size:10px;"><tbody>';
-                body += '<tr><th style="width:160px;">Source Port</th><td>'+sPort+'</td></tr>';
-                body += '<tr><th>Dest Port</th><td>'+dPort+'</td></tr>';
-                body += '<tr><th>Seq Number</th><td>'+(data.tcp_seq||0)+'</td></tr>';
-                body += '<tr><th>Ack Number</th><td>'+(data.tcp_ack||0)+'</td></tr>';
-                body += '<tr><th>Header Length</th><td>'+(data.tcp_data_offset||20)+' bytes</td></tr>';
-                body += '<tr><th>Flags</th><td>'+tcpFlags+' ['+tcpFlagsDetail+']</td></tr>';
-                body += '<tr><th>Window</th><td>'+(data.tcp_window||0)+'</td></tr>';
-                body += '<tr><th>Checksum</th><td>'+(data.tcp_checksum||'-')+'</td></tr>';
-                body += '<tr><th>Urgent Pointer</th><td>'+(data.tcp_urg_ptr||0)+'</td></tr>';
-                body += '<tr><th>TCP Payload Len</th><td>'+(data.tcp_payload_len||0)+' bytes</td></tr>';
+                body += '<tr><th style="width:160px;">Source Port</th><td>'+esc(sPort)+'</td></tr>';
+                body += '<tr><th>Dest Port</th><td>'+esc(dPort)+'</td></tr>';
+                body += '<tr><th>Seq Number</th><td>'+esc(data.tcp_seq||0)+'</td></tr>';
+                body += '<tr><th>Ack Number</th><td>'+esc(data.tcp_ack||0)+'</td></tr>';
+                body += '<tr><th>Header Length</th><td>'+esc(data.tcp_data_offset||20)+' bytes</td></tr>';
+                body += '<tr><th>Flags</th><td>'+esc(tcpFlags)+' ['+esc(tcpFlagsDetail)+']</td></tr>';
+                body += '<tr><th>Window</th><td>'+esc(data.tcp_window||0)+'</td></tr>';
+                body += '<tr><th>Checksum</th><td>'+esc(data.tcp_checksum||'-')+'</td></tr>';
+                body += '<tr><th>Urgent Pointer</th><td>'+esc(data.tcp_urg_ptr||0)+'</td></tr>';
+                body += '<tr><th>TCP Payload Len</th><td>'+esc(data.tcp_payload_len||0)+' bytes</td></tr>';
                 body += '</tbody></table></div>';
             } else if (data.protocol === 'UDP') {
-                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a2a1a;padding:4px 8px;color:#ffcc66;">User Datagram Protocol, Src Port: '+sPort+', Dst Port: '+dPort+'</div>';
+                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a2a1a;padding:4px 8px;color:#ffcc66;">User Datagram Protocol, Src Port: '+esc(sPort)+', Dst Port: '+esc(dPort)+'</div>';
                 body += '<table class="table-data" style="font-size:10px;"><tbody>';
-                body += '<tr><th style="width:160px;">Source Port</th><td>'+sPort+'</td></tr>';
-                body += '<tr><th>Dest Port</th><td>'+dPort+'</td></tr>';
-                body += '<tr><th>Length</th><td>'+(data.udp_len||0)+'</td></tr>';
-                body += '<tr><th>Checksum</th><td>'+(data.udp_checksum||'-')+'</td></tr>';
+                body += '<tr><th style="width:160px;">Source Port</th><td>'+esc(sPort)+'</td></tr>';
+                body += '<tr><th>Dest Port</th><td>'+esc(dPort)+'</td></tr>';
+                body += '<tr><th>Length</th><td>'+esc(data.udp_len||0)+'</td></tr>';
+                body += '<tr><th>Checksum</th><td>'+esc(data.udp_checksum||'-')+'</td></tr>';
                 body += '</tbody></table></div>';
             } else {
-                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a3a1a;padding:4px 8px;color:#ffcc66;">OTHER Protocol</div><table class="table-data" style="font-size:10px;"><tbody><tr><th style="width:160px;">Protocol</th><td>'+(data.protocol||'?')+'</td></tr></tbody></table></div>';
+                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#3a3a1a;padding:4px 8px;color:#ffcc66;">OTHER Protocol</div><table class="table-data" style="font-size:10px;"><tbody><tr><th style="width:160px;">Protocol</th><td>'+esc(data.protocol||'?')+'</td></tr></tbody></table></div>';
             }
 
             // ---- v1.12.0: Application Layer (DNS/HTTP) ----
@@ -1929,9 +1932,9 @@ document.addEventListener('click', function(e) {
                 body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;">';
                 body += '<div style="background:'+(dns.is_nxdomain?'#3a1a1a':'#1a3a5a')+';padding:4px 8px;color:'+(dns.is_nxdomain?'#ff8888':'#88ccff')+';font-weight:bold;">🌐 Domain Name System (DNS)'+nxIcon+'</div>';
                 body += '<table class="table-data" style="font-size:10px;"><tbody>';
-                body += '<tr><th style="width:160px;">Query Name</th><td style="color:#3399ff;font-weight:bold;">'+dns.qname+'</td></tr>';
-                body += '<tr><th>Query Type</th><td>'+dns.qtype_name+' ('+dns.qtype+')</td></tr>';
-                body += '<tr><th>Response Code</th><td style="color:'+(dns.is_nxdomain?'#ff4444':'#88dd99')+';">'+dns.rcode_name+' ('+dns.rcode+')</td></tr>';
+                body += '<tr><th style="width:160px;">Query Name</th><td style="color:#3399ff;font-weight:bold;">'+esc(dns.qname)+'</td></tr>';
+                body += '<tr><th>Query Type</th><td>'+esc(dns.qtype_name)+' ('+esc(dns.qtype)+')</td></tr>';
+                body += '<tr><th>Response Code</th><td style="color:'+(dns.is_nxdomain?'#ff4444':'#88dd99')+';">'+esc(dns.rcode_name)+' ('+esc(dns.rcode)+')</td></tr>';
                 body += '<tr><th>Direction</th><td>'+(dns.is_response ? 'Response ←' : 'Query →')+'</td></tr>';
                 body += '</tbody></table></div>';
             } else if (data.protocol_app === 'HTTP' && data.http_info) {
@@ -1939,15 +1942,15 @@ document.addEventListener('click', function(e) {
                 body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;">';
                 body += '<div style="background:#3a2a1a;padding:4px 8px;color:#ffcc66;font-weight:bold;">📄 Hypertext Transfer Protocol (HTTP)</div>';
                 body += '<table class="table-data" style="font-size:10px;"><tbody>';
-                body += '<tr><th style="width:160px;">Method</th><td style="color:#ffcc66;font-weight:bold;">'+http.method+'</td></tr>';
-                body += '<tr><th>Request URI</th><td style="color:#d0d8e0;">'+http.uri+'</td></tr>';
-                body += '<tr><th>Host</th><td style="color:#88dd99;">'+http.host+'</td></tr>';
-                body += '<tr><th>Request Line</th><td style="font-size:9px;color:#999;">'+http.request_line+'</td></tr>';
+                body += '<tr><th style="width:160px;">Method</th><td style="color:#ffcc66;font-weight:bold;">'+esc(http.method)+'</td></tr>';
+                body += '<tr><th>Request URI</th><td style="color:#d0d8e0;">'+esc(http.uri)+'</td></tr>';
+                body += '<tr><th>Host</th><td style="color:#88dd99;">'+esc(http.host)+'</td></tr>';
+                body += '<tr><th>Request Line</th><td style="font-size:9px;color:#999;">'+esc(http.request_line)+'</td></tr>';
                 body += '</tbody></table></div>';
             }
 
             if (data.full_payload_hex_dump) {
-                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a2a2a;padding:4px 8px;color:#88dddd;">Payload ('+(data.payload_size||0)+' bytes)</div><div style="background:#0a0a0a;padding:8px;font-size:10px;color:#0f0;white-space:pre;max-height:300px;overflow-y:auto;">'+data.full_payload_hex_dump+'</div></div>';
+                body += '<div style="background:#1a1a2a;border:1px solid #2a3a4a;margin-bottom:6px;"><div style="background:#1a2a2a;padding:4px 8px;color:#88dddd;">Payload ('+esc(data.payload_size||0)+' bytes)</div><div style="background:#0a0a0a;padding:8px;font-size:10px;color:#0f0;white-space:pre;max-height:300px;overflow-y:auto;">'+esc(data.full_payload_hex_dump)+'</div></div>';
             }
             body += '</div>';
             showDetailModal(title, body);
@@ -1961,7 +1964,7 @@ document.addEventListener('click', function(e) {
 
 document.addEventListener('click', function(e) {
     const card = e.target.closest('div[data-threat]'); if(!card) return;
-    try { const d=JSON.parse(card.getAttribute('data-threat')); showDetailModal(t('dash.alert') + ': '+(d.rule_name||d.rule_id)+' ['+(d.severity||'?')+']','<table class="table table-data" style="font-size:11px;"><tbody><tr><th>Rule ID</th><td>'+d.rule_id+'</td></tr><tr><th>' + t('dash.name') + '</th><td>'+d.rule_name+'</td></tr><tr><th>' + t('dash.severity') + '</th><td>'+d.severity+'</td></tr><tr><th>' + t('dash.desc') + '</th><td>'+d.description+'</td></tr><tr><th>' + t('dash.machine') + '</th><td>'+(d.hostname||d.machine_id||'-')+'</td></tr></tbody></table>'); } catch(ex) {}
+    try { const d=JSON.parse(card.getAttribute('data-threat')); showDetailModal(t('dash.alert') + ': '+escapeHtml(d.rule_name||d.rule_id)+' ['+escapeHtml(d.severity||'?')+']','<table class="table table-data" style="font-size:11px;"><tbody><tr><th>Rule ID</th><td>'+escapeHtml(d.rule_id)+'</td></tr><tr><th>' + t('dash.name') + '</th><td>'+escapeHtml(d.rule_name)+'</td></tr><tr><th>' + t('dash.severity') + '</th><td>'+escapeHtml(d.severity)+'</td></tr><tr><th>' + t('dash.desc') + '</th><td>'+escapeHtml(d.description)+'</td></tr><tr><th>' + t('dash.machine') + '</th><td>'+escapeHtml(d.hostname||d.machine_id||'-')+'</td></tr></tbody></table>'); } catch(ex) {}
 });
 document.addEventListener('click', function(e) {
     const card = e.target.closest('div[data-vuln]'); if(!card) return;

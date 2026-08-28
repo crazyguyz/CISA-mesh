@@ -349,6 +349,20 @@ def apply_update(new_exe_path, version=None):
             return None
 
     src_hash = _sha256(new_exe_path)
+    # v5.0.4 (HIGH-1): cross-process update lock - the agent's own .bat updater
+    # and the updater.exe can run concurrently; exclusive lock file stops the race
+    # (taskkill/copy over each other -> 'Access is denied: .bak' + corrupt launch).
+    lock_path = os.path.join(INSTALL_DIR, "update.lock")
+    try:
+        _lock_fd = open(lock_path, "x")  # O_EXCL - fails if another updater is running
+    except OSError:
+        _log("Update skipped: another update is in progress (update.lock exists)")
+        return False
+    try:
+        _lock_fd.write(str(os.getpid()))
+        _lock_fd.flush()
+    except Exception:
+        pass
     try:
         # stop the agent BEFORE touching the exe (the watchdog also restarts it,
         # so keep a short wait loop to let the old process release file handles)
@@ -365,6 +379,11 @@ def apply_update(new_exe_path, version=None):
             _log("ERROR: copied EXE hash mismatch - update aborted (partial copy?)")
             try:
                 os.remove(tmp_new)
+            except Exception:
+                pass
+            try:
+                _lock_fd.close()
+                os.remove(lock_path)
             except Exception:
                 pass
             start_agent()
@@ -398,6 +417,11 @@ def apply_update(new_exe_path, version=None):
             _log(f"WARN: backup cleanup deferred: {e}")
         start_agent()
         _log("Update applied")
+        try:
+            _lock_fd.close()
+            os.remove(lock_path)
+        except Exception:
+            pass
         return True
     except Exception as e:
         _log(f"Apply failed: {e}")
@@ -408,6 +432,11 @@ def apply_update(new_exe_path, version=None):
                 _log("Restored previous agent exe")
             except Exception as e2:
                 _log(f"Restore failed: {e2}")
+        try:
+            _lock_fd.close()
+            os.remove(lock_path)
+        except Exception:
+            pass
         start_agent()
         return False
 
@@ -627,7 +656,9 @@ class UpdaterHandler(BaseHTTPRequestHandler):
     def _do_update(self, version):
         new_exe = download_exe(version)
         if new_exe:
-            apply_update(new_exe)
+            # v5.0.4 (HIGH-1): pass the version so apply_update writes the real
+            # value instead of "unknown" (which re-triggered the update loop)
+            apply_update(new_exe, version=version)
         else:
             _log(f"Update to {version} failed: download error")
 
@@ -719,7 +750,8 @@ def _do_update_from_pipe(version):
     """Handle update from pipe command (same as HTTP _do_update)."""
     new_exe = download_exe(version)
     if new_exe:
-        apply_update(new_exe)
+        # v5.0.4 (HIGH-1): pass the version (was "unknown" -> update loop)
+        apply_update(new_exe, version=version)
     else:
         _log(f"Update to {version} failed: download error")
 

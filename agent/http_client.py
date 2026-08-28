@@ -85,12 +85,19 @@ def urlopen(url, data=None, headers=None, timeout=10, config=None):
     try:
         return urllib.request.urlopen(req, timeout=timeout, context=ctx)
     except ssl.SSLCertVerificationError as e:
-        # v5.0.3 (LOW-6): only the hostname did not match (verify_code 62) while
-        # the chain validated against the pinned CA -> retry with name-check off.
-        # The server is still authenticated by CA pinning; other TLS errors raise.
+        # v5.0.4 (MEDIUM-1 FIX): a hostname mismatch (verify_code 62) with an
+        # otherwise CA-pinned chain previously fell back to name-check-off
+        # SILENTLY, making check_hostname a no-op. Now it fails hard unless the
+        # admin explicitly opts in (and then it logs loudly).
         if getattr(e, "verify_code", None) == 62:
-            ctx2 = _ssl_ctx(config, host, _no_name_check=True)
-            return urllib.request.urlopen(req, timeout=timeout, context=ctx2)
+            allow = os.environ.get("GIAMSAT_ALLOW_INSECURE_HOSTNAME_FALLBACK", "").strip().lower()
+            if allow in ("1", "true", "yes"):
+                print("[!] TLS: hostname verification bypassed via GIAMSAT_ALLOW_INSECURE_HOSTNAME_FALLBACK - "
+                      "MITM on the name is NOT detected (insecure)")
+                ctx2 = _ssl_ctx(config, host, _no_name_check=True)
+                return urllib.request.urlopen(req, timeout=timeout, context=ctx2)
+            print("[!] TLS: hostname verification failed for %s - set "
+                  "GIAMSAT_ALLOW_INSECURE_HOSTNAME_FALLBACK=1 to bypass (not recommended)" % host)
         raise
 
 

@@ -1635,28 +1635,40 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
             import tempfile as _tf
             server_host_safe = _re2.sub(r"[^A-Za-z0-9._\-]", "", str(self.server_host))[:255]
             port_safe = _re2.sub(r"[^0-9]", "", str(self.server_port))[:10] or "6666"
+            install_dir_safe = os.path.dirname(os.path.abspath(current_exe))
             _fd, update_script = _tf.mkstemp(suffix=".bat", prefix="giamsat_update_")
             os.close(_fd)
             with open(update_script, "w") as f:
+                # v5.0.4 (HIGH-1): staged copy (never boot a half-written exe),
+                # write agent_version.txt so the version converges, respect the
+                # shared update.lock (no race with updater.exe).
                 f.write(f'''@echo off
 setlocal enabledelayedexpansion
 echo GIAM-SAT Agent Update Script
+if exist "{install_dir_safe}\\update.lock" (echo Another update in progress - skip & exit /b 0)
+type nul > "{install_dir_safe}\\update.lock"
 echo Stopping agent...
 sc stop GiamSatAgent >nul 2>&1
 timeout /t 3 /nobreak >nul
 taskkill /F /IM GiamSatAgent.exe >nul 2>&1
 timeout /t 3 /nobreak >nul
-{mei_cleanup}echo Copying new version...
-copy /Y "{new_exe_path}" "{current_exe}"
+{mei_cleanup}echo Copying new version (staged)...
+copy /Y "{new_exe_path}" "{current_exe}.new" >nul 2>&1
 if !errorlevel! equ 0 (
+    move /Y "{current_exe}.new" "{current_exe}" >nul 2>&1
+)
+if !errorlevel! equ 0 (
+    echo {server_version}> "{install_dir_safe}\\agent_version.txt"
     echo Update successful! Starting agent...
     sc start GiamSatAgent >nul 2>&1
     if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
 ) else (
     echo Update failed! Could not copy file.
+    del "{current_exe}.new" >nul 2>&1
     sc start GiamSatAgent >nul 2>&1
     if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
 )
+del "{install_dir_safe}\\update.lock" >nul 2>&1
 del "%~f0"
 ''')
 

@@ -20,24 +20,39 @@ import re
 _MACHINE_ID_RE = re.compile(r"^[A-Za-z0-9._:%-]{1,64}$")
 
 _per_machine = None
+_cache_key = None
 
 
 def _load_per_machine_psk():
-    global _per_machine
-    if _per_machine is not None:
+    """v5.0.4 (MEDIUM-3): the cache is keyed on (env content, file path + mtime)
+    so editing GIAMSAT_PER_MACHINE_PSK / the file while the server runs takes
+    effect (previously a bad first load cached {} forever)."""
+    global _per_machine, _cache_key
+    env_raw = os.environ.get("GIAMSAT_PER_MACHINE_PSK", "").strip()
+    path = os.environ.get("GIAMSAT_PER_MACHINE_PSK_FILE", "").strip()
+    mtime = None
+    if path and os.path.exists(path):
+        try:
+            mtime = (os.path.getmtime(path), os.path.getsize(path))
+        except Exception:
+            mtime = None
+    key = (env_raw, path, mtime)
+    if _cache_key == key and _per_machine is not None:
         return _per_machine
     data = {}
-    try:
-        raw = os.environ.get("GIAMSAT_PER_MACHINE_PSK", "").strip()
-        if raw and raw.startswith("{"):
-            data.update(json.loads(raw))
-        path = os.environ.get("GIAMSAT_PER_MACHINE_PSK_FILE", "").strip()
-        if path and os.path.exists(path):
+    if env_raw and env_raw.startswith("{"):
+        try:
+            data.update(json.loads(env_raw))
+        except Exception:
+            pass
+    if path and os.path.exists(path):
+        try:
             with open(path, "r", encoding="utf-8") as f:
                 data.update(json.load(f))
-    except Exception:
-        data = {}
+        except Exception:
+            pass
     _per_machine = data
+    _cache_key = key
     return data
 
 
@@ -46,11 +61,20 @@ def machine_psk(machine_id):
     return _load_per_machine_psk().get(str(machine_id or ""))
 
 
+def has_any_psk(machine_id=""):
+    """v5.0.4 (MEDIUM-3): True when the machine has a per-machine secret OR the
+    global PSK is set - used to decide fail-closed BEFORE picking the key."""
+    if machine_id and machine_psk(machine_id):
+        return True
+    return bool(os.environ.get("GIAMSAT_AGENT_PSK", "").strip())
+
+
 def verify_agent_psk(presented, global_psk, machine_id=""):
-    """Constant-time PSK check: per-machine secret wins, else global secret."""
+    """Constant-time PSK check: per-machine secret wins, else global secret.
+    Returns False when neither is configured for this machine."""
     per = machine_psk(machine_id) if machine_id else None
     expected = per if per is not None else global_psk
-    if not expected:
+    if expected is None or str(expected) == "":
         return False
     return hmac.compare_digest(str(presented or ""), str(expected))
 
@@ -70,3 +94,18 @@ def sanitize_hostname(hostname, default="Unknown"):
     if not s:
         return default
     return s[:128]
+
+
+def sanitize_text(text, max_len=120, default=""):
+    """v5.0.4 (HIGH-2): sanitize any agent-supplied TEXT field (user_name, email,
+    employee_id, branch...) - strips control/HTML metacharacters and caps length.
+    Wider than sanitize_hostname (keeps unicode/emoji), so identity fields cannot
+    smuggle stored-XSS payloads into the UI."""
+    if text is None:
+        return default
+    s = str(text)
+    s = "".join(ch for ch in s if ord(ch) >= 32 and ch not in "<>\"'`")
+    s = s.strip()
+    if not s:
+        return default
+    return s[:max_len]

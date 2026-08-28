@@ -81,10 +81,7 @@ def check_agent_psk(data=None):
     validates machine_id charset. Constant-time comparison.
     Returns True if valid, False otherwise.
     """
-    from agent_auth import verify_agent_psk, validate_machine_id
-    expected = os.environ.get("GIAMSAT_AGENT_PSK", "")
-    if not expected:
-        return False  # fail-closed: no PSK configured -> reject
+    from agent_auth import verify_agent_psk, validate_machine_id, has_any_psk
     token = ""
     machine_id = ""
     if isinstance(data, dict):
@@ -96,5 +93,10 @@ def check_agent_psk(data=None):
         machine_id = str(request.headers.get("X-Machine-ID") or "").strip()
     if machine_id and not validate_machine_id(machine_id):
         return False
+    # v5.0.4 (MEDIUM-3): per-machine PSK works WITHOUT a global PSK - fail-closed
+    # only when the machine has neither a per-machine secret nor the global one.
+    if not has_any_psk(machine_id):
+        return False
     # v4.5.4 SECURITY: do NOT accept PSK via query string (leaks into access logs).
+    expected = os.environ.get("GIAMSAT_AGENT_PSK", "")
     return verify_agent_psk(token, expected, machine_id)

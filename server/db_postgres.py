@@ -725,6 +725,15 @@ class PostgresDatabase:
     def save_machine_user(self, machine_id, hostname, user_name, employee_id, email, branch=""):
         if not self._connected:
             return
+        # v5.0.4 (HIGH-2): sanitize agent-supplied identity fields at the write boundary
+        try:
+            from agent_auth import sanitize_text
+            user_name = sanitize_text(user_name, 80)
+            employee_id = sanitize_text(employee_id, 40)
+            email = sanitize_text(email, 120)
+            branch = sanitize_text(branch, 80)
+        except Exception:
+            pass
         try:
             self._execute(
                 """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, branch, updated_at)
@@ -804,7 +813,10 @@ class PostgresDatabase:
                 """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
                    source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
-                   ON CONFLICT (dedup_key) DO NOTHING""",
+                   -- v5.0.4 (CRITICAL-1): the unique index is PARTIAL
+                   -- (WHERE dedup_key IS NOT NULL) - PG requires the index predicate
+                   -- in ON CONFLICT or the statement fails 42P10 on EVERY insert.
+                   ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING""",
                 (
                     msg.get("machine_id", ""), _hn,
                     msg.get("type", ""), msg.get("subtype", ""),
@@ -816,8 +828,14 @@ class PostgresDatabase:
                     self._dedup_key(msg),
                 )
             )
-        except Exception:
-            pass
+        except Exception as e:
+            # v5.0.4 (CRITICAL-1): never swallow insert errors silently - count + log
+            # so a broken backend cannot pretend events are being stored.
+            print(f"[-] PG insert_event FAILED: {e}")
+            try:
+                self._insert_errors = getattr(self, "_insert_errors", 0) + 1
+            except Exception:
+                pass
 
     def insert_fim_event(self, msg):
         if not self._connected:
@@ -1097,7 +1115,8 @@ class PostgresDatabase:
             sql = """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
                        source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
-                       ON CONFLICT (dedup_key) DO NOTHING"""
+                       -- v5.0.4 (CRITICAL-1): partial unique index needs the predicate
+                       ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING"""
             params = [(
                 e.get("machine_id", ""), _hn(e),
                 e.get("type", ""), e.get("subtype", ""),
@@ -1109,12 +1128,18 @@ class PostgresDatabase:
                 self._dedup_key(e),
             ) for e in events]
             self._executemany(sql, params)
-        except Exception:
+        except Exception as e:
+            # v5.0.4 (CRITICAL-1): log batch failures instead of silent fallback spam
+            print(f"[-] PG batch_insert_events FAILED: {e}")
+            try:
+                self._insert_errors = getattr(self, "_insert_errors", 0) + 1
+            except Exception:
+                pass
             for e in events:
                 try:
                     self.insert_event(e)
-                except Exception:
-                    pass
+                except Exception as e2:
+                    print(f"[-] PG insert_event fallback FAILED: {e2}")
 
     def batch_insert_sysmon_events(self, events):
         """Batch insert sysmon events."""
@@ -1955,7 +1980,18 @@ class PostgresDatabase:
             return 0
 
     def get_server_agent_version(self):
-        """Get current server-side agent version from version.txt."""
+        """Get current server-side agent version - prefers dist/agent_version.txt
+        (matches the binary actually served) then falls back to version.txt.
+        v5.0.4 (HIGH-1): prevents hand-edited version.txt drifting from the real exe."""
+        try:
+            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "dist", "agent_version.txt")
+            if os.path.exists(dist_v):
+                with open(dist_v, "r", encoding="utf-8") as f:
+                    v = f.read().strip()
+                if v:
+                    return v
+        except Exception:
+            pass
         try:
             ver_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
             if os.path.exists(ver_file):

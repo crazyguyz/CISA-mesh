@@ -1719,7 +1719,18 @@ class DatabaseManager:
     # =========================================================================
 
     def save_machine_user(self, machine_id, hostname, user_name="", employee_id="", email="", branch=""):
-        """Save/update the user info for a machine reported by agent."""
+        """Save/update the user info for a machine reported by agent.
+        v5.0.4 (HIGH-2): user_name/email/employee_id/branch are agent-supplied and
+        rendered in the Messages UI - sanitize them at the write boundary (the
+        previous version stored them RAW, enabling stored XSS via the user name)."""
+        try:
+            from agent_auth import sanitize_text
+            user_name = sanitize_text(user_name, 80)
+            employee_id = sanitize_text(employee_id, 40)
+            email = sanitize_text(email, 120)
+            branch = sanitize_text(branch, 80)
+        except Exception:
+            pass
         with self.lock:
             self.conn.execute(
                 """INSERT INTO machine_users (machine_id, hostname, user_name, employee_id, email, branch, updated_at)
@@ -1946,7 +1957,20 @@ class DatabaseManager:
             return [dict(row) for row in c.fetchall()]
 
     def get_server_agent_version(self):
-        """Read the current server-side agent version from version.txt."""
+        """Read the current server-side agent version.
+        v5.0.4 (HIGH-1): prefer dist/agent_version.txt (the version SHIPPED next to
+        the real binary that /api/agent/download serves) so a hand-edited
+        server/version.txt can never drift from the actual exe again; falls back to
+        version.txt when the dist file is missing."""
+        try:
+            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "dist", "agent_version.txt")
+            if os.path.exists(dist_v):
+                with open(dist_v, "r", encoding="utf-8") as f:
+                    v = f.read().strip()
+                if v:
+                    return v
+        except Exception:
+            pass
         version_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
         try:
             with open(version_path, "r", encoding="utf-8") as f:

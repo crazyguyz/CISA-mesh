@@ -145,8 +145,8 @@ window.messageChat = (function() {
       var unread = unreadByMachine[m.machine_id] || 0;
       var badge = unread > 0 ? '<span style="background:#e5484d;color:#fff;border-radius:8px;padding:0 6px;font-size:10px;margin-left:6px;">' + unread + '</span>' : '';
       var userInfo = '';
-      if (m.user_name) userInfo += ' 👤 ' + m.user_name;
-      if (m.email) userInfo += ' ✉ ' + m.email;
+      if (m.user_name) userInfo += ' 👤 ' + esc(m.user_name);
+      if (m.email) userInfo += ' ✉ ' + esc(m.email);
       html += '<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #2a3a4a;font-size:12px;transition:background 0.15s;" ' +
         'onmouseover="this.style.background=\'#2a3a4a\'" onmouseout="this.style.background=\'\'" ' +
         'onclick="messageChat.selectMachine(\'' + escJs(m.machine_id) + '\')">' +
