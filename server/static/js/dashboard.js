@@ -30,7 +30,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             events: { el: 'viewEvents', container: 'allEventList', load: function() { loadAllEvents(); } },
             fim: { el: 'viewFim', container: 'allFimList', load: function() { loadAllFim(); } },
             syslog: { el: 'viewSyslog', container: 'syslogList', load: function() { loadSyslog(); } },
-            response: { el: 'viewResponse', container: 'allResponseList', load: function() { loadAllResponses(); } },
+            response: { el: 'viewResponse', container: 'allResponseList', load: function() { loadAllResponses(); loadResponseActions(); } },
             network: { el: 'viewNetwork', container: 'networkList', load: function() { loadNetwork(); } },
             netflow: { el: 'viewNetflow', load: function() { loadNetflow(); } },
             threats: { el: 'viewThreats', container: 'threatList', load: function() { loadThreats(); } },
@@ -49,7 +49,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             email: { el: 'viewEmail', container: null, load: function() { loadEmailView(); } },
             sysmon: { el: 'viewSysmon', container: 'sysmonList', load: function() { loadSysmon(); } },
             memory: { el: 'viewMemory', container: 'memoryList', load: function() { loadMemory(); } },
-            hunting: { el: 'viewHunting', container: null, load: function() {} },
+            hunting: { el: 'viewHunting', container: null, load: function() { loadHuntTemplates(); loadHuntCampaigns(); loadHuntStats(); } },
             anomaly: { el: 'viewAnomaly', container: 'anomalyList', load: function() { loadAnomaly(); } },
             ioc: { el: 'viewIoc', container: null, load: function() {} },
             incident: { el: 'viewIncident', container: 'incidentSidebar', load: function() { loadIncidentView(); } },
@@ -418,6 +418,21 @@ function loadAllResponses() {
     fetch('/api/responses?limit=200').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noResults') + '</div>'; return; }
         el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),'Action',t('dash.status'),'Output'], data.map(e => `<tr><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td><span class="log-type response">${escapeHtml(e.action||'?')}</span></td><td><span class="badge ${e.status==='completed'?'bg-success':e.status==='error'?'bg-danger':'bg-warning text-dark'}">${escapeHtml(e.status||'?')}</span></td><td style="max-width:300px;font-family:monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;">${escapeHtml((e.output||e.error||'-').substring(0,150))}</td></tr>`));
+    });
+}
+
+// v5.0.4 (UI audit): list available SOAR actions from /api/response/actions
+function loadResponseActions() {
+    var el = document.getElementById('responseActionsInfo');
+    if (!el) return;
+    fetch('/api/response/actions').then(function(r) { return r.json(); }).then(function(d) {
+        var list = (d && d.actions) || [];
+        if (!list.length) { el.innerHTML = '<span class="text-muted">' + t('dash.noResults') + '</span>'; return; }
+        el.innerHTML = list.map(function(a) {
+            return '<span class="badge me-1 mb-1" style="background:#1a3a2a;color:#88dd99;font-size:10px;" title="Params: ' + escapeHtml((a.params || []).join(', ') || '-') + ' | Severity: ' + escapeHtml((a.severity_suitable || []).join('/')) + '">' + escapeHtml(a.label || a.action) + '</span>';
+        }).join(' ') + ' <span class="text-muted" style="font-size:10px;">(' + list.length + ')</span>';
+    }).catch(function() {
+        el.innerHTML = '<span class="text-muted">' + t('ui.connErr') + '</span>';
     });
 }
 
@@ -3263,7 +3278,7 @@ function loadEmailView(){
             this.classList.add('active');
             document.querySelectorAll('.tab-em-content').forEach(t=>t.style.display='none');
             if(this.dataset.tabEm==='compose') document.getElementById('tabEmCompose').style.display='';
-            if(this.dataset.tabEm==='config'){ document.getElementById('tabEmConfig').style.display=''; loadEmailConfig(); }
+            if(this.dataset.tabEm==='config'){ document.getElementById('tabEmConfig').style.display=''; loadEmailConfig(); loadAlertingConfig(); }
             if(this.dataset.tabEm==='log'){ document.getElementById('tabEmLog').style.display=''; loadEmailLog(); }
         });
     });
@@ -3271,6 +3286,57 @@ function loadEmailView(){
 
 
 function onEmailTemplateChange(){
+// v5.0.4 (UI audit): alerting channels config via /api/alerting/config
+function _alVal(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function _alChk(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+function _alSel(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function loadAlertingConfig() {
+    fetch('/api/alerting/config').then(function(r) { return r.json(); }).then(function(cfg) {
+        if (!cfg || typeof cfg !== 'object') return;
+        if (cfg.error) {
+            var el0 = document.getElementById('alertEnabled');
+            var panel = el0 ? el0.closest('.card') : null;
+            if (panel) panel.style.opacity = '0.5';
+            return;
+        }
+        var setV = function(id, v) { var el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
+        var setC = function(id, v) { var el = document.getElementById(id); if (el) el.checked = !!v; };
+        setC('alertEnabled', cfg.enabled);
+        setV('alertMinSeverity', cfg.min_severity);
+        setV('alertCooldown', cfg.cooldown_seconds);
+        setV('alertRetry', cfg.attempt_retry_seconds);
+        var tg = cfg.telegram || {};
+        setC('tgEnabled', tg.enabled); setV('tgBotToken', tg.bot_token); setV('tgChatId', tg.chat_id);
+        setV('tgApprovalTimeout', tg.approval_timeout); setV('tgMinSeverity', tg.min_severity);
+        var sl = cfg.slack || {};
+        setC('slEnabled', sl.enabled); setV('slWebhook', sl.webhook_url); setV('slChannel', sl.channel);
+        var wh = cfg.webhook || {};
+        setC('whEnabled', wh.enabled); setV('whUrl', wh.url);
+    }).catch(function() {});
+}
+function saveAlertingConfig() {
+    var body = {
+        enabled: _alChk('alertEnabled'),
+        min_severity: _alSel('alertMinSeverity') || 'HIGH',
+        cooldown_seconds: parseInt(_alVal('alertCooldown')) || 86400,
+        attempt_retry_seconds: parseInt(_alVal('alertRetry')) || 300,
+        telegram: {
+            enabled: _alChk('tgEnabled'), bot_token: _alVal('tgBotToken'), chat_id: _alVal('tgChatId'),
+            approval_timeout: parseInt(_alVal('tgApprovalTimeout')) || 300, min_severity: _alSel('tgMinSeverity') || 'HIGH'
+        },
+        slack: { enabled: _alChk('slEnabled'), webhook_url: _alVal('slWebhook'), channel: _alVal('slChannel') },
+        webhook: { enabled: _alChk('whEnabled'), url: _alVal('whUrl') }
+    };
+    var st = document.getElementById('alertingSaveStatus');
+    if (st) st.textContent = t('ui.saving');
+    fetch('/api/alerting/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (st) st.innerHTML = d && d.success ? '<span style="color:#88dd99;">✅ ' + t('btn.saved') + '</span>' : '<span style="color:#ff8888;">❌ ' + escapeHtml((d && d.error) || 'error') + '</span>';
+        }).catch(function() {
+            if (st) st.innerHTML = '<span style="color:#ff8888;">❌ ' + t('ui.connErr') + '</span>';
+        });
+}
+
     var tid=document.getElementById('emailTemplate').value;
     if(!tid){updateEmailPreview();return;}
     // Try from loaded API data first
@@ -4382,6 +4448,96 @@ function loadHunting(campaignId) {
             el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.errPrefix') + escapeHtml(e.message) + '</div>';
             if (huntPollInterval) { clearInterval(huntPollInterval); huntPollInterval = null; }
         });
+}
+
+// v5.0.4 (UI audit): wire /api/hunt/templates, /api/hunt/stats, /api/hunt/campaigns
+function loadHuntTemplates() {
+    var el = document.getElementById('huntTemplateHints');
+    if (!el) return;
+    fetch('/api/hunt/templates').then(function(r) { return r.json(); }).then(function(tpls) {
+        if (!tpls || typeof tpls !== 'object') return;
+        var keys = Object.keys(tpls);
+        var sel = document.getElementById('huntTactic');
+        if (sel) {
+            var current = sel.value;
+            sel.innerHTML = '<option value="" data-i18n="hunt.free">-- Tự do --</option>';
+            keys.forEach(function(k) {
+                var o = document.createElement('option');
+                o.value = k;
+                o.textContent = (tpls[k].label || k);
+                sel.appendChild(o);
+            });
+            if (current) sel.value = current;
+        }
+        el.innerHTML = keys.map(function(k) {
+            var tm = tpls[k];
+            return '<span class="badge" style="background:#1a3a5a;color:#88ccff;cursor:pointer;font-size:10px;padding:4px 8px;" title="' + escapeHtml(tm.hint || '') + '" onclick="applyHuntTemplate(\'' + escJs(k) + '\', \'' + escJs(tm.hint || '') + '\')">' + escapeHtml(tm.label || k) + '</span>';
+        }).join(' ');
+    }).catch(function() {});
+}
+
+function applyHuntTemplate(key, hint) {
+    var hyp = document.getElementById('huntHypothesis');
+    var tac = document.getElementById('huntTactic');
+    if (hyp) hyp.value = hint || '';
+    if (tac) tac.value = key;
+}
+
+function loadHuntStats() {
+    var el = document.getElementById('huntStats');
+    if (!el) return;
+    fetch('/api/hunt/stats').then(function(r) { return r.json(); }).then(function(s) {
+        if (!s || typeof s !== 'object') return;
+        el.textContent = '📊 ' + (s.total_campaigns || 0) + ' | ✅ ' + (s.completed || 0) + ' | ⏳ ' + (s.running || 0) + ' | 🎯 ' + (s.total_matches || 0);
+    }).catch(function() {});
+}
+
+function loadHuntCampaigns() {
+    var el = document.getElementById('huntCampaigns');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> ' + t('ui.loading') + '</div>';
+    fetch('/api/hunt/campaigns').then(function(r) { return r.json(); }).then(function(list) {
+        if (!list || !list.length) {
+            el.innerHTML = '<div class="text-center text-muted py-3">Chưa có chiến dịch nào.</div>';
+            return;
+        }
+        el.innerHTML = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr>' +
+            '<th>ID</th><th>Giả thuyết</th><th>Tactic</th><th data-i18n="ui.status">Trạng thái</th><th>Kết quả</th><th data-i18n="dash.time">Thời gian</th><th></th></tr></thead><tbody>' +
+            list.slice().reverse().map(function(c) {
+                var st = c.status === 'completed' ? '<span class="badge bg-success">completed</span>' : (c.status === 'running' ? '<span class="badge bg-warning text-dark">running</span>' : '<span class="badge bg-secondary">' + escapeHtml(c.status || '?') + '</span>');
+                return '<tr>' +
+                    '<td class="text-muted">' + escapeHtml(String(c.id).substring(0, 8)) + '</td>' +
+                    '<td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(c.hypothesis) + '">' + escapeHtml(c.hypothesis) + '</td>' +
+                    '<td>' + escapeHtml(c.tactic || '-') + '</td>' +
+                    '<td>' + st + '</td>' +
+                    '<td>' + (c.match_count || 0) + '</td>' +
+                    '<td class="text-muted">' + escapeHtml(c.created_at || '') + '</td>' +
+                    '<td><button class="btn btn-xs btn-outline-info py-0 px-1" style="font-size:9px;" onclick="showHuntCampaign(\'' + escJs(String(c.id).substring(0, 8)) + '\')">Xem</button></td>' +
+                    '</tr>';
+            }).join('') + '</tbody></table></div>';
+    }).catch(function() {
+        el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.connErr') + '</div>';
+    });
+}
+
+function showHuntCampaign(shortId) {
+    var el = document.getElementById('huntResults');
+    var campaignEl = document.getElementById('huntCampaignId');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> ' + t('ui.loading') + '</div>';
+    if (huntPollInterval) { clearInterval(huntPollInterval); huntPollInterval = null; }
+    var fullId = shortId;
+    fetch('/api/hunt/campaigns').then(function(r) { return r.json(); }).then(function(list) {
+        var hit = (list || []).filter(function(c) { return String(c.id).startsWith(shortId); });
+        if (hit.length === 1) fullId = hit[0].id;
+        return fetch('/api/hunt/result/' + encodeURIComponent(fullId)).then(function(r) { return r.json(); });
+    }).then(function(data) {
+        if (!data || data.error) { el.innerHTML = '<div class="text-center text-muted py-3">❌ ' + (data ? data.error : 'Not found') + '</div>'; return; }
+        campaignEl.textContent = 'Campaign: ' + data.id + ' | Matches: ' + data.match_count + ' | Status: ' + data.status;
+        renderHuntResults(data);
+    }).catch(function() {
+        el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.connErr') + '</div>';
+    });
 }
 
 // ===== v3.7.0: INCIDENT INVESTIGATION WORKSPACE =====
