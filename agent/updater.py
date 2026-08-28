@@ -321,25 +321,93 @@ def download_exe(version, host=None, port=None):
     return None
 
 
-def apply_update(new_exe_path):
-    """Replace Agent EXE and restart."""
+def apply_update(new_exe_path, version=None):
+    """Replace Agent EXE and restart.
+    v5.0.4 FIX: (a) writes agent_version.txt next to the exe - the updater reads
+    INSTALL_DIR\\agent_version.txt to learn the local version; when that file is
+    missing (old installs / dist without the txt) the version reads as 0.0.0 and
+    the server keeps offering updates -> endless download+apply loop that raced
+    the running exe and produced 'Failed to extract' popups + 'Access is denied'
+    on the .bak. (b) verifies the copied file's hash before launching so a
+    partial copy can never boot a corrupt agent. (c) backup cleanup is best-effort
+    and never aborts the update."""
+    import hashlib as _hashlib
+    import shutil as _sh
     current = _agent_exe()
     backup = current + ".bak"
+    tmp_new = current + ".new"
+    new_ver = str(version or "").strip() or "unknown"
+
+    def _sha256(path):
+        try:
+            h = _hashlib.sha256()
+            with open(path, "rb") as f:
+                for c in iter(lambda: f.read(65536), b""):
+                    h.update(c)
+            return h.hexdigest()
+        except Exception:
+            return None
+
+    src_hash = _sha256(new_exe_path)
     try:
+        # stop the agent BEFORE touching the exe (the watchdog also restarts it,
+        # so keep a short wait loop to let the old process release file handles)
         kill_agent()
-        if os.path.exists(current):
-            shutil.move(current, backup)
-        shutil.copy(new_exe_path, current)
+        time.sleep(1)
+        # stage the new exe under a temp name first
+        if os.path.exists(tmp_new):
+            try:
+                os.remove(tmp_new)
+            except Exception:
+                pass
+        _sh.copy2(new_exe_path, tmp_new)
+        if src_hash and _sha256(tmp_new) != src_hash:
+            _log("ERROR: copied EXE hash mismatch - update aborted (partial copy?)")
+            try:
+                os.remove(tmp_new)
+            except Exception:
+                pass
+            start_agent()
+            return False
+        # swap current -> backup (best-effort), then install the verified file
+        try:
+            if os.path.exists(backup):
+                os.remove(backup)
+        except Exception:
+            pass
+        try:
+            if os.path.exists(current):
+                _sh.move(current, backup)
+        except Exception as e:
+            _log(f"WARN: could not back up current exe: {e}")
+        _sh.move(tmp_new, current)
+        # v5.0.4 (root cause fix): write the version file so future checks
+        # converge and the server stops offering this exact version.
+        try:
+            vp = os.path.join(INSTALL_DIR, "agent_version.txt")
+            with open(vp, "w") as f:
+                f.write(new_ver)
+        except Exception as e:
+            _log(f"WARN: could not write agent_version.txt: {e}")
         _log("New EXE copied")
-        if os.path.exists(backup):
-            os.remove(backup)
+        # backup cleanup is best-effort (a lingering process may lock the .bak)
+        try:
+            if os.path.exists(backup):
+                os.remove(backup)
+        except Exception as e:
+            _log(f"WARN: backup cleanup deferred: {e}")
         start_agent()
         _log("Update applied")
         return True
     except Exception as e:
         _log(f"Apply failed: {e}")
-        if os.path.exists(backup):
-            shutil.move(backup, current)
+        # restore the previous exe if the new one never made it
+        if not os.path.exists(current) and os.path.exists(backup):
+            try:
+                _sh.move(backup, current)
+                _log("Restored previous agent exe")
+            except Exception as e2:
+                _log(f"Restore failed: {e2}")
         start_agent()
         return False
 
@@ -376,7 +444,7 @@ def check_and_update(host=None, port=None):
             _log(f"Update available: {current} -> {new_ver}")
             new_exe = download_exe(new_ver, host, port)
             if new_exe:
-                apply_update(new_exe)
+                apply_update(new_exe, version=new_ver)
         else:
             _log(f"Up to date ({current})")
     except Exception as e:

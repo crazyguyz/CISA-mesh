@@ -140,6 +140,13 @@ try {
     try { Write-INFO "Build time: $([math]::Round(((Get-Date)-$s).TotalSeconds,0))s" } catch { Write-INFO "Build done" }
 } finally { Pop-Location }
 
+# STEP 6.5: Ship agent_version.txt next to the EXEs - the updater reads
+# INSTALL_DIR\agent_version.txt to know the local version. Without it the version
+# reads as 0.0.0 and the server keeps offering updates forever (endless loop that
+# produced 'Failed to extract' popups on workstations). v5.0.4 FIX.
+Copy-Item "$AGENT_DIR\agent_version.txt" "$DIST_DIR\agent_version.txt" -Force
+Write-OK "dist\agent_version.txt -> $Version (update-loop fix)"
+
 # STEP 7: Restart server (only with -RestartServer flag)
 if ($RestartServer) {
     Write-STEP "STEP 7: Restarting server..."
