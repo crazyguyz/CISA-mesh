@@ -2374,6 +2374,13 @@ class DatabaseManager:
         if not events:
             return
         with self.write_lock:
+            # v5.0.3 (LOW-9 parity): sanitize agent-supplied hostname on the batch
+            # path too (this is the high-throughput path event_worker actually uses)
+            try:
+                from agent_auth import sanitize_hostname
+                _batch_hn = {id(e): sanitize_hostname(e.get("hostname", "")) for e in events}
+            except Exception:
+                _batch_hn = {}
             c = self.conn.cursor()
             c.execute("BEGIN IMMEDIATE")
             for e in events:
@@ -2382,7 +2389,7 @@ class DatabaseManager:
                         "INSERT OR IGNORE INTO events (machine_id,hostname,type,subtype,event_id,"
                         "event_type,source,computer,user,category,time,description,raw_data,dedup_key) "
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (e.get("machine_id",""), e.get("hostname",""), e.get("type",""),
+                        (e.get("machine_id",""), _batch_hn.get(id(e), e.get("hostname","")), e.get("type",""),
                          e.get("subtype",""), str(e.get("event_id","")), e.get("event_type",""),
                          e.get("source",""), e.get("computer",""), e.get("user",""),
                          str(e.get("category","")), self._normalize_time(e.get("time","")), e.get("description",""),
@@ -2404,6 +2411,12 @@ class DatabaseManager:
         if not events:
             return
         with self.write_lock:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _batch_hn = {id(e): sanitize_hostname(e.get("hostname", "")) for e in events}
+            except Exception:
+                _batch_hn = {}
             c = self.conn.cursor()
             c.execute("BEGIN IMMEDIATE")
             for e in events:
@@ -2424,7 +2437,7 @@ class DatabaseManager:
                     dns_status, dns_results,
                     timestamp, raw_data
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
-                    e.get("machine_id", ""), e.get("hostname", ""), e.get("type", ""),
+                    e.get("machine_id", ""), _batch_hn.get(id(e), e.get("hostname", "")), e.get("type", ""),
                     e.get("sysmon_event_id", 0), e.get("process_name", ""),
                     e.get("process_path", ""), e.get("command_line", ""),
                     str(e.get("pid", "")), e.get("parent_process", ""),
@@ -2456,6 +2469,12 @@ class DatabaseManager:
         if not events:
             return
         with self.write_lock:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _batch_hn = {id(e): sanitize_hostname(e.get("hostname", "")) for e in events}
+            except Exception:
+                _batch_hn = {}
             c = self.conn.cursor()
             c.execute("BEGIN IMMEDIATE")
             for e in events:
@@ -2464,7 +2483,7 @@ class DatabaseManager:
                     "protocol,size,flags,state,timestamp,raw_data,src_mac,dst_mac,ip_ttl,ip_proto,"
                     "tcp_flags,payload_hex,payload_size,protocol_app,dns_query,http_host,payload_dump) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (e.get("machine_id",""), e.get("hostname",""),
+                    (e.get("machine_id",""), _batch_hn.get(id(e), e.get("hostname","")),
                      e.get("src_ip",""), e.get("dst_ip",""),
                      e.get("src_port",0), e.get("dst_port",0),
                      e.get("protocol",""), e.get("size",0),
@@ -2483,13 +2502,19 @@ class DatabaseManager:
         if not events:
             return
         with self.write_lock:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _batch_hn = {id(e): sanitize_hostname(e.get("hostname", "")) for e in events}
+            except Exception:
+                _batch_hn = {}
             c = self.conn.cursor()
             c.execute("BEGIN IMMEDIATE")
             for e in events:
                 c.execute(
                     "INSERT INTO fim_events (machine_id,hostname,action,path,time) "
                     "VALUES (?,?,?,?,?)",
-                    (e.get("machine_id",""), e.get("hostname",""),
+                    (e.get("machine_id",""), _batch_hn.get(id(e), e.get("hostname","")),
                      e.get("action",""), e.get("path",""), e.get("time","")))
             self.conn.commit()
 

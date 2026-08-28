@@ -1088,12 +1088,18 @@ class PostgresDatabase:
         if not self._connected or not events:
             return
         try:
+            # v5.0.3 (LOW-9 parity): sanitize agent-supplied hostname on the batch path
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = lambda e: sanitize_hostname(e.get("hostname", ""))
+            except Exception:
+                _hn = lambda e: e.get("hostname", "")
             sql = """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
                        source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
                        ON CONFLICT (dedup_key) DO NOTHING"""
             params = [(
-                e.get("machine_id", ""), e.get("hostname", ""),
+                e.get("machine_id", ""), _hn(e),
                 e.get("type", ""), e.get("subtype", ""),
                 e.get("event_id", ""), e.get("event_type", ""),
                 e.get("source", ""), e.get("computer", ""),
@@ -1115,6 +1121,12 @@ class PostgresDatabase:
         if not self._connected or not events:
             return
         try:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = lambda e: sanitize_hostname(e.get("hostname", ""))
+            except Exception:
+                _hn = lambda e: e.get("hostname", "")
             sql = """INSERT INTO sysmon_events (
                        machine_id, hostname, event_type, sysmon_event_id,
                        process_name, process_path, command_line, pid,
@@ -1133,7 +1145,7 @@ class PostgresDatabase:
                        timestamp, raw_data
                      ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
             params = [(
-                e.get("machine_id", ""), e.get("hostname", ""),
+                e.get("machine_id", ""), _hn(e),
                 e.get("type", ""), e.get("sysmon_event_id", 0),
                 e.get("process_name", ""), e.get("process_path", ""),
                 e.get("command_line", ""), str(e.get("pid", "")),
@@ -1172,6 +1184,12 @@ class PostgresDatabase:
         if not self._connected or not events:
             return
         try:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = lambda e: sanitize_hostname(e.get("hostname", ""))
+            except Exception:
+                _hn = lambda e: e.get("hostname", "")
             sql = """INSERT INTO network_traffic (machine_id, hostname, src_ip, dst_ip, src_port, dst_port,
                        protocol, size, flags, state, timestamp, raw_data, received_at,
                        src_mac, dst_mac, ip_ttl, ip_proto, tcp_flags, payload_hex,
@@ -1179,7 +1197,7 @@ class PostgresDatabase:
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),
                                %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
             params = [(
-                e.get("machine_id", ""), e.get("hostname", ""),
+                e.get("machine_id", ""), _hn(e),
                 e.get("src_ip", ""), e.get("dst_ip", ""),
                 e.get("src_port", 0), e.get("dst_port", 0),
                 e.get("protocol", ""), e.get("size", 0),
@@ -1206,9 +1224,15 @@ class PostgresDatabase:
         if not self._connected or not events:
             return
         try:
+            # v5.0.3 (LOW-9 parity): sanitize agent hostnames on batch paths
+            try:
+                from agent_auth import sanitize_hostname
+                _hn = lambda e: sanitize_hostname(e.get("hostname", ""))
+            except Exception:
+                _hn = lambda e: e.get("hostname", "")
             sql = "INSERT INTO fim_events (machine_id, hostname, action, path, time) VALUES (%s,%s,%s,%s,%s)"
             params = [(
-                e.get("machine_id", ""), e.get("hostname", ""),
+                e.get("machine_id", ""), _hn(e),
                 e.get("action", ""), e.get("path", ""), e.get("time", "")
             ) for e in events]
             self._executemany(sql, params)
