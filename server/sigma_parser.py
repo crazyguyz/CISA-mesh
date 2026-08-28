@@ -48,8 +48,12 @@ LOGSOURCE_MAP = {
 FIELD_MAP = {
     "EventID": "event_id",
     "CommandLine": "command_line",
-    "Image": "process_name",
-    "ParentImage": "parent_process",
+    # v5.0.4 (HIGH-3): Image is the FULL path (Sigma semantics + both collectors
+    # emit process_path); the old process_name (basename) broke startswith/endswith.
+    "Image": "process_path",
+    "ImagePath": "process_path",
+    "TargetImage": "process_path",
+    "ParentImage": "parent_path",
     "TargetFilename": "target_filename",
     "DestinationIp": "dest_ip",
     "DestinationPort": "dest_port",
@@ -62,6 +66,22 @@ FIELD_MAP = {
     "User": "username",
     "ProcessId": "process_id",
     "ParentProcessId": "parent_pid",
+    # v5.0.4 (HIGH-3): extra Sigma fields -> collector/decoder keys
+    "ParentCommandLine": "parent_command_line",
+    "IntegrityLevel": "integrity_level",
+    "OriginalFileName": "original_file_name",
+    "ProviderName": "source",
+    "GrantedAccess": "granted_access",
+    "NewValue": "registry_value",
+    "ScriptBlockText": "scriptblock_text",
+    "ShareName": "share_name",
+    "ObjectName": "object_name",
+    "PipeName": "pipe_name",
+    "ServiceName": "service_name",
+    "LogonType": "logon_type",
+    "AccessMask": "access_type",
+    "FileName": "file_name",
+    "DestinationHostname": "destination_hostname",
 }
 
 # Map Sigma condition modifiers to GIAM-SAT condition types
@@ -76,15 +96,43 @@ CONDITION_MODIFIERS = {
 # v4.11 (CRITICAL-2): alias map for Sigma field names that are not in FIELD_MAP
 # (lowercased fallback -> decoder key), applied when the parser emits a raw
 # field name instead of a FIELD_MAP value.
+# v5.0.4 (HIGH-3): expanded with the fields the collectors actually emit
+# (process_path, parent_command_line, integrity_level, file_path, dns_query...)
+# so ~1.900 converted Sigma rules target real event data instead of dead keys.
 SIGMA_FIELD_MAP = {
     "servicefilename": "service_file",
     "commandline": "command_line",
     "parentprocessid": "parent_pid",
-    "callertprocessname": "caller_process_name",
+    "callerprocessname": "caller_process_name",  # v5.0.4: fixed typo (was callertprocessname)
     "newprocessname": "process_name",
     "subjectusername": "username",
     "targetusername": "username",
     "user.name": "username",
+    # --- process creation / images ---
+    "image": "process_path",
+    "imagepath": "process_path",
+    "targetimage": "process_path",
+    "parentimage": "parent_process",
+    "parentcommandline": "parent_command_line",
+    "integritylevel": "integrity_level",
+    "originalfilename": "original_file_name",
+    # --- files / registry / network ---
+    "targetfilename": "file_path",
+    "filename": "file_name",
+    "queryname": "dns_query",
+    "providername": "source",
+    "grantedaccess": "granted_access",
+    "newvalue": "registry_value",
+    "scriptblocktext": "scriptblock_text",
+    "sharename": "share_name",
+    "objectname": "object_name",
+    "pipename": "pipe_name",
+    "servicename": "service_name",
+    "logontype": "logon_type",
+    "accessmask": "access_type",
+    "destinationhostname": "destination_hostname",
+    "sourcenetwork": "source_ip",
+    "destinationnetwork": "dst_ip",
 }
 
 
@@ -141,10 +189,13 @@ def _selection_to_conditions(sel_dict):
         return out
     for key, val in sel_dict.items():
         field_name = key
-        modifier = "description_contains"
+        # v5.0.4 (HIGH-3): keep the RAW Sigma modifier (contains/startswith/
+        # endswith/re/base64) - the old code flattened every modifier into
+        # description_contains, so regex/prefix rules lost their semantics.
+        modifier = "contains"
         if "|" in key:
             field_name, mod = key.split("|", 1)
-            modifier = CONDITION_MODIFIERS.get(mod, "description_contains")
+            modifier = mod if mod in ("contains", "startswith", "endswith", "re", "base64", "all") else "contains"
         if field_name == "EventID":
             continue  # promoted separately
         values = []
@@ -410,11 +461,11 @@ class SigmaParser:
 
             if values:
                 # Map field to correct condition type.
-                # v4.11 (CRITICAL-2): any real (non-description) field selection
-                # becomes a field_contains condition on the structured field the
-                # decoder populates - the old code flattened everything into
-                # description_contains, which matched formatted text (or nothing).
-                actual_field = cond.get("modifier", "description_contains")
+                # v5.0.4 (HIGH-3): real (non-description) field selections keep
+                # their modifier semantics instead of flattening to
+                # description_contains:  contains -> field_contains,
+                # re/startswith/endswith -> field_regex (anchored where needed).
+                actual_field = cond.get("modifier", "contains")
                 sigma_field = str(cond.get("field", "") or "").lower()
                 if sigma_field in ("", "description", "message", "none"):
                     gi_cond["description_contains"] = values
@@ -422,7 +473,17 @@ class SigmaParser:
                     gi_cond["path_contains"] = values
                 else:
                     mapped_field = SIGMA_FIELD_MAP.get(sigma_field) or sigma_field
-                    gi_cond["field_contains"] = {mapped_field: values}
+                    mod = actual_field
+                    if mod == "re":
+                        gi_cond["field_regex"] = {mapped_field: "(?:" + "|".join(str(v) for v in values) + ")"}
+                    elif mod == "startswith":
+                        _alt = "|".join(re.escape(str(v)) for v in values)
+                        gi_cond["field_regex"] = {mapped_field: "^(?:" + _alt + ")"}
+                    elif mod == "endswith":
+                        _alt = "|".join(re.escape(str(v)) for v in values)
+                        gi_cond["field_regex"] = {mapped_field: "(?:" + _alt + ")$"}
+                    else:
+                        gi_cond["field_contains"] = {mapped_field: values}
 
             giamsat_rule["conditions"].append(gi_cond)
 

@@ -103,7 +103,12 @@ EVENT_STRINGINSERTS_MAP = {
         # [7]CreatorProcessId(parent PID) [8]CommandLine
         # Old map had command_line:9 (out of range -> never populated) and
         # parent_pid:8 (actually the command line).
+        # v5.0.4 (HIGH-3): process_path = the FULL NewProcessName (insert 5) so
+        # the ~410 Sigma Image/process_path rules match 4688 events too (Sysmon 1
+        # already emits process_path; the Security path previously only had the
+        # basename under process_name).
         'process_name': 5,
+        'process_path': 5,
         'command_line': 8,
         'parent_pid': 7,
         'token_elevation': 6,
@@ -293,6 +298,14 @@ class EnhancedEventCollector(threading.Thread):
         # v4.6.4: the dedicated SysmonCollector reads the same channel with RICHER
         # fields - don't read it here too (double-send); agent_core passes False.
         self.collect_sysmon = collect_sysmon
+        # v5.0.4 (HIGH-3): YAML decoder enriches events the StringInserts parser
+        # does not cover (4104 ScriptBlock, 7045, non-insert channels).
+        self.decoder = None
+        try:
+            from event_decoder import EventDecoder
+            self.decoder = EventDecoder()
+        except Exception:
+            self.decoder = None
         self._init_logs()
 
     def _init_logs(self):
@@ -499,6 +512,25 @@ class EnhancedEventCollector(threading.Thread):
                 # Raw data from StringInserts
                 if string_inserts:
                     event_data["raw_data"] = " | ".join(str(s) for s in string_inserts)
+
+                # v5.0.4 (HIGH-3): enrich events the StringInserts parser missed -
+                # the YAML decoder regex-parses the description and fills
+                # parsed_fields (scriptblock_text, registry_key, service fields...)
+                # which the correlation matcher reads directly.
+                try:
+                    if not parsed_fields and self.decoder is not None and event_data.get("description"):
+                        _ann = self.decoder.decode_and_annotate(event_data)
+                        _pf = _ann.get("parsed_fields") or {}
+                        if _pf:
+                            parsed_fields = _pf
+                            event_data.update(_pf)
+                except Exception:
+                    pass
+                # v5.0.4 (HIGH-3): 4104 ScriptBlock - the script text lives in the
+                # message; expose it as scriptblock_text so the 226 Sigma
+                # ScriptBlock rules can match (they previously had no field).
+                if event_id == "4104" and not event_data.get("scriptblock_text"):
+                    event_data["scriptblock_text"] = event_data.get("description", "")
 
                 # v4.6.5: drop the agent's own process-creation noise (its routine
                 # netstat/powershell/conhost children) + configured processes.

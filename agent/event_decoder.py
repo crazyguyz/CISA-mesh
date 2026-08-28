@@ -214,7 +214,9 @@ class EventDecoder:
         titles = {
             "4624": lambda p: f"Logon: {p.get('username','?')} from {p.get('source_ip','?')} (Type {p.get('logon_type','?')})",
             "4625": lambda p: f"Failed logon: {p.get('username','?')} from {p.get('source_ip','?')} ({p.get('failure_reason','?')})",
-            "4688": lambda p: f"Process: {p.get('process_name','?')} by {p.get('username','?')}",
+            # v5.0.4 (HIGH-3): include CommandLine so process-creation review and
+            # rule triage show the actual command instead of just the image name.
+            "4688": lambda p: f"Process: {p.get('process_name','?')} by {p.get('username','?')}" + (f"  Cmd: {p.get('command_line','')[:120]}" if p.get('command_line') else ""),
             "4672": lambda p: f"Privileged logon: {p.get('username','?')} ({p.get('privileges','?')})",
             "4769": lambda p: f"Kerberos TGS: {p.get('username','?')} → {p.get('service_name','?')}",
             "4728": lambda p: f"Group add: {p.get('username','?')} → {p.get('group_name','?')}",

@@ -55,6 +55,12 @@ if HAS_YAML:
     except Exception:
         FIELD_ALIASES = {}
 
+# v5.0.4 (HIGH-3): the sigma_parser emits LOWERCASE field keys (imagepath,
+# integritylevel, parentcommandline, targetfilename...) but field_aliases.yaml
+# uses PascalCase keys - a lowercase condition key never resolved, leaving
+# hundreds of field_contains rules dead. Build a lowercase lookup too.
+FIELD_ALIASES_LOWER = {str(k).lower(): v for k, v in FIELD_ALIASES.items()}
+
 PROCESS_PARENT_WHITELIST = {
     "powershell.exe": {"explorer.exe", "svchost.exe", "services.exe", "msmpeng.exe", "sppsvc.exe",
                         "taskeng.exe", "ommsync.exe", "onedrive.exe", "teams.exe", "outlook.exe",
@@ -630,6 +636,16 @@ class CorrelationEngine:
                 if v is None:
                     pf = event.get("parsed_fields") or {}
                     v = pf.get(alias)
+            # v5.0.4 (HIGH-3): the converted rules store LOWERCASE field keys
+            # (imagepath, integritylevel, parentcommandline, targetfilename...) -
+            # resolve them against the lowercase alias map as well.
+            if v is None:
+                alias = FIELD_ALIASES_LOWER.get(str(field_name).lower())
+                if alias and alias != field_name:
+                    v = event.get(alias)
+                    if v is None:
+                        pf = event.get("parsed_fields") or {}
+                        v = pf.get(alias)
             return "" if v is None else v
 
         field_contains = condition.get("field_contains")

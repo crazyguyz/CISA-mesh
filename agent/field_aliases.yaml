@@ -48,6 +48,12 @@ aliases:
   SubjectDomain: subject_domain
   AdminUsername: admin_username
   LogonType: logon_type
+  # v5.0.4 (HIGH-3): extra Sigma keys the collectors actually produce
+  ProviderName: source
+  GrantedAccess: granted_access
+  NewValue: registry_value
+  QueryName: dns_query
+  DestinationHostname: destination_hostname
   # Misc
   Hashes: hashes
   Details: details
