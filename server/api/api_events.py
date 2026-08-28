@@ -166,19 +166,51 @@ def register(app, core):
             since_hours=since_hours,
             event_type="memory_scan_event"
         )
+        # v5.0.4 FIX: alert_type/module_name/module_path/signer are NOT columns of
+        # sysmon_events - they only live inside raw_data JSON. Without merging them
+        # the memory dashboard cannot categorize alerts or show the module path
+        # (the exact complaint: 'no file path when clicking' + wrong labels).
+        import json as _json
+        for r in rows:
+            try:
+                rd = r.get("raw_data")
+                if isinstance(rd, str):
+                    rd = _json.loads(rd)
+                if isinstance(rd, dict):
+                    for k in ("alert_type", "module_name", "module_path", "signer",
+                              "path", "command_line", "signed"):
+                        if not r.get(k):
+                            r[k] = rd.get(k)
+            except Exception:
+                pass
         # v5.0.4 (FP triage, server-side): the agent's memory scanner flags ANY
         # signed module loaded from a non-System32 path in a system process as
         # 'system_process_injection' HIGH - including legitimate Microsoft DLLs
         # (drivers/, Microsoft.NET/, Common Files/...). Reclassify Microsoft-signed
         # modules to LOW so the dashboard stops crying wolf about Windows itself.
+        # Also reclassify 'spoofed_process_name' alerts whose process lives in a
+        # legitimate install path (C:\\Windows\\*, C:\\Program Files*) - a real
+        # spoofing binary does not run from those locations.
         try:
+            _lower_path = lambda s: str(s or "").lower()
             for r in rows:
-                if r.get("alert_type") == "system_process_injection" and r.get("signed"):
-                    signer = str(r.get("signer") or "")
-                    mod = str(r.get("module_path") or "")
-                    if "Microsoft" in signer or mod.lower().startswith("c:\\windows") or "\\windows\\" in mod.lower():
+                at = r.get("alert_type")
+                if at == "system_process_injection":
+                    sv = r.get("signed")
+                    signed_bool = sv in (True, 1, "1", "true", "True", "TRUE")
+                    if signed_bool:
+                        signer = str(r.get("signer") or "")
+                        mod = _lower_path(r.get("module_path"))
+                        if "Microsoft" in signer or mod.startswith("c:\\windows") or "\\windows\\" in mod:
+                            r["fp_likely"] = True
+                            r["fp_reason"] = "Signed Microsoft/Windows module - legitimate (scanner over-alerted)"
+                            if (r.get("severity") or "HIGH") == "HIGH":
+                                r["severity"] = "LOW"
+                elif at == "spoofed_process_name":
+                    p = _lower_path(r.get("path"))
+                    if p.startswith("c:\\windows") or p.startswith("c:\\program files"):
                         r["fp_likely"] = True
-                        r["fp_reason"] = "Signed Microsoft/Windows module - legitimate (scanner over-alerted)"
+                        r["fp_reason"] = "Process runs from a legitimate Windows/vendor path - unlikely to be spoofed"
                         if (r.get("severity") or "HIGH") == "HIGH":
                             r["severity"] = "LOW"
         except Exception:

@@ -802,7 +802,7 @@ function loadMemory() {
             if (e.fp_likely) detail += '<br><span class="badge bg-success" style="font-size:8px;">✅ ' + escapeHtml(e.fp_reason || 'Likely false positive') + '</span>';
 
             const rowColor = sev === 'CRITICAL' ? 'background:#1a0000!important;' : sev === 'HIGH' ? 'background:#1a1000!important;' : '';
-            html += '<tr data-memory-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' style="' + rowColor + 'cursor:pointer;"><td style="font-size:10px;color:#666;white-space:nowrap;">' + ts + '</td>';
+            html += '<tr data-memory-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' onclick="showMemDetail(this)" style="' + rowColor + 'cursor:pointer;"><td style="font-size:10px;color:#666;white-space:nowrap;">' + ts + '</td>';
             html += '<td><span style="font-size:10px;">' + typeLabel + '</span></td>';
             html += '<td>' + proc + '</td>';
             html += '<td style="font-size:11px;">' + detail + '</td>';
@@ -930,7 +930,7 @@ function buildGroupedByMachine(data, type, title) {
         if (type === 'threats') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
+                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' onclick="showThreatDetail(this)" style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
@@ -1787,6 +1787,14 @@ const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
 function showDetailModal(title, body) { document.getElementById('detailModalTitle').innerHTML = title; document.getElementById('detailModalBody').innerHTML = body; detailModal.show(); }
 
 // ===== WIRESHARK DETAIL =====
+function showThreatDetail(row) {
+    // v5.0.4: explicit onclick (the expandable group container stops propagation
+    // so a document-level delegation would never fire for threat rows)
+    try { showAlertRowDetail(JSON.parse(row.getAttribute('data-threat-row'))); } catch (e) {}
+}
+function showMemDetail(row) {
+    try { showAlertRowDetail(JSON.parse(row.getAttribute('data-memory-row')), 'Memory Alert'); } catch (e) {}
+}
 function showAlertRowDetail(data, titlePrefix) {
     // v5.0.4: rich detail modal - rule/alert info + full description + parsed raw_data
     let rows = '';
