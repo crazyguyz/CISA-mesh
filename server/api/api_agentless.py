@@ -80,6 +80,15 @@ def register(app, core):
             sd["ssh_password"] = "***" if sd.get("ssh_password") else ""
             sd["ssh_user"] = sd.get("ssh_user", "")
             sd["snmp_community"] = "***" if sd.get("snmp_community") not in ("", "public") else sd.get("snmp_community", "public")
+            # v5.0.4: merge live monitor state (online/offline + last seen)
+            try:
+                st = core.agentless._device_state.get(d.get("name")) or {}
+                sd["status"] = st.get("state") or sd.get("status") or "unknown"
+                sd["last_seen"] = st.get("last_seen") or sd.get("last_seen") or ""
+                sd["last_ok"] = st.get("last_ok") or sd.get("last_ok") or ""
+                sd["last_fail"] = st.get("last_fail") or sd.get("last_fail") or ""
+            except Exception:
+                pass
             sanitized.append(sd)
         return jsonify(sanitized)
 

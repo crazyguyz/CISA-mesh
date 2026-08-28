@@ -13,6 +13,8 @@ build/
 .user_key
 users.json
 users.json.enc
+# GeoIP mmdb databases (140MB) - download with tools/setup_geolite2.ps1
+server/data/*.mmdb
 
 # Databases
 *.db

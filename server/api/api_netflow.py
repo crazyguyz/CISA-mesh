@@ -43,6 +43,14 @@ def register(app, core):
         since_hours = request.args.get("since_hours", None, type=int)
         try:
             flows = core.db.get_netflow_flows(limit=min(limit, 2000), since_hours=since_hours)
+            # v5.0.4: whois-style destination organization for each flow
+            try:
+                from geoip_lookup import org_label
+                for f in flows:
+                    if f.get("dst_ip"):
+                        f["dst_org"] = org_label(f["dst_ip"])
+            except Exception:
+                pass
             return jsonify({"flows": flows, "total": len(flows)})
         except Exception as e:
             return jsonify({"error": str(e)[:300]}), 500
@@ -69,12 +77,19 @@ def register(app, core):
                     continue  # v4.6.3: internal destinations are not C2 beacons
                 times = sorted(t for t in times if t)
                 if len(times) >= min_flows:
-                    beacons.append({
+                    beacon = {
                         "src_ip": src, "dst_ip": dst, "dst_port": dport,
                         "protocol": proto, "flow_count": len(times),
                         "first": times[0], "last": times[-1],
                         "span_seconds": int(times[-1] - times[0]) if len(times) > 1 else 0,
-                    })
+                    }
+                    # v5.0.4: destination organization (server-side)
+                    try:
+                        from geoip_lookup import org_label
+                        beacon["dst_org"] = org_label(dst)
+                    except Exception:
+                        pass
+                    beacons.append(beacon)
             beacons.sort(key=lambda b: b["flow_count"], reverse=True)
             return jsonify({"beacons": beacons[:100], "total": len(beacons), "since_hours": since_hours})
         except Exception as e:

@@ -426,7 +426,7 @@ function loadNetflow() {
     const statsRow = document.getElementById('netflowStatsRow');
     const beaconBody = document.getElementById('netflowBeaconBody');
     const updatedEl = document.getElementById('netflowUpdated');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> ' + t('ui.loading') + '</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-success"></div> ' + t('ui.loading') + '</td></tr>';
 
     // Stats
     fetch('/api/netflow/stats').then(r => r.json()).then(st => {
@@ -449,7 +449,7 @@ function loadNetflow() {
         if (!arr.length) { beaconBody.innerHTML = '<div class="text-muted">' + t('netflow.noBeacon') + '</div>'; return; }
         beaconBody.innerHTML = arr.map(b => {
             const interval = b.span_seconds && b.flow_count > 1 ? Math.round(b.span_seconds / (b.flow_count - 1)) : '-';
-            return `<div style="background:#2a0e0e;border-left:4px solid #ff5555;padding:8px 12px;margin-bottom:5px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center flex-wrap"><span><span class="badge bg-danger">⚠ C2?</span> <strong style="color:#ffb3b3;">${escapeHtml(b.src_ip||'?')}</strong> → <strong style="color:#ffb3b3;">${escapeHtml(b.dst_ip||'?')}</strong> <span class="text-muted">:${escapeHtml(b.dst_port||'-')} ${protoName(b.protocol)}</span></span><small class="text-muted">${b.flow_count||0} flows · ${t('ssh.period')} ~${interval}s · ${b.span_seconds||0}s</small></div></div>`;
+            return `<div style="background:#2a0e0e;border-left:4px solid #ff5555;padding:8px 12px;margin-bottom:5px;border-radius:4px;"><div class="d-flex justify-content-between align-items-center flex-wrap"><span><span class="badge bg-danger">⚠ C2?</span> <strong style="color:#ffb3b3;">${escapeHtml(b.src_ip||'?')}</strong> → <strong style="color:#ffb3b3;">${escapeHtml(b.dst_ip||'?')}</strong> <span class="text-muted">:${escapeHtml(b.dst_port||'-')} ${protoName(b.protocol)}</span> <span class="badge bg-dark text-info" style="font-size:9px;">${escapeHtml(b.dst_org||t('dash.orgUnknown'))}</span></span><small class="text-muted">${b.flow_count||0} flows · ${t('ssh.period')} ~${interval}s · ${b.span_seconds||0}s</small></div></div>`;
         }).join('');
     }).catch(() => {});
 
@@ -457,12 +457,12 @@ function loadNetflow() {
     fetch('/api/netflow?limit=200').then(r => r.json()).then(data => {
         const list = Array.isArray(data) ? data : (data.flows || []);
         if (tbody) {
-            if (!list.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">' + t('dash.noNetworkTraffic') + '</td></tr>'; }
+            if (!list.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">' + t('dash.noNetworkTraffic') + '</td></tr>'; }
             else {
                 tbody.innerHTML = list.map(e => {
                     const sp = e.src_port || '-', dp = e.dst_port || '-';
                     const proto = protoName(e.protocol);
-                    return `<tr style="font-family:monospace;font-size:11px;"><td style="white-space:nowrap;">${escapeHtml((e.received_at||'').substring(0,19))}</td><td>${escapeHtml(e.src_ip||'-')}</td><td>${escapeHtml(sp)}</td><td>${escapeHtml(e.dst_ip||'-')}</td><td>${escapeHtml(dp)}</td><td><span class="badge ${proto==='TCP'?'bg-info':proto==='UDP'?'bg-warning text-dark':'bg-secondary'}">${proto}</span></td><td>${fmtBytes(e.bytes||0)}</td><td>${e.packets||0}</td><td>${escapeHtml(e.exporter_ip||'-')}</td></tr>`;
+                    return `<tr style="font-family:monospace;font-size:11px;"><td style="white-space:nowrap;">${escapeHtml((e.received_at||'').substring(0,19))}</td><td>${escapeHtml(e.src_ip||'-')}</td><td>${escapeHtml(sp)}</td><td>${escapeHtml(e.dst_ip||'-')}</td><td style="color:#7cc8ff;">${escapeHtml(e.dst_org||t('dash.orgUnknown'))}</td><td>${escapeHtml(dp)}</td><td><span class="badge ${proto==='TCP'?'bg-info':proto==='UDP'?'bg-warning text-dark':'bg-secondary'}">${proto}</span></td><td>${fmtBytes(e.bytes||0)}</td><td>${e.packets||0}</td><td>${escapeHtml(e.exporter_ip||'-')}</td></tr>`;
                 }).join('');
             }
         }
@@ -476,7 +476,7 @@ function loadNetwork() {
         if (!data.length) { html += '<div class="text-center text-muted py-2">' + t('dash.noNetworkTraffic') + '</div>'; }
         else {
             html += '<h6 class="px-2 pt-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-diagram-3"></i> '+t('ui.networkTraffic')+'</h6>';
-            html += tableWrap([t('dash.time'),t('dash.machine'),t('dash.source'),t('dash.dest'),t('dash.protocol'),'Port','Size',t('dash.app')],
+            html += tableWrap([t('dash.time'),t('dash.machine'),t('dash.source'),t('dash.dest'),t('dash.orgShort'),t('dash.protocol'),'Port','Size',t('dash.app')],
                 data.map(e => {
                     const row = Object.assign({}, e, {type: 'network_traffic'});
                     if (e.raw_data) { try {
@@ -503,7 +503,7 @@ function loadNetwork() {
                     } else {
                         appBadge = '<span class="text-muted" style="font-size:10px;">-</span>';
                     }
-                    return `<tr data-row='${JSON.stringify(row).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displaySrc)}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayDst)}</td><td><span class="badge ${e.protocol==='TCP'?'bg-info':e.protocol==='UDP'?'bg-warning text-dark':'bg-secondary'}">${escapeHtml(e.protocol||'?')}</span></td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayPort)}</td><td>${escapeHtml(e.size||0)}</td><td>${appBadge}</td></tr>`})
+                    return `<tr data-row='${JSON.stringify(row).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.timestamp||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displaySrc)}</td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayDst)}</td><td style="color:#7cc8ff;font-size:10px;">${escapeHtml(e.dst_org||t('dash.orgUnknown'))}</td><td><span class="badge ${e.protocol==='TCP'?'bg-info':e.protocol==='UDP'?'bg-warning text-dark':'bg-secondary'}">${escapeHtml(e.protocol||'?')}</span></td><td style="font-family:monospace;font-size:10px;">${escapeHtml(displayPort)}</td><td>${escapeHtml(e.size||0)}</td><td>${appBadge}</td></tr>`})
             );
         }
         fetch('/api/inspection?limit=100').then(r2 => r2.json()).then(inspData => {
@@ -787,6 +787,8 @@ function loadMemory() {
 
             // Build detail with module info for system process injections
             let detail = escapeHtml(e.description || e.suspicion_reason || '');
+            // v5.0.4: show the full process path for name-spoofing alerts too
+            if (e.path && (e.path !== e.process_name)) detail += '<br><small style="color:#666;font-family:monospace;font-size:9px;">' + escapeHtml(e.path) + '</small>';
             if (e.alert_type === 'system_process_injection') {
                 if (e.module_name) detail += '<br><small style="color:#888;">Module: ' + escapeHtml(e.module_name) + '</small>';
                 if (e.module_path) detail += '<br><small style="color:#666;font-family:monospace;font-size:9px;">' + escapeHtml(e.module_path) + '</small>';
@@ -797,9 +799,10 @@ function loadMemory() {
                 }
             }
             if (e.pid) detail += '<br><small style="color:#555;font-size:9px;">PID:' + e.pid + '</small>';
+            if (e.fp_likely) detail += '<br><span class="badge bg-success" style="font-size:8px;">✅ ' + escapeHtml(e.fp_reason || 'Likely false positive') + '</span>';
 
             const rowColor = sev === 'CRITICAL' ? 'background:#1a0000!important;' : sev === 'HIGH' ? 'background:#1a1000!important;' : '';
-            html += '<tr style="' + rowColor + 'cursor:pointer;"><td style="font-size:10px;color:#666;white-space:nowrap;">' + ts + '</td>';
+            html += '<tr data-memory-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' style="' + rowColor + 'cursor:pointer;"><td style="font-size:10px;color:#666;white-space:nowrap;">' + ts + '</td>';
             html += '<td><span style="font-size:10px;">' + typeLabel + '</span></td>';
             html += '<td>' + proc + '</td>';
             html += '<td style="font-size:11px;">' + detail + '</td>';
@@ -817,19 +820,38 @@ function showSysmonDetail(event) {
     if (event && event.dataset && event.dataset.sysmon) {
         try { event = JSON.parse(event.dataset.sysmon); } catch (e) { event = {}; }
     }
-    let detailHtml = '<div style="max-height:500px;overflow-y:auto;font-size:12px;">';
-    detailHtml += '<table class="table table-sm table-dark">';
-    for (const [key, val] of Object.entries(event)) {
-        if (key === 'raw_data') continue;
-        const v = val !== null && val !== undefined ? String(val).substring(0, 200) : '-';
-        detailHtml += '<tr><td style="color:#8892a4;white-space:nowrap;">' + escapeHtml(key) + '</td><td style="word-break:break-all;">' + escapeHtml(v) + '</td></tr>';
+    // v5.0.4: render inside the in-page modal (window.open is popup-blocked in
+    // many environments) with the key forensic fields first.
+    const eid = event.sysmon_event_id || event.event_id || 0;
+    let h = '<table class="table table-data table-sm" style="font-size:11px;"><tbody>';
+    const show = (k, v) => { if (v !== undefined && v !== null && v !== '') h += '<tr><th style="width:210px;color:#8892a4;">' + escapeHtml(k) + '</th><td style="word-break:break-all;font-family:monospace;font-size:10px;">' + escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v)) + '</td></tr>'; };
+    show('Event ID', eid);
+    show('Severity', event.severity || 'INFO');
+    show('Machine', event.hostname || event.machine_id || '-');
+    show('Time', event.timestamp || '');
+    show('User', event.user || '');
+    show('Process', event.process_name || '');
+    show('Process path', event.process_path || event.process_path_full || '');
+    show('Command line', event.command_line || '');
+    show('PID', event.pid || '');
+    show('Parent process', event.parent_process || '');
+    show('Parent path', event.parent_path || '');
+    show('Parent command line', event.parent_command_line || '');
+    if (eid === 3) { show('Src', event.src_ip + (event.src_port ? ':' + event.src_port : '')); show('Dst', event.dst_ip + (event.dst_port ? ':' + event.dst_port : '')); show('Protocol', event.protocol || ''); }
+    if (eid === 7) { show('Image loaded', event.image_loaded || event.dll_name || ''); show('Signed', event.signed); }
+    if (eid === 22) { show('DNS query', event.dns_query || ''); show('DNS status', event.dns_status || ''); show('DNS results', event.dns_results || ''); }
+    show('Hashes', event.hashes || '');
+    show('Integrity level', event.integrity_level || '');
+    show('Description', event.description || event.suspicion_reason || '');
+    h += '</tbody></table>';
+    // remaining fields
+    const rest = Object.entries(event).filter(([k]) => !['raw_data','type','event_type','timestamp','hostname','machine_id','severity','user','process_name','process_path','command_line','pid','parent_process','parent_path','parent_command_line','sysmon_event_id','event_id','src_ip','src_port','dst_ip','dst_port','protocol','image_loaded','dll_name','signed','dns_query','dns_status','dns_results','hashes','integrity_level','description','suspicion_reason'].includes(k));
+    if (rest.length) {
+        h += '<details style="margin-top:8px;"><summary style="color:#8892a4;font-size:11px;cursor:pointer;">' + t('dash.moreFields') + ' (' + rest.length + ')</summary><table class="table table-data table-sm" style="font-size:10px;"><tbody>';
+        rest.forEach(([k, v]) => { if (v !== undefined && v !== null && String(v) !== '') h += '<tr><th style="color:#8892a4;">' + escapeHtml(k) + '</th><td style="word-break:break-all;">' + escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v)) + '</td></tr>'; });
+        h += '</tbody></table></details>';
     }
-    detailHtml += '</table></div>';
-    const popup = window.open('', '_blank', 'width=700,height=600,scrollbars=yes');
-    if (popup) {
-        popup.document.write('<html><head><title>Sysmon Event Detail</title><style>body{background:#0d1117;color:#e4e7eb;font-family:monospace;padding:16px;}table{width:100%;border-collapse:collapse;}td{padding:4px 8px;border-bottom:1px solid #1e2a3a;}h3{color:#00d4aa;}<\/style><style>.modal-body { max-height: 70vh !important; overflow-y: auto !important; }<\/style>\n<\/head><body><h3>Sysmon Event Detail<\/h3>' + detailHtml + '<\/body><\/html>');
-        popup.document.close();
-    }
+    showDetailModal(t('dash.sysmonEvent') + ' #' + eid, h);
 }
 
 // ===== v2.0.2: Group alerts by machine with expand/collapse =====
@@ -908,7 +930,7 @@ function buildGroupedByMachine(data, type, title) {
         if (type === 'threats') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
+                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
@@ -948,10 +970,33 @@ function toggleMachineGroup(groupId) {
 
 function loadAgentless() {
     const el = document.getElementById('agentlessList');
+    // v5.0.4: live device status cards (online/offline + last seen) first
+    fetch('/api/agentless/devices').then(r => r.json()).then(devices => {
+        if (devices && devices.length) {
+            let cards = '<div class="row g-2 p-2">';
+            devices.forEach(d => {
+                const st = d.status || 'unknown';
+                const color = st === 'online' ? '#00d4aa' : st === 'offline' ? '#ff5555' : '#8892a4';
+                const badge = st === 'online' ? 'bg-success' : st === 'offline' ? 'bg-danger' : 'bg-secondary';
+                cards += `<div class="col-md-3 col-6"><div class="card" style="background:#111827;border-color:#1e2a3a;"><div class="card-body py-2" style="font-size:11px;"><div class="d-flex justify-content-between align-items-center"><strong style="color:#e4e7eb;">${escapeHtml(d.name||d.ip||'?')}</strong><span class="badge ${badge}">${escapeHtml(t('dash.'+(st==='online'?'online':st==='offline'?'offline':'unknownSt')))}</span></div><div style="color:#8892a4;margin-top:4px;"><i class="bi bi-router"></i> ${escapeHtml(d.ip||'-')} · ${escapeHtml(d.method||'ping')}</div><div style="color:#5a6a7a;margin-top:2px;">${escapeHtml(t('agentless.lastSeen'))}: ${escapeHtml((d.last_seen||'-').substring(0,19))}</div></div></div></div>`;
+            });
+            cards += '</div>';
+            el.innerHTML = cards;
+        }
+    }).catch(() => {});
     fetch('/api/agentless?limit=200').then(r => r.json()).then(data => {
-        if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noAgentlessData') + '</div>'; return; }
-        el.innerHTML = data.map(e => `<div style="background:#1a1a2a;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><strong>${escapeHtml(e.device_name||e.ip||'?')}</strong> <small class="text-muted">${escapeHtml(e.timestamp||'')}</small><br><span style="font-size:11px;color:#999;">${escapeHtml((e.data_json||'').substring(0,120))}</span></div>`).join('');
-    }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
+        if (!data.length) {
+            el.innerHTML += '<div class="text-center text-muted py-3">' + t('dash.noAgentlessData') + '</div>';
+            return;
+        }
+        el.innerHTML += '<h6 class="px-2 pt-2" style="font-size:12px;color:#88ccff;"><i class="bi bi-activity"></i> ' + t('agentless.monitorResults') + '</h6>' +
+            data.map(e => {
+                const st = e.status;
+                const badge = st === 'online' ? '<span class="badge bg-success">'+t('dash.online')+'</span>'
+                    : st === 'offline' ? '<span class="badge bg-danger">'+t('dash.offline')+'</span>' : '';
+                return `<div style="background:#1a1a2a;padding:6px 10px;margin-bottom:3px;border-radius:4px;"><strong>${escapeHtml(e.device_name||e.ip||'?')}</strong> ${badge} <small class="text-muted">${escapeHtml(e.timestamp||'')}</small><br><span style="font-size:11px;color:#999;">${escapeHtml(String(e.data||e.data_json||'').substring(0,120))}</span></div>`;
+            }).join('');
+    }).catch(() => { el.innerHTML += '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
     // Load management tab lazily
     if (document.getElementById('tabAgManage') && document.getElementById('agentlessDeviceMgmt').innerHTML.indexOf(t('ui.loading')) > -1) {
         loadAgentlessDevices();
@@ -976,8 +1021,14 @@ function loadAgentlessDevices() {
     fetch('/api/agentless/devices').then(r => r.json()).then(devices => {
         let html = '';
         if (devices && devices.length > 0) {
-            html += tableWrap(['#',t('ui.name'),'IP',t('dash.type'),'Method','Interval(s)',t('ui.actions')],
-                devices.map((d,i) => `<tr><td>${i+1}</td><td>${d.name||'-'}</td><td>${d.ip||'-'}</td><td>${d.device_type||'generic'}</td><td>${d.method||'ping'}</td><td>${d.interval_seconds||300}</td><td><button class="btn btn-del btn-sm py-0 px-1" onclick="deleteAgentlessDevice(${i})"><i class="bi bi-trash3"></i></button></td></tr>`)
+            html += tableWrap(['#',t('ui.name'),'IP',t('dash.type'),'Method',t('agentless.status'),t('agentless.lastSeen'),'Interval(s)',t('ui.actions')],
+                devices.map((d,i) => {
+                    const st = d.status || 'unknown';
+                    const badge = st === 'online' ? '<span class="badge bg-success">'+t('dash.online')+'</span>'
+                        : st === 'offline' ? '<span class="badge bg-danger">'+t('dash.offline')+'</span>'
+                        : '<span class="badge bg-secondary">'+t('dash.unknownSt')+'</span>';
+                    return `<tr><td>${i+1}</td><td>${escapeHtml(d.name||'-')}</td><td>${escapeHtml(d.ip||'-')}</td><td>${escapeHtml(d.device_type||'generic')}</td><td>${escapeHtml(d.method||'ping')}</td><td>${badge}</td><td style="font-size:10px;color:#8892a4;">${escapeHtml((d.last_seen||'-').substring(0,19))}</td><td>${d.interval_seconds||300}</td><td><button class="btn btn-del btn-sm py-0 px-1" onclick="deleteAgentlessDevice(${i})"><i class="bi bi-trash3"></i></button></td></tr>`;
+                })
             );
         } else {
             html += '<div class="text-center text-muted py-2">' + t('dash.noDevices') + '</div>';
@@ -1736,7 +1787,49 @@ const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
 function showDetailModal(title, body) { document.getElementById('detailModalTitle').innerHTML = title; document.getElementById('detailModalBody').innerHTML = body; detailModal.show(); }
 
 // ===== WIRESHARK DETAIL =====
+function showAlertRowDetail(data, titlePrefix) {
+    // v5.0.4: rich detail modal - rule/alert info + full description + parsed raw_data
+    let rows = '';
+    const show = (k, v) => { rows += '<tr><th style="width:200px;color:#8892a4;white-space:nowrap;">' + escapeHtml(k) + '</th><td style="word-break:break-all;">' + escapeHtml(v) + '</td></tr>'; };
+    const title = data.rule_name || data.rule_id || data.alert_type || data.subtype || titlePrefix || 'Detail';
+    const sev = data.severity || data.status || '';
+    show('Severity', sev || '-');
+    show('Rule', data.rule_id || '-');
+    show('Rule name', data.rule_name || '-');
+    show('Machine', (data.hostname || data.machine_id || '-'));
+    show('Time', data.timestamp || data.time || data.received_at || '-');
+    show('Description', data.description || data.suspicion_reason || '-');
+    // highlight the interesting identity fields for process/memory alerts
+    [['Process', 'process_name'], ['Process path', 'path'], ['Command line', 'command_line'],
+     ['Module', 'module_name'], ['Module path', 'module_path'], ['PID', 'pid'],
+     ['Signer', 'signer'], ['Signed', 'signed'], ['File', 'file'], ['Src IP', 'src_ip'],
+     ['Dst IP', 'dst_ip'], ['Dst Port', 'dst_port']].forEach(([label, f]) => {
+        if (data[f] !== undefined && data[f] !== null && data[f] !== '') show(label, String(data[f]));
+    });
+    // full raw event when present (the original agent payload)
+    if (data.raw_data) {
+        let rd = data.raw_data;
+        try { rd = typeof rd === 'string' ? JSON.parse(rd) : rd; } catch (ex) {}
+        if (rd && typeof rd === 'object') {
+            for (const [k, v] of Object.entries(rd)) {
+                if (k === 'type' || k === 'alert_type') continue;
+                if (v !== null && v !== undefined && String(v) !== '') show(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+            }
+        }
+    }
+    showDetailModal(escapeHtml(String(title)) + (sev ? ' <span class="badge ' + (sev.toUpperCase()==='CRITICAL'?'bg-danger':sev.toUpperCase()==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + escapeHtml(sev) + '</span>' : ''), '<table class="table table-data table-sm" style="font-size:11px;"><tbody>' + rows + '</tbody></table>');
+}
 document.addEventListener('click', function(e) {
+    const threatRow = e.target.closest('tr[data-threat-row]');
+    if (threatRow) {
+        try { showAlertRowDetail(JSON.parse(threatRow.getAttribute('data-threat-row'))); } catch (ex) {}
+        return;
+    }
+    const memRow = e.target.closest('tr[data-memory-row]');
+    if (memRow) {
+        try { showAlertRowDetail(JSON.parse(memRow.getAttribute('data-memory-row')), 'Memory Alert'); } catch (ex) {}
+        return;
+    }
     const row = e.target.closest('tr[data-row]');
     if (!row) return;
     try {

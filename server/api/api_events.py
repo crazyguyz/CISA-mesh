@@ -124,11 +124,20 @@ def register(app, core):
         if err: return err, code
         since_h = request.args.get("since")
         since_hours = int(since_h) if since_h and since_h.isdigit() and int(since_h) > 0 else None
-        return jsonify(core.db.get_network_traffic(
+        rows = core.db.get_network_traffic(
             machine_id=request.args.get("machine_id"),
             limit=request.args.get("limit", 100, type=int),
             since_hours=since_hours
-        ))
+        )
+        # v5.0.4: whois-style destination organization (server-side, db-ip ASN mmdb)
+        try:
+            from geoip_lookup import org_label
+            for r in rows:
+                if r.get("dst_ip"):
+                    r["dst_org"] = org_label(r["dst_ip"])
+        except Exception:
+            pass
+        return jsonify(rows)
 
     # v2.6.2: Sysmon events from SysmonCollector
     @app.route("/api/sysmon")
@@ -151,12 +160,30 @@ def register(app, core):
         if err: return err, code
         since_h = request.args.get("since")
         since_hours = int(since_h) if since_h and since_h.isdigit() and int(since_h) > 0 else None
-        return jsonify(core.db.get_sysmon_events(
+        rows = core.db.get_sysmon_events(
             machine_id=request.args.get("machine_id"),
             limit=request.args.get("limit", 200, type=int),
             since_hours=since_hours,
             event_type="memory_scan_event"
-        ))
+        )
+        # v5.0.4 (FP triage, server-side): the agent's memory scanner flags ANY
+        # signed module loaded from a non-System32 path in a system process as
+        # 'system_process_injection' HIGH - including legitimate Microsoft DLLs
+        # (drivers/, Microsoft.NET/, Common Files/...). Reclassify Microsoft-signed
+        # modules to LOW so the dashboard stops crying wolf about Windows itself.
+        try:
+            for r in rows:
+                if r.get("alert_type") == "system_process_injection" and r.get("signed"):
+                    signer = str(r.get("signer") or "")
+                    mod = str(r.get("module_path") or "")
+                    if "Microsoft" in signer or mod.lower().startswith("c:\\windows") or "\\windows\\" in mod.lower():
+                        r["fp_likely"] = True
+                        r["fp_reason"] = "Signed Microsoft/Windows module - legitimate (scanner over-alerted)"
+                        if (r.get("severity") or "HIGH") == "HIGH":
+                            r["severity"] = "LOW"
+        except Exception:
+            pass
+        return jsonify(rows)
 
     # v4.11 (MED): /api/hunt/result, /api/hunt/campaigns, /api/hunt/templates are
     # registered ONLY in api_hunt.py - the duplicates that used to live here

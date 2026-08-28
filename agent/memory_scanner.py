@@ -330,10 +330,18 @@ foreach ($proc in $procs) {
                         $reason = "Unsigned module from untrusted path: $modPath"
                         $severity = "CRITICAL"
                     } else {
-                        # Signed but from untrusted path → HIGH
-                        $isAlert = $true
-                        $reason = "Signed module from non-standard path: $modPath (signer: $signer)"
-                        $severity = "HIGH"
+                        # v5.0.4 (FP fix): Microsoft-signed modules are legitimate
+                        # even outside System32 (drivers/, Microsoft.NET/, Common
+                        # Files/...) - only non-Microsoft signers are suspicious.
+                        $isMS = $signer -match "Microsoft"
+                        if ($isMS) {
+                            $isAlert = $false
+                        } else {
+                            # Signed by a 3rd party from non-standard path → HIGH
+                            $isAlert = $true
+                            $reason = "Signed module from non-standard path: $modPath (signer: $signer)"
+                            $severity = "HIGH"
+                        }
                     }
                 } elseif (-not $signed) {
                     # Unsigned module even in trusted path → HIGH (rare for MS processes)

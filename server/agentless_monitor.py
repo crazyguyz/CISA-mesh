@@ -20,6 +20,9 @@ class AgentlessMonitor:
         self.callback = message_callback
         self.running = True
         self.devices = []  # List of device configs
+        # v5.0.4: per-device runtime status so the UI can show online/offline and
+        # the monitor only logs on STATE CHANGE (no more endless repeated events)
+        self._device_state = {}
         self._load_devices()
 
     def _get_config_path(self):
@@ -149,6 +152,74 @@ class AgentlessMonitor:
             results["error"] = str(e)
         return results
 
+    def _is_reachable(self, device, data):
+        """v5.0.4: decide online/offline from a scan payload."""
+        if not data:
+            return False
+        if "reachable" in data:
+            return bool(data.get("reachable"))
+        if "error" in data:
+            return False
+        method = device.get("method", "ping")
+        if method == "all":
+            for sub in data.values():
+                if isinstance(sub, dict) and self._is_reachable({"method": "ping"}, sub):
+                    return True
+            return False
+        # snmp / ssh: reachable when at least one real value came back
+        for k, v in data.items():
+            if k in ("method", "_warning", "error"):
+                continue
+            if v and "Error:" not in str(v) and "not installed" not in str(v):
+                return True
+        return False
+
+    def _persist_status(self, name, st):
+        """Write status/last_seen back into agentless_devices.json so the API
+        and UI can show live online/offline without any extra storage."""
+        try:
+            import os
+            path = self._get_config_path()
+            devs = []
+            if os.path.exists(path):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        devs = json.loads(f.read())
+                except Exception:
+                    devs = list(self.devices)
+            for d in devs:
+                if d.get("name") == name:
+                    d["status"] = st.get("state")
+                    d["last_seen"] = st.get("last_seen")
+                    d["last_ok"] = st.get("last_ok")
+                    d["last_fail"] = st.get("last_fail")
+                    d["last_change"] = st.get("last_change")
+                    break
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(devs, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _update_status(self, device, reachable):
+        """Track online/offline; returns True when the state CHANGED."""
+        name = device["name"]
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st = self._device_state.get(name, {})
+        prev = st.get("state", "unknown")
+        state = "online" if reachable else "offline"
+        changed = prev != state
+        st["state"] = state
+        st["last_seen"] = now
+        if reachable:
+            st["last_ok"] = now
+        else:
+            st["last_fail"] = now
+        if changed:
+            st["last_change"] = now
+        self._device_state[name] = st
+        self._persist_status(name, st)
+        return changed, state
+
     def scan_device(self, device):
         """Scan a single device and return results."""
         if not device.get("enabled", True):
@@ -179,7 +250,10 @@ class AgentlessMonitor:
         return results
 
     def start_scheduler(self):
-        """Start background scheduler for periodic device scanning."""
+        """Start background scheduler for periodic device scanning.
+        v5.0.4: events are stored/forwarded ONLY when a device's online/offline
+        state CHANGES (or the first scan) - steady-state scans just update
+        last_seen/status, killing the endless repeated-log spam."""
         def scheduler():
             self._load_devices()
             while self.running:
@@ -189,10 +263,14 @@ class AgentlessMonitor:
                     try:
                         result = self.scan_device(device)
                         if result:
-                            if self.callback:
-                                self.callback(result)
-                            if self.db:
-                                self._store_result(result)
+                            reachable = self._is_reachable(device, result.get("data") or {})
+                            changed, state = self._update_status(device, reachable)
+                            if changed:
+                                result["status"] = state
+                                if self.callback:
+                                    self.callback(result)
+                                if self.db:
+                                    self._store_result(result)
                     except Exception as e:
                         print(f"[-] Agentless scan error [{device['name']}]: {e}")
                 interval = max(60, min(d.get("interval_seconds", 300) for d in self.devices) if self.devices else 300)
@@ -200,7 +278,7 @@ class AgentlessMonitor:
 
         t = threading.Thread(target=scheduler, daemon=True)
         t.start()
-        print(f"[*] Agentless monitor started ({len(self.devices)} devices)")
+        print(f"[*] Agentless monitor started ({len(self.devices)} devices) - logs on state change only")
 
     def _store_result(self, result):
         try:
