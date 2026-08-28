@@ -454,6 +454,10 @@ class ServerCore:
 
         @app.before_request
         def api_rate_limit():
+            # v5.0.3 (FIX): _api_rate_ops is rebound by += so it must be declared
+            # nonlocal - otherwise Python treats it as a fresh local and every
+            # /api/* request dies with UnboundLocalError (whole web UI 500s).
+            nonlocal _api_rate_ops
             path = request.path
             if not path.startswith("/api/") or any(path.startswith(p) for p in _API_RATE_EXEMPT):
                 return None
