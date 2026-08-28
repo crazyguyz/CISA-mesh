@@ -1622,12 +1622,13 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                     "output": f"Current: {current_exe}"
                 }
 
-            # v3.9.7: Add _MEI* cleanup to update script to prevent runtime dir bloat
-            runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                                       "GIAM-SAT", "Agent", "runtime") if os.name == "nt" else ""
+            # v3.9.7: _MEI* cleanup was added to the update script to prevent runtime
+            # dir bloat - but `rd /s /q runtime\_MEI*` DELETED the extraction dir of
+            # an agent that was still starting (watchdog respawn / second instance),
+            # causing 'Failed to load Python DLL ..._MEIxxxx\python311.dll' popups.
+            # v5.0.4 FIX: the .bat never touches _MEI dirs (the updater's
+            # _cleanup_runtime_mei handles abandoned dirs safely with an in-use probe).
             mei_cleanup = ""
-            if runtime_dir:
-                mei_cleanup = f'echo Cleaning old runtime dirs...\nfor /d %%d in ("{runtime_dir}\\_MEI*") do rd /s /q "%%d" >nul 2>&1\necho Runtime cleanup done.\n'
             
             # v4.10 (CRIT-4): write the batch with an unpredictable mkstemp name and
             # sanitize server_host/port before interpolating into the .bat.

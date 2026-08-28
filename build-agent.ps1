@@ -147,6 +147,25 @@ try {
 Copy-Item "$AGENT_DIR\agent_version.txt" "$DIST_DIR\agent_version.txt" -Force
 Write-OK "dist\agent_version.txt -> $Version (update-loop fix)"
 
+# STEP 6.6: VERIFY the bundled version matches $Version.  The 053de44 incident
+# (binary bundled 5.0.0 while dist\agent_version.txt said 4.6.6) made every agent
+# re-download/re-apply forever -> the _MEI wipe race -> 'Failed to load Python
+# DLL'.  Guard the invariant "version file == binary bundle" at build time.
+Write-STEP "STEP 6.6: Verifying bundled version matches $Version..."
+try {
+    $ver = & python -c "from PyInstaller.archive.readers import CArchiveReader; a=CArchiveReader(r'$DIST_DIR\GiamSatAgent.exe'); print(a.extract('agent_version.txt').decode('utf-8').strip())"
+    if ($LASTEXITCODE -ne 0 -or -not $ver) { throw "could not read bundled version" }
+    $ver = $ver.Trim()
+    if ($ver -ne "$Version") {
+        Write-FAIL "BUNDLED VERSION MISMATCH: exe bundles '$ver' but dist\agent_version.txt/version.txt say '$Version'!"
+        Write-FAIL "The update loop will recur. Fix agent/agent_version.txt or rebuild with -Version $ver."
+        exit 1
+    }
+    Write-OK "Bundled version '$ver' matches - no drift."
+} catch {
+    Write-INFO "Verification skipped (PyInstaller not available): $($_.Exception.Message)"
+}
+
 # STEP 7: Restart server (only with -RestartServer flag)
 if ($RestartServer) {
     Write-STEP "STEP 7: Restarting server..."

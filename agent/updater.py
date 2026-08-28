@@ -182,21 +182,50 @@ def kill_agent():
 
 def _cleanup_runtime_mei():
     """v3.9.7: Clean up old _MEI* dirs from custom runtime_tmpdir before launching agent.
-    This prevents unbounded disk growth caused by PyInstaller extractions on every restart."""
+    This prevents unbounded disk growth caused by PyInstaller extractions on every restart.
+    v5.0.4 FIX (LoadLibrary python311.dll crash): never delete a MEI dir that is still
+    IN USE by a running agent - the old code rmtree'd every _MEI* including the one a
+    concurrently-starting/just-restarted agent needs, which produced
+    'Failed to load Python DLL ...runtime_MEIxxxx\\python311.dll'.  A MEI dir that a
+    process has files open from CANNOT be renamed on Windows -> the rename probe is
+    the in-use test; combined with an age guard (>6h) for extra safety."""
     import glob as _glob
+    import time as _time
     runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
                                "GIAM-SAT", "Agent", "runtime")
     try:
         if os.path.exists(runtime_dir):
+            # v5.0.4: if an agent is STILL running (watchdog respawn / update race),
+            # skip cleanup entirely - its _MEI dir must not be touched.
+            try:
+                _proc = subprocess.run(["tasklist", "/FI", "IMAGENAME eq GiamSatAgent.exe", "/NH"],
+                                       capture_output=True, timeout=10, text=True,
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                if "GiamSatAgent.exe" in (_proc.stdout or ""):
+                    _log("_MEI cleanup skipped: GiamSatAgent.exe is running")
+                    return
+            except Exception:
+                pass
             count = 0
+            now = _time.time()
             for meipass in _glob.glob(os.path.join(runtime_dir, "_MEI*")):
+                try:
+                    # 1) age guard: keep fresh extractions (possibly starting)
+                    if now - os.path.getmtime(meipass) < 6 * 3600:
+                        continue
+                    # 2) in-use probe: renaming fails while a process holds files open
+                    probe = meipass + ".probe"
+                    os.rename(meipass, probe)
+                    os.rename(probe, meipass)
+                except Exception:
+                    continue  # in use or locked - keep it
                 try:
                     shutil.rmtree(meipass, ignore_errors=True)
                     count += 1
                 except Exception:
                     pass
             if count > 0:
-                _log(f"Cleaned {count} old _MEI runtime(s) before launching agent")
+                _log(f"Cleaned {count} abandoned _MEI runtime(s) before launching agent")
     except Exception:
         pass
 
