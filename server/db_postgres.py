@@ -1617,7 +1617,7 @@ class PostgresDatabase:
         except Exception:
             return []
 
-    def get_sca_events(self, machine_id=None, limit=200):
+    def get_sca_events(self, machine_id=None, limit=100):
         if not self._connected:
             return []
         try:

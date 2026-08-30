@@ -12,7 +12,7 @@ POST /api/agent/command-result
 """
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import request, jsonify
 
 from .api_common import check_agent_psk
@@ -41,6 +41,21 @@ def register(app, core):
             core.db.conn.execute(
                 "UPDATE machines SET last_seen=?, is_online=1 WHERE machine_id=?",
                 (now_ts, machine_id)
+            )
+            core.db.conn.commit()
+        except Exception:
+            pass
+
+        # v5.0.4 (logic bug): a command marked 'sent' (agent fetched it via poll)
+        # but never reported back - because the agent went offline/crashed between
+        # fetch and result - was stuck in 'sent' forever and never re-delivered.
+        # Requeue it as 'pending' after 5 minutes so it is delivered on reconnect.
+        # ISO-string comparison is backend-agnostic (SQLite TEXT + PG timestamptz).
+        try:
+            _cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+            core.db.conn.execute(
+                "UPDATE commands SET status='pending' WHERE status='sent' AND executed_at < ?",
+                (_cutoff,)
             )
             core.db.conn.commit()
         except Exception:
