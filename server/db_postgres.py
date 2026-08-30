@@ -1536,7 +1536,7 @@ class PostgresDatabase:
         except Exception:
             return []
 
-    def get_threat_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_threat_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         if not self._connected:
             return []
         try:
@@ -1548,13 +1548,16 @@ class PostgresDatabase:
             if since_hours:
                 q += " AND received_at >= NOW() - INTERVAL '%s hours'"
                 params.append(str(since_hours))
+            if status:
+                q += " AND status=%s"
+                params.append(status)
             q += " ORDER BY id DESC LIMIT %s"
             params.append(limit)
             return self._execute(q, tuple(params), fetchall=True) or []
         except Exception:
             return []
 
-    def get_vuln_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_vuln_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         if not self._connected:
             return []
         try:
@@ -1566,13 +1569,16 @@ class PostgresDatabase:
             if since_hours:
                 q += " AND received_at >= NOW() - INTERVAL '%s hours'"
                 params.append(str(since_hours))
+            if status:
+                q += " AND status=%s"
+                params.append(status)
             q += " ORDER BY id DESC LIMIT %s"
             params.append(limit)
             return self._execute(q, tuple(params), fetchall=True) or []
         except Exception:
             return []
 
-    def get_network_inspection(self, machine_id=None, subtype=None, limit=100):
+    def get_network_inspection(self, machine_id=None, subtype=None, limit=100, status=None):
         if not self._connected:
             return []
         try:
@@ -1581,13 +1587,19 @@ class PostgresDatabase:
             if machine_id:
                 q += " AND machine_id=%s"
                 params.append(machine_id)
+            if subtype:
+                q += " AND subtype=%s"
+                params.append(subtype)
+            if status:
+                q += " AND status=%s"
+                params.append(status)
             q += " ORDER BY id DESC LIMIT %s"
             params.append(limit)
             return self._execute(q, tuple(params), fetchall=True) or []
         except Exception:
             return []
 
-    def get_yara_alerts(self, machine_id=None, limit=100, since_hours=None):
+    def get_yara_alerts(self, machine_id=None, limit=100, since_hours=None, status=None):
         if not self._connected:
             return []
         try:
@@ -1596,6 +1608,9 @@ class PostgresDatabase:
             if machine_id:
                 q += " AND machine_id=%s"
                 params.append(machine_id)
+            if status:
+                q += " AND status=%s"
+                params.append(status)
             q += " ORDER BY id DESC LIMIT %s"
             params.append(limit)
             return self._execute(q, tuple(params), fetchall=True) or []
