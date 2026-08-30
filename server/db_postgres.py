@@ -610,6 +610,13 @@ class PostgresDatabase:
             ("group_policies", "deleted", "INTEGER DEFAULT 0"),
             # v5.0.3 (HIGH-5): dedup_key for events - same fix as SQLite v4.6.5
             ("events", "dedup_key", "TEXT"),
+            # v5.0.4 (migration parity): the SQLite path adds `status` (triage) to
+            # alert tables - PG schema from older builds lacked it, which broke the
+            # FP/status triage UI AND the SQLite->PG migration on those columns.
+            ("threat_alerts", "status", "TEXT DEFAULT 'new'"),
+            ("vuln_alerts", "status", "TEXT DEFAULT 'new'"),
+            ("yara_alerts", "status", "TEXT DEFAULT 'new'"),
+            ("network_inspection", "status", "TEXT DEFAULT 'new'"),
         ]
         for table, col, col_type in alt_cols:
             try:
