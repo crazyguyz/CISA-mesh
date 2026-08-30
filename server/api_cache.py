@@ -180,7 +180,12 @@ class ApiCache:
         """Create PostgreSQL materialized views for dashboard stats.
         These dramatically speed up /api/stats and /api/machines queries.
         Only works with PostgreSQL backend.
-        """
+        v5.0.4 (logic bug): a stale MV from an older build (created without the
+        `refreshed_at` column) made every startup fail with 'column refreshed_at
+        does not exist'; additionally the old unique index target (refreshed_at)
+        is NOT unique - NOW() is identical for every row - so REFRESH ... 
+        CONCURRENTLY could never work either. Now: detect staleness, drop +
+        recreate, and index a column that is actually unique."""
         if not self.db or not hasattr(self.db, '_connected'):
             return
 
@@ -232,12 +237,44 @@ class ApiCache:
 
         for name, sql in views.items():
             try:
-                self.db._execute(sql)
-                # Create unique index for concurrent refresh
-                self.db._execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {name}_idx ON {name} (refreshed_at)")
-                print(f"[*] API Cache: Materialized view {name} created")
+                self._ensure_materialized_view(name, sql)
             except Exception as e:
                 print(f"[-] API Cache: Failed to create {name}: {e}")
+
+    def _ensure_materialized_view(self, name, sql):
+        """Create the MV + correct unique index; drop stale builds first."""
+        index_sql = (
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {name}_idx ON {name} (machine_id) WHERE machine_id IS NOT NULL"
+            if name == "mv_dashboard_machines"
+            else f"CREATE UNIQUE INDEX IF NOT EXISTS {name}_idx ON {name} ((1))"
+        )
+        try:
+            # 1) drop a stale MV whose definition lacks refreshed_at
+            # (pg_attribute - information_schema.columns does NOT list materialized
+            #  view columns in PostgreSQL)
+            stale = False
+            try:
+                cols = self.db._execute(
+                    f"SELECT attname AS column_name FROM pg_attribute "
+                    f"WHERE attrelid='{name}'::regclass AND attnum>0 AND NOT attisdropped",
+                    fetchall=True,
+                ) or []
+                has_ref = any(str(c.get("column_name", "")) == "refreshed_at" for c in cols)
+                stale = not has_ref
+            except Exception:
+                stale = True
+            if stale:
+                self.db._execute(f"DROP MATERIALIZED VIEW IF EXISTS {name}")
+            # 2) create + index
+            self.db._execute(sql)
+            self.db._execute(index_sql)
+            print(f"[*] API Cache: Materialized view {name} ready")
+        except Exception:
+            # 3) last resort: force drop + recreate with this build's definition
+            self.db._execute(f"DROP MATERIALIZED VIEW IF EXISTS {name}")
+            self.db._execute(sql)
+            self.db._execute(index_sql)
+            print(f"[*] API Cache: Materialized view {name} recreated")
 
     def refresh_materialized_views(self):
         """Refresh all materialized views concurrently.
