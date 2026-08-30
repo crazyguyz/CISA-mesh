@@ -182,10 +182,17 @@ def migrate_table(table):
     return total
 
 def create_network_baseline():
-    """The PG adapter has no network_baseline table - create it matching SQLite."""
-    cols = sq_cols("network_baseline")
-    coldefs = ", ".join('"%s" %s' % (c[0], c[1]) for c in cols)
-    pc.execute('CREATE TABLE IF NOT EXISTS network_baseline (%s)' % coldefs)
+    """v5.0.4: proper PG DDL (was copying the SQLite schema -> id without a
+    default). db_postgres._init_db also owns this table now; this is a safety net."""
+    pc.execute("""CREATE TABLE IF NOT EXISTS network_baseline (
+        id SERIAL PRIMARY KEY,
+        dst_ip TEXT NOT NULL,
+        country_code TEXT DEFAULT 'UNKNOWN',
+        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        hit_count INTEGER DEFAULT 1,
+        UNIQUE(dst_ip, country_code)
+    )""")
     print("[*] created network_baseline in PG")
 
 sqtables = [r[0] for r in sq.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]

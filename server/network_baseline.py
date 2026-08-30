@@ -175,35 +175,67 @@ class NetworkBaseline:
             pass
 
         # Store in database (SQLite-compatible syntax)
+        # v5.0.4 (PG compat): on the PostgreSQL backend the old code issued
+        # SQLite-flavoured DDL (AUTOINCREMENT) + `INSERT OR REPLACE`, which are
+        # syntax errors on PG. Use backend-appropriate DDL + upsert.
+        is_pg = type(self.db).__name__ == "PostgresDatabase"
         try:
-            self.db.conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {BASELINE_TABLE} (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    dst_ip TEXT NOT NULL,
-                    country_code TEXT DEFAULT 'UNKNOWN',
-                    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    hit_count INTEGER DEFAULT 1,
-                    UNIQUE(dst_ip, country_code)
-                )
-            """)
+            if is_pg:
+                self.db.conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {BASELINE_TABLE} (
+                        id SERIAL PRIMARY KEY,
+                        dst_ip TEXT NOT NULL,
+                        country_code TEXT DEFAULT 'UNKNOWN',
+                        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        hit_count INTEGER DEFAULT 1,
+                        UNIQUE(dst_ip, country_code)
+                    )
+                """)
+            else:
+                self.db.conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {BASELINE_TABLE} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        dst_ip TEXT NOT NULL,
+                        country_code TEXT DEFAULT 'UNKNOWN',
+                        first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        hit_count INTEGER DEFAULT 1,
+                        UNIQUE(dst_ip, country_code)
+                    )
+                """)
             self.db.conn.commit()
 
-            # Upsert entries (INSERT OR REPLACE for SQLite)
+            # Upsert entries
             for entry in baseline_entries:
-                self.db.conn.execute(f"""
-                    INSERT OR REPLACE INTO {BASELINE_TABLE} (id, dst_ip, country_code, first_seen, last_seen, hit_count)
-                    VALUES (
-                        (SELECT id FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?),
-                        ?, ?,
-                        COALESCE((SELECT first_seen FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?), CURRENT_TIMESTAMP),
-                        CURRENT_TIMESTAMP,
-                        COALESCE((SELECT hit_count FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?), 0) + 1
-                    )
-                """, (entry["dst_ip"], entry["country_code"],
-                      entry["dst_ip"], entry["country_code"],
-                      entry["dst_ip"], entry["country_code"],
-                      entry["dst_ip"], entry["country_code"]))
+                if is_pg:
+                    self.db.conn.execute(f"""
+                        INSERT INTO {BASELINE_TABLE} (dst_ip, country_code, first_seen, last_seen, hit_count)
+                        VALUES (
+                            ?, ?,
+                            COALESCE((SELECT first_seen FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?), CURRENT_TIMESTAMP),
+                            CURRENT_TIMESTAMP,
+                            1
+                        )
+                        ON CONFLICT (dst_ip, country_code) DO UPDATE SET
+                            last_seen = CURRENT_TIMESTAMP,
+                            hit_count = {BASELINE_TABLE}.hit_count + 1
+                    """, (entry["dst_ip"], entry["country_code"],
+                          entry["dst_ip"], entry["country_code"]))
+                else:
+                    self.db.conn.execute(f"""
+                        INSERT OR REPLACE INTO {BASELINE_TABLE} (id, dst_ip, country_code, first_seen, last_seen, hit_count)
+                        VALUES (
+                            (SELECT id FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?),
+                            ?, ?,
+                            COALESCE((SELECT first_seen FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?), CURRENT_TIMESTAMP),
+                            CURRENT_TIMESTAMP,
+                            COALESCE((SELECT hit_count FROM {BASELINE_TABLE} WHERE dst_ip = ? AND country_code = ?), 0) + 1
+                        )
+                    """, (entry["dst_ip"], entry["country_code"],
+                          entry["dst_ip"], entry["country_code"],
+                          entry["dst_ip"], entry["country_code"],
+                          entry["dst_ip"], entry["country_code"]))
             self.db.conn.commit()
 
             # Update in-memory cache

@@ -533,6 +533,18 @@ class PostgresDatabase:
                 packets INTEGER, bytes INTEGER, first DOUBLE PRECISION, last DOUBLE PRECISION,
                 received_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.4 (PG compat): network_baseline - the module used to issue its own
+            # SQLite-flavoured CREATE (AUTOINCREMENT / INSERT OR REPLACE) which fails
+            # on PostgreSQL. Own the schema here so the PG path gets a proper SERIAL.
+            "network_baseline": """CREATE TABLE IF NOT EXISTS network_baseline (
+                id SERIAL PRIMARY KEY,
+                dst_ip TEXT NOT NULL,
+                country_code TEXT DEFAULT 'UNKNOWN',
+                first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                hit_count INTEGER DEFAULT 1,
+                UNIQUE(dst_ip, country_code)
+            )""",
         }
 
         indexes = [
