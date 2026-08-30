@@ -397,6 +397,20 @@ def main():
     db_backend = os.environ.get("GIAMSAT_DB_BACKEND", "sqlite").lower()
     if db_backend == "postgres" and HAS_POSTGRES:
         db = PostgresDatabase()
+        # v5.0.4 (ops bug): the ingest path previously used a PG object even when
+        # the connect had failed - every insert silently no-op'd (data loss).
+        if not getattr(db, "_connected", False):
+            import traceback as _tb
+            print("[!] Ingest server: PostgreSQL unreachable - falling back to SQLite. "
+                  "Events will be stored in SQLite. /api/health reports db_fallback.")
+            try:
+                _logp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_error.log")
+                with open(_logp, "a", encoding="utf-8") as _f:
+                    _f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [INGEST-DB-FALLBACK] "
+                             f"PG connect failed: {_tb.format_exc()}\n")
+            except Exception:
+                pass
+            db = DatabaseManager()
     else:
         db = DatabaseManager()
 

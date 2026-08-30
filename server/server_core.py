@@ -81,6 +81,7 @@ class ServerCore:
         self.web_port = web_port
         # v3.0: Select database backend via environment variable
         db_backend = os.environ.get("GIAMSAT_DB_BACKEND", "sqlite").lower()
+        self.db_fallback = ""  # v5.0.4: set when the requested backend is not in use
         if db_backend == "elasticsearch" and HAS_ELASTICSEARCH:
             print("[*] Using Elasticsearch backend (search-optimized)")
             self.db = ElasticsearchBackend()
@@ -88,13 +89,29 @@ class ServerCore:
             print("[*] Using PostgreSQL backend (scalable)")
             self.db = PostgresDatabase()
             if not getattr(self.db, "_connected", False):
-                print("[!] PostgreSQL unreachable - falling back to SQLite database.")
+                # v5.0.4 (ops bug): a failed PG connect used to fall back to SQLite
+                # with only a console print - the admin never noticed and events
+                # silently accumulated in the wrong store. Now: log to file, expose
+                # the state via /api/health and a dashboard banner.
+                import traceback as _tb
+                reason = "PostgreSQL unreachable at startup (check GIAMSAT_PG_* in .env, role/password, service)"
+                _dbg = _tb.format_exc()
+                print("[!] " + reason + " - falling back to SQLite. /api/health will report db_fallback.")
+                self.db_fallback = reason
+                try:
+                    _logp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "server_error.log")
+                    with open(_logp, "a", encoding="utf-8") as _f:
+                        _f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [DB-FALLBACK] {reason}\n{_dbg}\n")
+                except Exception:
+                    pass
                 self.db = DatabaseManager()
         else:
             if db_backend == "postgres" and not HAS_POSTGRES:
                 print("[!] PostgreSQL requested but psycopg2 not available, falling back to SQLite")
+                self.db_fallback = "PostgreSQL requested but psycopg2 not installed"
             elif db_backend == "elasticsearch" and not HAS_ELASTICSEARCH:
                 print("[!] Elasticsearch requested but elasticsearch-py not available, falling back to SQLite")
+                self.db_fallback = "Elasticsearch requested but client not installed"
             self.db = DatabaseManager()
 
         self.auth = AuthManager()
@@ -510,10 +527,17 @@ class ServerCore:
                 db_status = "ok" if self.db and self.db.conn else "error"
             except Exception:
                 db_status = "error"
+            # v5.0.4 (ops bug): expose which backend is REALLY in use + fallback reason
+            db_backend = os.environ.get("GIAMSAT_DB_BACKEND", "sqlite").lower()
+            actual_backend = "sqlite"
+            if db_backend == "postgres" and getattr(self.db, "_connected", False):
+                actual_backend = "postgres"
             return jsonify({
                 "status": "healthy",
                 "version": "2.5.2",
                 "uptime_seconds": int(time.time()),
+                "db_backend": actual_backend,
+                "db_fallback": self.db_fallback or "",
                 "services": {
                     "web": "ok",
                     "tcp": "ok" if self.tcp_server and self.tcp_server.running else "stopped",

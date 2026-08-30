@@ -5091,6 +5091,27 @@ function doLogout() {
 
 // Auto-start user session on page load
 document.addEventListener('DOMContentLoaded', initCurrentUser);
+
+// v5.0.4 (ops bug): surface a silent DB-backend fallback as a visible banner
+// (previously the server fell back SQLite with only a console line).
+function checkBackendHealth() {
+    fetch('/api/health').then(function(r) { return r.json(); }).then(function(h) {
+        var fb = h && h.db_fallback;
+        if (!fb) return;
+        var existing = document.getElementById('dbFallbackBanner');
+        if (existing) { existing.remove(); }
+        var div = document.createElement('div');
+        div.id = 'dbFallbackBanner';
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#5a1a1a;color:#ffdddd;font-size:12px;padding:8px 14px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer;';
+        div.title = t('dash.hd.clickDismiss');
+        div.innerHTML = '⚠️ <strong>' + t('dash.dbFallback') + '</strong> ' + escapeHtml(String(fb)) +
+            ' <span style="opacity:.7;">(' + t('ui.clickToDismiss') + ')</span>';
+        div.onclick = function() { div.remove(); };
+        document.body.insertBefore(div, document.body.firstChild);
+    }).catch(function() {});
+}
+setTimeout(checkBackendHealth, 1500);
+
 // ======== END USER & ROLE MANAGEMENT ========
 
 function showImportDashboardModal() {
