@@ -88,6 +88,10 @@ document.querySelectorAll('.panel-tab').forEach(el => {
         document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
         this.classList.add('active');
         const tab = this.dataset.tab;
+        // v5.0.4 FIX: several panel-tabs use custom attributes (data-tab-ag/au/as/em)
+        // instead of data-tab - `tab` is undefined for them and tab.charAt(0) threw
+        // a TypeError on every click. Their own handlers manage their containers.
+        if (!tab) return;
         document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
         document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.display = '';
         if (selectedMachine) {
@@ -1736,6 +1740,12 @@ let currentView='overview';
 // v2.5.22: Debounce heartbeat reload to avoid 10 agents triggering 10 reloads simultaneously
 let _lastHeartbeatReload = 0;
 const HEARTBEAT_RELOAD_COOLDOWN = 10000; // 10 seconds between reloads from heartbeats
+// v5.0.4 FIX (429 flood): the SSE stream pushes a batch on every event, and
+// loadStats() (2 API calls: /api/stats + /api/event_types) was called on EVERY
+// batch -> hundreds of requests/min tripped the server rate limiter (429) and
+// froze the whole dashboard. Debounce to 10s.
+let _lastStatsReload = 0;
+const STATS_RELOAD_COOLDOWN = 10000;
 function connectSSE() {
     const evtSource = new EventSource('/api/events/stream');
     // v4.10 FIX: the stream sends a JSON ARRAY of events (core.sse_queue slice);
@@ -1785,7 +1795,12 @@ function connectSSE() {
             if (selectedMachine) { _debouncedReloadEvents(selectedMachine); _debouncedReloadFim(selectedMachine); }
           }
         }
-        loadStats();
+        // v5.0.4 FIX: debounce - do not call loadStats() on every SSE batch
+        var _snow = Date.now();
+        if (_snow - _lastStatsReload > STATS_RELOAD_COOLDOWN) {
+            _lastStatsReload = _snow;
+            loadStats();
+        }
       } catch(err) {}
     };
     evtSource.onerror = function() { setTimeout(connectSSE, 3000); };

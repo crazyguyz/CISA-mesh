@@ -465,7 +465,11 @@ class ServerCore:
         _api_rate_last = {}      # v5.0.3 (MEDIUM-4): ip -> last request ts (idle GC)
         _api_rate_ops = 0
         _api_rate_lock = threading.Lock()
-        _API_RATE_LIMIT = int(os.environ.get("GIAMSAT_API_RATE_LIMIT", "600"))
+        # v5.0.4: default raised 600 -> 1800/min/IP - the dashboard legitimately
+        # bursts on load (machines/stats/event_types/panorama/assets/groups/fim/...)
+        # plus multi-tab sessions; 600 tripped on a single admin session (see the
+        # SSE loadStats debounce fix in dashboard.js).
+        _API_RATE_LIMIT = int(os.environ.get("GIAMSAT_API_RATE_LIMIT", "1800"))
         _API_RATE_WINDOW = 60
         _API_RATE_EXEMPT = ("/api/events/stream", "/api/agent/", "/api/health", "/api/login")
 
