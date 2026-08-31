@@ -2,6 +2,14 @@
 
 **Ngày:** 2026-07-24 | **Phiên bản:** v3.5.8
 
+> **📌 Trạng thái triển khai — cập nhật 2026-08 (v5.0.4):**
+> - ✅ **P1 — Batch INSERT 1 transaction:** `batch_insert_events()` / `batch_insert_sysmon_events()` / `batch_insert_network_traffic()` (db_manager.py) đã có.
+> - ✅ **P4 — Worker count:** mặc định **8 workers** (`GIAMSAT_EVENT_WORKERS`, server_core.py:232) — có thể tăng thêm qua `.env`.
+> - ✅ **PostgreSQL production:** `db_postgres.py` + pool (10-50) + **materialized views dashboard** (api_cache.py — detect staleness, drop-stale + recreate với index đúng) + migrate 36 bảng ~160k rows (`tools/migrate_sqlite_to_pg.py`). DB backend có thể chuyển đổi lúc chạy; fallback SQLite có banner đỏ + `/api/health`.
+> - ✅ **Rate limit Web/API:** mặc định **1800 req/min/IP** (`GIAMSAT_API_RATE_LIMIT`, v5.0.4) — sửa lũ 429 do SSE `loadStats` gọi liên tục (debounce 10s trong dashboard.js).
+> - ⬜ **P2/P3 (đọc/write lock tách, adaptive poll):** chưa triển khai riêng — ít quan trọng khi đã chạy PG.
+> - ⬜ **P5/P7 (Redis queue/pub-sub):** chưa bắt buộc — chỉ khi mở rộng >500 agents.
+
 ---
 
 ## 1. Tổng Quan Hiện Trạng

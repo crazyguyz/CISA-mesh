@@ -1,4 +1,4 @@
-# GIAM-SAT v5.0.0 — Hệ thống Giám sát An ninh Mạng Nội bộ
+# GIAM-SAT v5.0.4 — Hệ thống Giám sát An ninh Mạng Nội bộ
 
 > **GIAM-SAT** (GIAM SÁT) là hệ thống giám sát an ninh mạng mã nguồn mở, kiến trúc **Agent-Server**, hỗ trợ giám sát Windows/Linux endpoint, phân tích threat theo MITRE ATT&CK, quản lý tài sản CNTT, và cảnh báo thời gian thực qua Telegram/Email.
 
@@ -32,12 +32,13 @@ git pull
 - Only UI files changed (`server\templates\`, `server\static\`) → **no restart needed**, just press **Ctrl+F5** in the browser.
 - Có thay đổi mã Python (`*.py`) → **restart server** để áp dụng (agent sẽ tự kết nối lại sau vài giây).
 - Python files changed (`*.py`) → **restart the server** to apply (agents reconnect automatically within a few seconds).
-- Sao lưu trước khi cập nhật: `server\giamsat_data.db`, `users.json`, `.env` (nếu có).
+- Sao lưu trước khi cập nhật: `server\giamsat_data.db`, `users.json`, `.env` (nếu có). Với PostgreSQL: `pg_dump -U admin -d giamsat > backup.sql`.
 - Back up before updating: `server\giamsat_data.db`, `users.json`, `.env` (if present).
 - ⚠️ `server\version.txt` là **phiên bản agent-build** — server dùng nó để so sánh với phiên bản agent báo lên (`update_available = agent_version != version.txt`). Phải để **khớp với bản GiamSatAgent.exe đang phát hành**, nếu không agent sẽ tải đi tải lại mãi (vòng lặp update). `build-agent.ps1` tự ghi đúng vào cả 2 file mỗi lần build.
 - ⚠️ `server\version.txt` is the **agent-build version** — the server compares it to the version each agent reports (`update_available = agent_version != version.txt`). It MUST match the shipped `GiamSatAgent.exe`, otherwise agents loop forever (update loop). `build-agent.ps1` writes the correct value to both files on every build.
 - 💡 **Agent/Updater chạy ẩn hoàn toàn (v5.0.2+):** cả 2 EXE được build **windowed (`console=False`)** → Task Scheduler khởi động mà **không hiện cửa sổ console đen** nữa (người dùng không thể vô ý đóng khiến agent/updater tắt). `main.py` + `updater.py` tự redirect stdout/stderr khi chạy windowed. Khi build mới, `build-agent.ps1` sẽ báo `console=False (windowed - no console flash)`.
 - 🔐 **v5.0.3 (2026-08):** NetFlow DoS hardening (rate-limit/exporter + template cache TTL + batch insert), 2FA rate-limit+lockout & audit username & re-enroll cần mã cũ + admin reset, nonce chống replay lệnh ký, che `ultraview_password` khỏi viewer, rate-limit dict GC + blacklist evict theo hạn, syslog UDP rate-limit, engine server đồng bộ agent (subtype/dst_port/field_equals/field_regex/FIELD_ALIASES), **PSK per-machine** (`GIAMSAT_PER_MACHINE_PSK[_FILE]`) + validate `machine_id` + sanitize hostname ở mọi ngưỡng — triệt tiêu nguồn gốc stored-XSS. Agent version bump → **4.6.6** (phải KHỚP với dist\GiamSatAgent.exe thật — lệch version = vòng lặp update vô hạn) (cần rebuild agent + push qua "Cập nhật Agent").
+- 🗄️ **v5.0.4 (2026-08) — PostgreSQL chính thức:** khôi phục role/DB PG đúng (role `admin` SUPERUSER + DB `giamsat` owner admin), **tool migrate SQLite→PG** `tools/migrate_sqlite_to_pg.py` (36 bảng ~160k rows, verify 0 issues), PG parity (ON CONFLICT predicate, `network_baseline`, `status` filter, materialized views dashboard). Nếu PG không kết nối được server **fallback SQLite có banner đỏ** + `server_error.log` + `/api/health` báo `db_fallback` — không còn âm thầm. Fix lũ 429 (SSE loadStats debounce + rate limit 1800/min), fix TypeError click tab Email/Assets/Agentless, UI hunting campaigns/history + Alerting Channels panel (Telegram/Slack/Webhook) + danh sách 8 SOAR action. Xem `dashboard-guide.md` + `summary.md`.
 
 ---
 
@@ -100,8 +101,12 @@ Script sẽ tự động:
 cd server
 pip install -r setup\requirements.txt
 
-# Tạo database PostgreSQL (nếu dùng PG)
-psql -U postgres -c "CREATE DATABASE giamsat"
+# Tạo role + database PostgreSQL (nếu dùng PG) — LỆNH ĐẦY ĐỦ (v5.0.4)
+# Thiếu 1 trong 2 lệnh dưới → server âm thầm fallback SQLite (banner đỏ khi chạy)
+psql -U postgres -c "CREATE ROLE admin LOGIN SUPERUSER PASSWORD 'Mat_khau_Admin_2026!';"
+psql -U postgres -c "CREATE DATABASE giamsat OWNER admin;"
+# Sau đó nhớ: PG >=15 mặc định SCRAM-SHA-256 (pg_hba.conf) — đừng đổi thành md5.
+# Rồi đặt .env: GIAMSAT_DB_BACKEND=postgres, GIAMSAT_PG_USER=admin, GIAMSAT_PG_PASSWORD=<mật khẩu trên>.
 ```
 
 ### Cấu hình Server
@@ -262,6 +267,9 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
 | **SCA** | Đánh giá cấu hình bảo mật (Security Configuration Assessment) |
 | **Vulnerabilities** | Quét CVE từ installed software |
 | **Threat Alerts** | Cảnh báo dựa trên correlation rules — kèm **phân loại (triage)** mỗi dòng (Mới / Đang xử lý / Đã xử lý / Báo động giả) |
+| **Threat Hunting** | Săn tìm chủ động theo giả thuyết + tactic MITRE ATT&CK, template chips, **lịch sử chiến dịch + thống kê** (v5.0.4) |
+| **Alerting Channels** | Email (SMTP + mẫu), **Telegram / Slack / Webhook** — panel cấu hình kênh cảnh báo (severity/cooldown/retry, v5.0.4) |
+| **Response (SOAR)** | 8 hành động phản hồi (kill process, chặn firewall/IP, khóa tài khoản, cách ly file/mạng, forensic snapshot...) + danh sách action khả dụng (v5.0.4) |
 | **Tài sản** | Quản lý tài sản IT: máy tính, màn hình, **máy in**, **điện thoại IP**, **thiết bị mạng**, **tồn kho (chuột/bàn phím/linh kiện/điện thoại)**. **Tự phát hiện** qua SNMP/port fingerprint (máy in, điện thoại Yealink, router/switch/AP) + **nhập tay theo kho**; phát hiện thay đổi phần cứng; **xuất Excel đa sheet**.
 | **Messages** | Chat trực tiếp với agent; máy trạm chủ động nhắn tin (IT support) |
 | **Agent Update** | Auto-update agent qua server |
