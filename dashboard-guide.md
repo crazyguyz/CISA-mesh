@@ -100,10 +100,12 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 - **VI:** Xem kết quả các **hành động phản hồi** (Active Response) đã thực thi trên máy trạm: cách ly mạng, kill tiến trình, chặn IP, cách ly file...
   - Vào menu **Response** (hoặc tab **Phản hồi** trong trang máy).
   - Mỗi dòng: máy, hành động, trạng thái (thành công/lỗi), output, mã thoát.
+  - **🆕 v5.0.4:** thẻ **"Hành động phản hồi khả dụng"** liệt kê 8 action SOAR (kill_process, firewall_block, disable_account, quarantine_file, isolate_network, forensic_snapshot...) kèm tham số cần + mức severity phù hợp.
   - *Để GỬI hành động mới:* dùng tab **Kiểm soát** (Control) trong trang máy.
 - **EN:** View results of **Active Response** actions executed on endpoints: isolate network, kill process, block IP, quarantine file...
   - Open **Response** (menu or machine tab).
   - Each row: machine, action, status (success/error), output, exit code.
+  - **🆕 v5.0.4:** an **"Available Response Actions"** card lists the 8 SOAR actions (kill_process, firewall_block, disable_account, quarantine_file, isolate_network, forensic_snapshot...) with required params + suitable severity.
   - *To SEND new actions:* use the **Control** tab on a machine page.
 
 ### Network
@@ -221,16 +223,18 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 
 - **VI:** Chủ động săn tìm mối đe dọa trong dữ liệu lịch sử.
   1. Vào menu **Hunting**.
-  2. Nhập **Giả thuyết** (VD: "Có process nào dump LSASS trong 24h qua không?").
-  3. (Tùy chọn) chọn **Tactic** mẫu: Credential Theft, Lateral Movement, Persistence, C2 Communication, Exfiltration, Defense Evasion.
+  2. Nhập **Giả thuyết** (VD: "Có process nào dump LSASS trong 24h qua không?"). Bấm các **thẻ template** (Credential Theft, Lateral Movement...) để tự điền giả thuyết mẫu + chọn tactic.
+  3. (Tùy chọn) chọn **Tactic** trong dropdown (tự nạp từ server — khi có template mới sẽ xuất hiện tự động).
   4. Chọn **Thời gian (giờ)** cần quét (mặc định 168 giờ = 7 ngày).
   5. Nhấn **Bắt đầu Săn tìm đe dọa** → kết quả hiện bên dưới (kèm Campaign ID để theo dõi).
+  6. **🆕 v5.0.4:** dòng thống kê chiến dịch (📊 tổng / ✅ hoàn thành / ⏳ đang chạy / 🎯 tổng kết quả) + bảng **Lịch sử chiến dịch** bên dưới — nhấn **Xem** để mở lại kết quả chiến dịch cũ.
 - **EN:** Proactively hunt for threats in historical data.
   1. Open **Hunting**.
-  2. Type a **Hypothesis** (e.g. "Any process dumping LSASS in the last 24h?").
-  3. (Optional) pick a **Tactic** template: Credential Theft, Lateral Movement, Persistence, C2 Communication, Exfiltration, Defense Evasion.
+  2. Type a **Hypothesis** (e.g. "Any process dumping LSASS in the last 24h?"). Click the **template chips** (Credential Theft, Lateral Movement...) to auto-fill a sample hypothesis + tactic.
+  3. (Optional) pick a **Tactic** in the dropdown (server-driven — new templates appear automatically).
   4. Set the **Time window (hours)** to scan (default 168 h = 7 days).
   5. Click **Start Threat Hunt** → results appear below (with a Campaign ID).
+  6. **🆕 v5.0.4:** campaign stats line (📊 total / ✅ done / ⏳ running / 🎯 matches) + a **Campaign history** table below — click **View** to reopen an old campaign's results.
 
 ### Anomaly
 
@@ -417,11 +421,13 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 - **VI:** 3 tab: **📧 Soạn Email**, **⚙ Cấu hình SMTP**, **📤 Mail đã gửi**.
   1. **Soạn Email**: chọn **mẫu cảnh báo** có sẵn (uptime 24h, brute force, malware, phishing, truy cập trái phép, lỗ hổng, kết nối độc hại, FIM, cảnh báo chung) → hệ thống tự điền tiêu đề/nội dung; chọn máy (tự lấy email người dùng), sửa nếu cần → **Gửi Email**. Biến có sẵn trong nội dung: `{hostname}`, `{user_name}`, `{employee_id}`.
   2. **Cấu hình SMTP**: thông tin **chỉ đọc** từ biến môi trường server (`GIAMSAT_SMTP_HOST/PORT/USER/PASS`); bấm **Gửi Email Test** để kiểm tra.
-  3. **Mail đã gửi**: lịch sử gửi (thời gian, người nhận, tiêu đề, trạng thái); **Xóa tất cả** để dọn.
+  3. **🆕 v5.0.4 — Cấu hình Kênh Cảnh báo** (bên dưới thẻ SMTP): bật/tắt cảnh báo tổng, ngưỡng severity tối thiểu, cooldown, retry; cấu hình **Telegram** (bot token, chat ID, approval timeout, severity), **Slack** (webhook, channel), **Webhook** (URL). Nhấn **Lưu cấu hình** → ghi vào `alerting_config.json` trên server (admin/settings). *Mẹo:* còn có thể chỉnh trực tiếp qua nút ⚙ Cấu hình SMTP + panel này.
+  4. **Mail đã gửi**: lịch sử gửi (thời gian, người nhận, tiêu đề, trạng thái); **Xóa tất cả** để dọn.
 - **EN:** 3 tabs: **📧 Compose**, **⚙ SMTP Config**, **📤 Sent Mail**.
   1. **Compose**: pick a **template** (uptime 24h, brute force, malware, phishing, unauthorized access, vulnerability, suspicious connection, FIM, general) → subject/body auto-fill; pick a machine (user email auto-loaded), edit if needed → **Send Email**. Body variables: `{hostname}`, `{user_name}`, `{employee_id}`.
   2. **SMTP Config**: **read-only** values from server env (`GIAMSAT_SMTP_HOST/PORT/USER/PASS`); use **Send Test Email** to verify.
-  3. **Sent Mail**: send history (time, recipient, subject, status); **Clear all** empties it.
+  3. **🆕 v5.0.4 — Alerting Channels Config** (below the SMTP card): master enable toggle, minimum severity, cooldown, retry; configure **Telegram** (bot token, chat ID, approval timeout, severity), **Slack** (webhook, channel), **Webhook** (URL). Click **Save config** → written to `alerting_config.json` on the server (admin/settings).
+  4. **Sent Mail**: send history (time, recipient, subject, status); **Clear all** empties it.
 
 ### Tài sản (Assets)
 
@@ -540,4 +546,21 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 
 *Mẹo cuối: mọi menu đều hỗ trợ tìm kiếm, lọc, sắp xếp và cập nhật thời gian thực (SSE). Nếu một thao tác "không chạy", kiểm tra tab **Nhật ký kiểm toán** xem lệnh đã được ghi nhận chưa.*
 *Final tip: every menu supports search, filter, sorting and real-time updates (SSE). If an action "does nothing", check the **Audit Log** to see whether the command was recorded.*
+
+---
+
+## 🆕 Cập nhật v5.0.4 — What's new in v5.0.4
+
+- **VI:**
+  - **PostgreSQL backend chính thức:** server có thể chạy trên PostgreSQL 16 (khuyến nghị production) — schema tự tạo/migrate khi khởi động. Nếu PostgreSQL không kết nối được, server vẫn fallback SQLite nhưng hiện **banner đỏ cảnh báo** ở đầu trang: "⚠️ Database đang chạy SQLite fallback!" (bấm để đóng) + ghi `server_error.log` — không còn "âm thầm" nữa. Trạng thái thật xem tại `/api/health` (`db_backend`, `db_fallback`).
+  - **Săn tìm đe dọa:** thêm template chips + dropdown tactic tự nạp, dòng thống kê chiến dịch, bảng **Lịch sử chiến dịch** (mở lại kết quả cũ).
+  - **Email → Cấu hình:** thêm panel **Kênh Cảnh báo** (Telegram/Slack/Webhook + ngưỡng/cooldown/retry) — lưu vào `alerting_config.json`.
+  - **Response:** thẻ **"Hành động phản hồi khả dụng"** liệt kê 8 action SOAR + tham số.
+  - **Ổn định:** sửa lũ 429 (SSE loadStats debounce + rate limit mặc định 1800/min), sửa lỗi click tab Email/Assets/Agentless (TypeError charAt), triage trạng thái (Đe dọa/Lỗ hổng/YARA) hoạt động đầy đủ trên PG.
+- **EN:**
+  - **PostgreSQL backend supported:** the server can run on PostgreSQL 16 (recommended for production) — schema auto-creates/migrates at startup. If PostgreSQL is unreachable the server still falls back to SQLite but now shows a **red warning banner** at the top: "⚠️ Database is running on SQLite fallback!" (click to dismiss) + logs to `server_error.log` — no more silent fallback. Real state at `/api/health` (`db_backend`, `db_fallback`).
+  - **Threat Hunting:** template chips + server-driven tactic dropdown, campaign stats line, **Campaign history** table (reopen old results).
+  - **Email → Config:** new **Alerting Channels** panel (Telegram/Slack/Webhook + severity/cooldown/retry) — saved to `alerting_config.json`.
+  - **Response:** an **"Available Response Actions"** card lists the 8 SOAR actions + params.
+  - **Stability:** fixed the 429 flood (SSE loadStats debounce + default rate limit 1800/min), fixed clicking Email/Assets/Agentless tabs (charAt TypeError), threat/vuln/yara triage status works fully on PG.
 

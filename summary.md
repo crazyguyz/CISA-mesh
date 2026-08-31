@@ -1,6 +1,35 @@
-# GIAM-SAT v5.0.0 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+# GIAM-SAT v5.0.4 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
 > KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● HUMAN-IN-THE-LOOP ● PHÂN LOẠI CẢNH BÁO (TRIAGE) ● MADE IN VIETNAM 🇻🇳
+
+---
+
+## 0. v5.0.4 — Cập nhật gần nhất (2026-08)
+
+### Bảo mật & lõi (Round 6 review — CRITICAL/HIGH/MEDIUM/LOW)
+| # | Nội dung | File |
+|---|----------|------|
+| CRITICAL-1 | PG `ON CONFLICT` thiếu predicate partial index (42P10) → fix + log lỗi thay vì `except:pass` nuốt | `db_postgres.py` |
+| CRITICAL-2 | XSS modal packet/detail (escape toàn bộ field network) | `dashboard.js` |
+| HIGH-1 | Update-loop: version derive từ binary (`dist/agent_version.txt`), `update.lock` chống race, `.bat` staging copy, MEI cleanup an toàn | `db_manager.py`, `updater.py`, `agent_core.py`, `build-agent.ps1` |
+| HIGH-2 | Sanitize `user_name/email/employee_id` server-side + esc UI | `agent_auth.py`, `message-chat.js` |
+| HIGH-3 | Hồi sinh ~1.900 rule Sigma chết: alias lowercase, `process_path`, `scriptblock_text`, field_regex cho re/startswith/endswith | `correlation_engine.py`, `sigma_parser.py`, `event_collector.py`, `field_aliases.yaml` |
+| MEDIUM-1 | TLS hostname fail-hard (không fallback im lặng) | `http_client.py` |
+| MEDIUM-2 | escJs asset_id trong onclick | `assets.js` |
+| MEDIUM-3 | Per-machine PSK độc lập + cache theo (env, mtime) | `agent_auth.py`, `api_common.py`, `tcp_server.py` |
+| LOW-1/2 | 2FA-fail TTL 30' + ACCOUNT_LOCKED kèm username | `auth_manager.py` |
+
+### PostgreSQL chính thức
+- **Khôi phục PG:** role/db `giamsat` được tạo đúng (lỗi trước: setup chỉ ghi `.env`, role `admin` chưa từng tồn tại → server âm thầm chạy SQLite nhiều ngày).
+- **Tool migrate SQLite→PG:** `tools/migrate_sqlite_to_pg.py` (`--dry/--run/--only`) — migrate 36 bảng ~160k rows, dedup qua `dedup_key`, skip command pending, setval sequence (verify 0 issues).
+- **PG parity:** `network_baseline` DDL/upsert backend-aware; `status` filter cho threat/vuln/yara/inspection; schema `status` cột cho alert tables; materialized views dashboard dùng index đúng (machine_id / (1)) + tự drop-stale + recreate.
+- **Fallback hiển thị:** khi PG không kết nối được → banner đỏ + `server_error.log` + `/api/health` báo `db_fallback` — không còn âm thầm.
+
+### UI
+- Săn tìm đe dọa: template chips + dropdown tactic tự nạp + stats + **Lịch sử chiến dịch**.
+- Email→Cấu hình: panel **Kênh Cảnh báo** (Telegram/Slack/Webhook).
+- Response: thẻ **Hành động phản hồi khả dụng** (8 SOAR action).
+- Ổn định: fix lũ 429 (SSE loadStats debounce + rate limit 1800/min), fix TypeError khi click tab Email/Assets/Agentless.
 
 ---
 
