@@ -370,7 +370,10 @@ class AgentCore:
             self.event_collector = EventCollector(callback=send_data, collect_sysmon=False,
                                                   agent_pid=os.getpid(), skip_processes=_skip_procs)
             self.fim_collector = FIMCollector(callback=send_data)
-            self.network_collector = NetworkCollector(callback=send_data)
+            # v5.0.4 (review R7 7.6): inspection_callback carries TLS SNI/JA3 DPI
+            # events (network_inspection subtype=tls_sni) on the same channel.
+            self.network_collector = NetworkCollector(callback=send_data,
+                                                      inspection_callback=send_data)
         else:
             self.event_collector = LinuxEventCollector(callback=send_data)
             self.fim_collector = LinuxFIMCollector(callback=send_data)
@@ -2556,8 +2559,19 @@ del "%~f0"
             # Sysmon may be installed but unreadable due to permissions
             threading.Thread(target=self._simple_network_poll, daemon=True).start()
         else:
-            print("[*] Network monitoring: netstat polling (fallback, 3-tier aggregation)")
-            threading.Thread(target=self._simple_network_poll, daemon=True).start()
+            # v5.0.4 (review R7 7.6): optional full packet capture (needs Npcap +
+            # admin) - enables TLS SNI + JA3 DPI on top of L3/L4. Mutually exclusive
+            # with netstat polling (same channel, no duplicates).
+            if os.environ.get("GIAMSAT_AGENT_PACKET_CAPTURE", "").strip() == "1":
+                try:
+                    self.network_collector.start()
+                    print("[*] Network monitoring: packet capture mode (SNI/JA3 DPI)")
+                except Exception as e:
+                    print(f"[-] Packet capture mode failed: {e}")
+                    threading.Thread(target=self._simple_network_poll, daemon=True).start()
+            else:
+                print("[*] Network monitoring: netstat polling (fallback, 3-tier aggregation)")
+                threading.Thread(target=self._simple_network_poll, daemon=True).start()
 
         threading.Thread(target=self._vuln_scan_loop, daemon=True).start()
         threading.Thread(target=self._yara_scan_loop, daemon=True).start()

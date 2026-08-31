@@ -46,6 +46,81 @@ def _parse_tcp_flags(flags_int):
     return ",".join(names) if names else "NONE"
 
 
+def _parse_tls_client_hello(payload):
+    """Passive TLS ClientHello parser -> (SNI, JA3) without a TLS layer.
+
+    v5.0.4 (review R7 7.6): the destination IP of a cloud VPS C2 is benign; the
+    SNI the client presents and the JA3 client fingerprint are the discriminators
+    (a VPS C2 box uses a specific TLS stack, not the corporate browser stack).
+    """
+    try:
+        import hashlib as _h
+        if len(payload) < 5 or payload[0] != 0x16:
+            return "", ""
+        rec_len = (payload[3] << 8) | payload[4]
+        if len(payload) < 5 + rec_len:
+            rec_len = len(payload) - 5
+        body = payload[5:5 + rec_len]
+        if len(body) < 4 or body[0] != 0x01:  # Handshake type ClientHello
+            return "", ""
+        hs_len = (body[1] << 16) | (body[2] << 8) | body[3]
+        hello = body[4:4 + hs_len]
+        if len(hello) < 34:
+            return "", ""
+        ver = (hello[0] << 8) | hello[1]
+        pos = 34  # legacy_version(2) + random(32)
+        sid_len = hello[pos]
+        pos += 1 + sid_len
+        if pos + 2 > len(hello):
+            return "", ""
+        cs_len = (hello[pos] << 8) | hello[pos + 1]
+        pos += 2
+        cs_raw = hello[pos:pos + cs_len]
+        pos += cs_len
+        ciphers = [int.from_bytes(cs_raw[i:i + 2], "big")
+                   for i in range(0, len(cs_raw) - 1, 2)]
+        if pos >= len(hello):
+            return "", ""
+        comp_len = hello[pos]
+        pos += 1 + comp_len
+        if pos + 2 > len(hello):
+            return "", ""
+        ext_len = (hello[pos] << 8) | hello[pos + 1]
+        pos += 2
+        ext_end = min(pos + ext_len, len(hello))
+        sni = ""
+        ext_types = []
+        curves_raw = b""
+        ecpf_raw = b""
+        while pos + 4 <= ext_end:
+            etype = (hello[pos] << 8) | hello[pos + 1]
+            elen = (hello[pos + 2] << 8) | hello[pos + 3]
+            pos += 4
+            edata = hello[pos:pos + elen]
+            pos += elen
+            ext_types.append(etype)
+            if etype == 0x0000 and len(edata) >= 5 and edata[2] == 0x00:  # server_name
+                hlen = (edata[3] << 8) | edata[4]
+                if 5 + hlen <= len(edata):
+                    sni = edata[5:5 + hlen].decode("utf-8", errors="ignore")
+            elif etype == 0x000a:  # supported_groups (elliptic curves)
+                curves_raw = edata
+            elif etype == 0x000b:  # ec_point_formats
+                ecpf_raw = edata
+        curves = ([int.from_bytes(curves_raw[i:i + 2], "big")
+                   for i in range(2, len(curves_raw) - 1, 2)]
+                  if len(curves_raw) >= 2 else [])
+        ecpf = list(ecpf_raw[1:]) if len(ecpf_raw) >= 1 and ecpf_raw[0] == len(ecpf_raw) - 1 else []
+        ja3_str = (f"{ver}," + ",".join(str(c) for c in ciphers) + "," +
+                   ",".join(str(e) for e in ext_types) + "," +
+                   ",".join(str(c) for c in curves) + "," +
+                   ",".join(str(e) for e in ecpf))
+        ja3 = _h.md5(ja3_str.encode("utf-8", errors="ignore")).hexdigest()
+        return sni, ja3
+    except Exception:
+        return "", ""
+
+
 class NetworkFilter:
     """
     v3.3: Filter noise from netstat output.
@@ -192,15 +267,18 @@ class NetworkFilter:
 
 
 class NetworkCollector(threading.Thread):
-    def __init__(self, callback):
+    def __init__(self, callback, inspection_callback=None):
         super().__init__(daemon=True)
         self.callback = callback
+        # v5.0.4: carries DPI inspection events (TLS SNI/JA3) on a separate sink
+        self.inspection_callback = inspection_callback
         self.running = True
         self._count = 0
         self._sent_count = 0
         self._filtered_count = 0
         self._dedup = {}  # v3.3: dedup key -> timestamp
         self._dedup_ttl = 30  # v3.6.2: 30s dedup (was 300s) for better visibility
+        self._insp_dedup = {}  # v5.0.4: (sni, dst_ip) -> ts (5 min) for inspection events
 
     def _send(self, data):
         """v3.3: Filter + dedup before sending."""
@@ -317,9 +395,55 @@ class NetworkCollector(threading.Thread):
                 except:
                     pass
 
+            # TLS ClientHello -> SNI + JA3 (v5.0.4: the SNI/JA3 of a connection to a
+            # benign-looking cloud IP is what separates a C2 box from a browser)
+            if TCP in pkt and Raw in pkt and pkt[TCP].dport == 443 and not data.get("protocol_app"):
+                try:
+                    tls_payload = bytes(pkt[Raw])
+                    if tls_payload and tls_payload[0] == 0x16:
+                        tls_sni, tls_ja3 = _parse_tls_client_hello(tls_payload)
+                        if tls_sni or tls_ja3:
+                            data["protocol_app"] = "TLS"
+                            data["tls_sni"] = tls_sni
+                            data["ja3"] = tls_ja3
+                            self._send_inspection(data)
+                except Exception:
+                    pass
+
             self._send(data)
         except Exception:
             pass  # Silently skip malformed packets
+
+    def _send_inspection(self, data):
+        """v5.0.4: emit a network_inspection (tls_sni) event with SNI + JA3."""
+        if not self.inspection_callback:
+            return
+        sni = data.get("tls_sni", "")
+        dst_ip = data.get("dst_ip", "")
+        now_ts = time.time()
+        key = (sni, dst_ip)
+        if now_ts - self._insp_dedup.get(key, 0) < 300:
+            return
+        self._insp_dedup[key] = now_ts
+        if len(self._insp_dedup) > 5000:
+            self._insp_dedup = {k: v for k, v in self._insp_dedup.items() if now_ts - v < 300}
+        ev = {
+            "type": "network_inspection",
+            "subtype": "tls_sni",
+            "domain": sni,
+            "dst_ip": dst_ip,
+            "dst_port": data.get("dst_port", 0),
+            "src_ip": data.get("src_ip", ""),
+            "src_port": data.get("src_port", 0),
+            "protocol": "TCP",
+            "query_type": "TLS",
+            "ja3": data.get("ja3", ""),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        }
+        try:
+            self.inspection_callback(ev)
+        except Exception:
+            pass
 
     def _scapy_loop(self):
         print("[NET] Scapy sniff mode (full packet capture)")
@@ -377,8 +501,14 @@ class NetworkCollector(threading.Thread):
 
     # ===== MAIN =====
     def run(self):
-        # v2.5.18: Force netstat only - scapy requires admin/Npcap permissions
-        # which may not be available on all machines
+        # v2.5.18: default = netstat only - scapy requires admin/Npcap permissions
+        # which may not be available on all machines.
+        # v5.0.4 (review R7 7.6): GIAMSAT_AGENT_PACKET_CAPTURE=1 + scapy enables
+        # full packet capture with TLS SNI + JA3 DPI (opt-in per host).
+        if os.environ.get("GIAMSAT_AGENT_PACKET_CAPTURE", "").strip() == "1" and HAS_SCAPY:
+            print("[NET] Scapy sniff mode (full packet capture + TLS SNI/JA3 DPI)")
+            self._scapy_loop()
+            return
         print("[NET] Network Collector: netstat polling (scapy disabled)")
         self._netstat_loop()
 

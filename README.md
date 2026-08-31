@@ -208,6 +208,12 @@ Muốn thêm dropdown mới (VD "Phòng ban"), chỉ cần thêm một đối t�
 | `GIAMSAT_PER_MACHINE_PSK` | JSON `{"machine_id":"secret"}` — PSK riêng từng máy (thắng global) | Không (optional) |
 | `GIAMSAT_PER_MACHINE_PSK_FILE` | Đường dẫn file JSON chứa map PSK per-machine | Không (optional) |
 | `GIAMSAT_SECRET_KEY` | Khóa ký phiên Flask/JWT | Có (tự sinh nếu trống) |
+| `GIAMSAT_NET_ALERT_INTERVAL` | Chu kỳ quét NetFlow hành vi (s) — mặc định 60 | Không |
+| `GIAMSAT_NET_ALERT_WINDOW` | Cửa sổ quét beacon/first-seen (s) — mặc định 1800 | Không |
+| `GIAMSAT_NET_BEACON_MIN_FLOWS` | Số flow tối thiểu để gọi là beacon — mặc định 5 | Không |
+| `GIAMSAT_NET_FIRST_SEEN_DAYS` | Số ngày "chưa từng thấy" cho NET-FIRST — mặc định 14 | Không |
+| `GIAMSAT_AGENT_PACKET_CAPTURE` | **Agent:** `1` = bật DPI scapy (TLS SNI + JA3) — cần Npcap + admin | Không |
+| `GIAMSAT_COLLECT_EXTRA_IDS` | **Agent:** bật thêm EID ồn, VD `"4656,4658,4660,5156,5158"` | Không |
 
 > **Lưu ý:** Có thể thêm API keys bất cứ lúc nào — chỉ cần sửa `.env` và restart server.
 
@@ -268,6 +274,7 @@ Hoặc dùng Caddy: `https://giamsat.example.com { reverse_proxy 127.0.0.1:5000 
 | **Vulnerabilities** | Quét CVE từ installed software |
 | **Threat Alerts** | Cảnh báo dựa trên correlation rules — kèm **phân loại (triage)** mỗi dòng (Mới / Đang xử lý / Đã xử lý / Báo động giả) |
 | **Threat Hunting** | Săn tìm chủ động theo giả thuyết + tactic MITRE ATT&CK, template chips, **lịch sử chiến dịch + thống kê** (v5.0.4) |
+| **Network Behavior Alerts** | **NET-BEACON / NET-FIRST / NET-ODD** (v5.0.4): phát hiện C2 theo **hành vi** từ NetFlow (chu kỳ đều đặn, first-seen, giờ lạ) — không cần IP reputation (VPS cloud vẫn bị bắt vì *pattern*, không phải vì IP) |
 | **Alerting Channels** | Email (SMTP + mẫu), **Telegram / Slack / Webhook** — panel cấu hình kênh cảnh báo (severity/cooldown/retry, v5.0.4) |
 | **Response (SOAR)** | 8 hành động phản hồi (kill process, chặn firewall/IP, khóa tài khoản, cách ly file/mạng, forensic snapshot...) + danh sách action khả dụng (v5.0.4) |
 | **Tài sản** | Quản lý tài sản IT: máy tính, màn hình, **máy in**, **điện thoại IP**, **thiết bị mạng**, **tồn kho (chuột/bàn phím/linh kiện/điện thoại)**. **Tự phát hiện** qua SNMP/port fingerprint (máy in, điện thoại Yealink, router/switch/AP) + **nhập tay theo kho**; phát hiện thay đổi phần cứng; **xuất Excel đa sheet**.

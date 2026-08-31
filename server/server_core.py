@@ -221,6 +221,17 @@ class ServerCore:
         except Exception as e:
             print(f"[!] NetFlow Collector init failed: {e}")
 
+        # v5.0.4 (review R7 7.9): behaviour-based NetFlow alerting - beacon /
+        # first-seen / off-hours WITHOUT IP reputation (a cloud VPS IP is benign;
+        # the pattern is not).
+        self.network_alerting = None
+        try:
+            from network_alerting import NetworkAlertEngine
+            self.network_alerting = NetworkAlertEngine(db_manager=self.db, alerting=self.alerting)
+            print("[*] Network Alert Engine ready (NET-BEACON / NET-FIRST / NET-ODD)")
+        except Exception as e:
+            print(f"[!] Network Alert Engine init failed: {e}")
+
         # v3.0: Cross-machine correlation engine (lateral movement, multi-host)
         self.correlation = ServerCorrelationEngine(db_manager=self.db, alerting_engine=self.alerting)
 
@@ -229,6 +240,7 @@ class ServerCore:
             event_queue=self.event_queue,
             db_manager=self.db,
             correlation_engine=self.correlation,
+            alerting=self.alerting,
             num_workers=int(os.environ.get("GIAMSAT_EVENT_WORKERS", "8")),
             batch_size=100,
             poll_interval=0.5,
@@ -278,6 +290,11 @@ class ServerCore:
                 self.netflow.start()
             except Exception as e:
                 print(f"[!] NetFlow Collector start failed: {e}")
+        if self.network_alerting:
+            try:
+                self.network_alerting.start()
+            except Exception as e:
+                print(f"[!] Network Alert Engine start failed: {e}")
         print("[*] Background servers started (TCP:6666, Syslog:514, NetFlow:2055)")
         # v4.5.5 SECURITY: agent HTTP endpoints (pending-commands/heartbeat/command-result/download)
         # transmit the agent PSK in plaintext over HTTP. Warn admins to use a TLS reverse proxy.
@@ -748,6 +765,11 @@ class ServerCore:
         if self.netflow:
             try:
                 self.netflow.stop()
+            except Exception:
+                pass
+        if self.network_alerting:
+            try:
+                self.network_alerting.stop()
             except Exception:
                 pass
         self.agentless.stop()

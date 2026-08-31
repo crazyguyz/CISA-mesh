@@ -340,6 +340,7 @@ class PostgresDatabase:
                 subtype TEXT, domain TEXT, dst_ip TEXT, dst_port INTEGER,
                 src_ip TEXT, src_port INTEGER, protocol TEXT,
                 query_type TEXT, avg_interval_sec REAL, sample_count INTEGER,
+                ja3 TEXT DEFAULT '',  -- v5.0.4: TLS fingerprint (JA3) from DPI
                 timestamp TEXT, received_at TIMESTAMPTZ DEFAULT NOW()
             )""",
             "yara_alerts": """CREATE TABLE IF NOT EXISTS yara_alerts (
@@ -613,6 +614,7 @@ class PostgresDatabase:
             ("assets_inventory", "employee_id", "VARCHAR(64) DEFAULT ''"),
             ("machine_users", "branch", "TEXT DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
+            ("network_inspection", "ja3", "TEXT DEFAULT ''"),  # v5.0.4: TLS fingerprint
             # v5.0.1: support-ticket columns (structured workstation requests)
             ("messages", "msg_type", "TEXT DEFAULT 'chat'"),
             ("messages", "category", "TEXT DEFAULT ''"),
@@ -1038,14 +1040,14 @@ class PostgresDatabase:
             self._execute(
                 """INSERT INTO network_inspection (machine_id, hostname, subtype, domain, dst_ip,
                    dst_port, src_ip, src_port, protocol, query_type, avg_interval_sec,
-                   sample_count, timestamp) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                   sample_count, ja3, timestamp) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (msg.get("machine_id", ""), msg.get("hostname", ""),
                  msg.get("subtype", ""), msg.get("domain", ""),
                  msg.get("dst_ip", ""), msg.get("dst_port", 0),
                  msg.get("src_ip", ""), msg.get("src_port", 0),
                  msg.get("protocol", ""), msg.get("query_type", ""),
                  msg.get("avg_interval_sec", 0), msg.get("sample_count", 0),
-                 msg.get("timestamp", ""))
+                 msg.get("ja3", ""), msg.get("timestamp", ""))
             )
         except Exception:
             pass

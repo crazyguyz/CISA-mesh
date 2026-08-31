@@ -31,7 +31,7 @@ class EventWorkerPool:
 
     def __init__(self, event_queue, db_manager, correlation_engine=None,
                  num_workers=4, batch_size=100, poll_interval=0.5,
-                 anomaly_detector=None):
+                 anomaly_detector=None, alerting=None):
         """
         Args:
             event_queue: EventQueue instance
@@ -40,11 +40,15 @@ class EventWorkerPool:
             num_workers: Number of worker threads
             batch_size: Max events to pull per batch
             poll_interval: Seconds between poll cycles
+            alerting: Optional AlertingEngine - v5.0.4: anomaly alerts were only
+                written to threat_alerts (dashboard) and never notified; this
+                connects them to Telegram/Email/Slack.
         """
         self.queue = event_queue
         self.db = db_manager
         self.correlation = correlation_engine
         self.anomaly_detector = anomaly_detector or AnomalyDetector()
+        self.alerting = alerting
         self.num_workers = num_workers
         self.batch_size = batch_size
         self.poll_interval = poll_interval
@@ -545,6 +549,21 @@ class EventWorkerPool:
             self.db.insert_threat_alert(alert)
         except Exception:
             pass
+        # v5.0.4 (review R7 7.5): anomaly output was written to the dashboard but
+        # never reached the notification channels - notify the SOC too.
+        if self.alerting:
+            try:
+                self.alerting.send_alert({
+                    "title": f"[Anomaly] {hostname} [{alert['severity']}]",
+                    "message": reason_text,
+                    "severity": alert["severity"],
+                    "rule_id": rule_id,
+                    "machine_id": machine_id,
+                    "hostname": hostname,
+                    "timestamp": timestamp,
+                })
+            except Exception:
+                pass
 
     def get_stats(self):
         """Return worker pool statistics."""

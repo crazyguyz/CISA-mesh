@@ -85,13 +85,19 @@ ALWAYS_COLLECT_IDS = {
 # v4.13 (P0.3): '4663' removed - required by THREAT-009/011/051 (LSASS/SAM object
 # access). Volume is acceptable on HIGH-priority channels; re-tune with a selective
 # SACL later if needed.
+# v5.0.4 (review R7 7A.2): '4689' removed too - process termination is low-volume
+# and completes process-lifetime kill chains (T1489/T1055). The very noisy
+# 5156/5158/4656/4658/4660 stay off by default but can be enabled per host with
+# GIAMSAT_COLLECT_EXTRA_IDS="4656,4658,4660,5156,5158" (needed by some MITRE rules).
 SKIP_IDS = {
     '4656', '4658', '4660',  # File system object access (noisy variants)
-    '4689',  # Process termination
     '5156', '5158',  # WFP permitted (extremely noisy)
     '5376', '5377',  # Logon cache (noisy)
     '5447', '5448', '5449', '5450', '5451', '5452', '5453', '5454', '5455', '5456',  # WFP frequent noise
 }
+_EXTRA_COLLECT_IDS = {s.strip() for s in os.environ.get("GIAMSAT_COLLECT_EXTRA_IDS", "").split(",") if s.strip()}
+if _EXTRA_COLLECT_IDS:
+    SKIP_IDS = SKIP_IDS - _EXTRA_COLLECT_IDS
 
 # Extended StringInserts parsing for critical Event IDs
 EVENT_STRINGINSERTS_MAP = {

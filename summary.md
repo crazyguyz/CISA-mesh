@@ -66,6 +66,20 @@
 
 **Để lại (cần agent rebuild / quyết định):** MEDIUM-9 (process_name full-path vs basename — Sigma), MEDIUM-10 (sysmon drain inclusive timestamp), MEDIUM-11 (command_key plaintext → DPAPI), MEDIUM-12 (show_message HTTP poll thiếu field), MEDIUM-14 (sca shlex), MEDIUM-18 (sanitize sâu các trường text — defense-in-depth), MEDIUM-20/21 ([CẦN XÁC MINH] múi giờ, FIM escJs), LOW-2 (CROSS machine), LOW-4 (dead code module), LOW-5 (i18n key).
 
+### Phát hiện C2 theo HÀNH VI (không dựa IP reputation)
+> Ý kiến: "IP đích ở AWS là bình thường → L3/L4 không phát hiện được." Đúng về reputation, sai về hành vi — đã triển khai tầng phát hiện theo pattern:
+- **`server/network_alerting.py`** — engine quét NetFlow mỗi 60s, 3 rule **không cần biết IP đích có "xấu" hay không**:
+  - **NET-BEACON** (HIGH): ≥5 kết nối tới 1 đích ngoài cố định, chu kỳ đều (CV jitter ≤0.30) — chữ ký C2 kinh điển. MITRE T1071.001.
+  - **NET-FIRST** (MEDIUM): máy kết nối **lần đầu tiên** tới đích ngoài trong 14 ngày (novelty — case "VPS AWS mới toanh").
+  - **NET-ODD** (HIGH): first-seen + giờ 00:00–05:00.
+  - Cooldown riêng (6h/24h/24h) + ghi `threat_alerts` + đẩy Telegram/Email/Slack.
+  - Env: `GIAMSAT_NET_ALERT_INTERVAL` (60), `GIAMSAT_NET_ALERT_WINDOW` (1800), `GIAMSAT_NET_BEACON_MIN_FLOWS` (5), `GIAMSAT_NET_FIRST_SEEN_DAYS` (14).
+- **Anomaly → alerting**: `anomaly_detector` (z-score + first-time) trước đây chỉ ghi dashboard — giờ **bắn cả Telegram/Email/Slack** qua alerting engine (event_worker nhận `alerting`).
+- **TLS SNI + JA3** (agent DPI): `network_collector.py` scapy path parse ClientHello → SNI + JA3 (md5), gửi dạng `network_inspection` subtype `tls_sni` (UI đã có badge) — **cần** `GIAMSAT_AGENT_PACKET_CAPTURE=1` + Npcap + admin; cột `ja3` thêm vào cả SQLite lẫn PG. Hunting AI biết bảng `network_inspection` để truy vấn SNI/JA3.
+- **EID agent**: bỏ skip **4689** (process termination, giá trị cao, ít nhiễu); các EID ồn (5156/5158/4656/4658/4660) bật theo host qua `GIAMSAT_COLLECT_EXTRA_IDS="4656,4658,4660,5156,5158"`.
+- Sysmon EID 3 đã là nguồn network chính (netstat chỉ fallback) — xác nhận đúng thứ tự ưu tiên.
+- **Test:** `tests/network_alerting_tests.py` (8 check: SNI/JA3 parse + beacon + first-seen + cooldown).
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

@@ -39,6 +39,7 @@ except ImportError:
 ALLOWED_HUNT_TABLES = {
     "events", "sysmon_events", "fim_events", "network_traffic",
     "threat_alerts", "syslog", "sca_events", "vuln_alerts", "yara_alerts",
+    "network_inspection",  # v5.0.4: DPI (tls_sni SNI / ja3 fingerprint)
 }
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -232,6 +233,7 @@ class HuntingEngine:
             "- events: Windows Event Log (cột: event_id, description, machine_id, timestamp, process_name, process_path)\n"
             "- sysmon_events: Sysmon events (cột: event_id, description, machine_id, timestamp, process_name, process_path, parent_process, registry_key, dst_ip, dst_port)\n"
             "- network_traffic: Lưu lượng mạng (cột: src_ip, dst_ip, dst_port, protocol_app, machine_id, timestamp)\n"
+            "- network_inspection: DPI (cột: subtype, domain, dst_ip, dst_port, ja3, machine_id, timestamp - subtype='tls_sni' là SNI của kết nối HTTPS, ja3 là TLS fingerprint)\n"
             "- fim_events: File integrity monitoring (cột: file_path, change_type, machine_id, timestamp)\n"
             "- threat_alerts: Cảnh báo (cột: rule_name, severity, description, machine_id, timestamp, source_ip, mitre)\n\n"
             "Trả về CHỈ JSON (không markdown, không giải thích):\n"

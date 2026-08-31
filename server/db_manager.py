@@ -149,6 +149,11 @@ class DatabaseManager:
 
             # Network Deep Inspection results
             c.execute("""CREATE TABLE IF NOT EXISTS network_inspection (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,subtype TEXT,domain TEXT,dst_ip TEXT,dst_port INTEGER,src_ip TEXT,src_port INTEGER,protocol TEXT,query_type TEXT,avg_interval_sec REAL,sample_count INTEGER,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            # v5.0.4 (review R7 7.6): TLS fingerprint (JA3) from agent DPI
+            try:
+                c.execute("ALTER TABLE network_inspection ADD COLUMN ja3 TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
 
             # YARA/Pattern scan alerts
             c.execute("""CREATE TABLE IF NOT EXISTS yara_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,rule_name TEXT,description TEXT,file TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -1112,7 +1117,7 @@ class DatabaseManager:
 
     def insert_network_inspection(self, data):
         with self.lock:
-            self.conn.execute("""INSERT INTO network_inspection (machine_id,hostname,subtype,domain,dst_ip,dst_port,src_ip,src_port,protocol,query_type,avg_interval_sec,sample_count,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("subtype",""), data.get("domain",""), data.get("dst_ip",""), data.get("dst_port",0), data.get("src_ip",""), data.get("src_port",0), data.get("protocol",""), data.get("query_type",""), data.get("avg_interval_sec",0), data.get("sample_count",0), data.get("timestamp","")))
+            self.conn.execute("""INSERT INTO network_inspection (machine_id,hostname,subtype,domain,dst_ip,dst_port,src_ip,src_port,protocol,query_type,avg_interval_sec,sample_count,ja3,timestamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (data.get("machine_id",""), data.get("hostname",""), data.get("subtype",""), data.get("domain",""), data.get("dst_ip",""), data.get("dst_port",0), data.get("src_ip",""), data.get("src_port",0), data.get("protocol",""), data.get("query_type",""), data.get("avg_interval_sec",0), data.get("sample_count",0), data.get("ja3",""), data.get("timestamp","")))
             self.conn.commit()
 
     def get_network_inspection(self, machine_id=None, subtype=None, limit=100, status=None):
