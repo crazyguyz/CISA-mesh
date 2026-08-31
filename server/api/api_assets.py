@@ -17,7 +17,11 @@ def init_assets_api(app, db):
         _, err, code = check_auth("api")
         if err: return err, code
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 200))
+        # v5.0.4: invalid limit values must not 500
+        try:
+            limit = max(1, min(int(request.args.get("limit", 200)), 2000))
+        except (TypeError, ValueError):
+            limit = 200
         rows = db.get_asset_computers(search=search, limit=limit) if db else []
         return jsonify({"computers": rows})
 
@@ -26,7 +30,10 @@ def init_assets_api(app, db):
         _, err, code = check_auth("api")
         if err: return err, code
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 200))
+        try:
+            limit = max(1, min(int(request.args.get("limit", 200)), 2000))
+        except (TypeError, ValueError):
+            limit = 200
         rows = db.get_asset_monitors(search=search, limit=limit) if db else []
         return jsonify({"monitors": rows})
 
@@ -165,7 +172,10 @@ def init_assets_api(app, db):
     def api_assets_changes():
         _, err, code = check_auth("api")
         if err: return err, code
-        limit = int(request.args.get("limit", 100))
+        try:
+            limit = max(1, min(int(request.args.get("limit", 100)), 5000))
+        except (TypeError, ValueError):
+            limit = 100
         unresolved_only = request.args.get("unresolved", "0") == "1"
         rows = db.get_asset_change_log(limit=limit, unresolved_only=unresolved_only) if db else []
         return jsonify({"changes": rows})

@@ -1046,12 +1046,18 @@ class DatabaseManager:
             return [dict(row) for row in c.fetchall()]
 
     def insert_threat_alert(self, data):
-        """v2.1.1: UPSERT dedup - same machine + rule_id updates timestamp instead of duplicate."""
+        """v2.1.1: UPSERT dedup - same machine + rule_id updates timestamp instead of duplicate.
+        v5.0.4 FIX: dedup only WITHIN a 10-minute window. The old unlimited
+        (machine_id, rule_id) dedup collapsed EVERY repeat of a rule into one row,
+        so a machine triggering NET-BEACON/NET-FIRST against several targets kept
+        only the LAST description (history lost) - and PG always inserted new rows,
+        so the two backends behaved differently."""
         with self.lock:
             machine_id = data.get("machine_id", "")
             rule_id = data.get("rule_id", "")
             existing = self.conn.execute(
-                "SELECT id FROM threat_alerts WHERE machine_id=? AND rule_id=? ORDER BY id DESC LIMIT 1",
+                "SELECT id FROM threat_alerts WHERE machine_id=? AND rule_id=? "
+                "AND received_at >= datetime('now', '-10 minutes') ORDER BY id DESC LIMIT 1",
                 (machine_id, rule_id)
             ).fetchone()
             if existing:
@@ -3009,8 +3015,10 @@ class DatabaseManager:
                 (data.get("assigned_to") or ""), (data.get("computer_asset_id") or ""),
                 (data.get("ip_address") or ""), (data.get("mac_address") or ""),
                 (data.get("location") or ""), (data.get("purchase_date") or ""),
-                (data.get("warranty_until") or ""), float(data.get("cost") or 0),
-                int(data.get("quantity") or 1),
+                (data.get("warranty_until") or ""),
+                # v5.0.4: guard numeric asset fields (invalid JSON must not 500)
+                float(data.get("cost") or 0) if isinstance(data.get("cost"), (int, float)) else 0,
+                int(data.get("quantity") or 1) if isinstance(data.get("quantity"), (int, float)) else 1,
                 (data.get("notes") or ""), (data.get("source") or "manual"),
                 _json.dumps(extra, ensure_ascii=False)
             )

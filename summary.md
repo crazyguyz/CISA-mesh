@@ -80,6 +80,17 @@
 - Sysmon EID 3 đã là nguồn network chính (netstat chỉ fallback) — xác nhận đúng thứ tự ưu tiên.
 - **Test:** `tests/network_alerting_tests.py` (8 check: SNI/JA3 parse + beacon + first-seen + cooldown).
 
+### Rà soát kỹ — lượt quét toàn diện (bug/UI)
+**Đã verify ổn (không lỗi):** JS↔Python endpoint khớp 100% (143 call / 168 route); mọi onclick handler đều được định nghĩa (không nút chết); sink XSS trong detail modals đã escape đủ; `/api/reports/download` + `/api/dashboard/import` chống path traversal; email dùng lib chuẩn (không SMTP header injection); `cleanup_old_data` chỉ cho xóa bảng trong allowlist; PGCompatCursor có fetchone (network_alerting chạy được trên PG).
+**Bug đã fix:**
+- **`int()`/`float()` không guard → 500:** `api_assets` (limit ×3), `api_cleanup` (days), `api_ai` (temperature/max_tokens/max_context), `upsert_inventory_asset` SQLite+PG (cost/quantity) — thêm clamp + try/except.
+- **`insert_threat_alert` SQLite dedup (machine,rule) VÔ HẠN:** mọi alert cùng rule+cùng máy bị gộp 1 dòng (mất lịch sử, NET-* hiển thị sai, PG thì luôn insert mới → 2 backend lệch nhau). Fix: dedup chỉ trong **cửa sổ 10 phút** — chống spam correlation, giữ lịch sử alert riêng. (Đã test: 2 alert cùng giây → 1 dòng; alert sau 20 phút → dòng mới.)
+- **`/api/events` trả raw_data >100KB** → treo UI: cắt còn 2000 ký tự (SSE đã cắt ở lượt trước).
+**UI thiếu đã bổ sung:**
+- Hiển thị **JA3** trong danh sách Deep Packet Inspection (2 chỗ: modal packet detail + tab inspection) cho subtype `tls_sni`.
+- `.env.example` thêm 4 biến network-alert.
+**Ghi nhận (chưa sửa, quyết định):** deadman `alerted` chỉ fire 1 lần/phiên/rule (chống spam — chấp nhận được); MEDIUM-20 múi giờ vẫn [CẦN XÁC MINH]; agent-side fixes cần rebuild.
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

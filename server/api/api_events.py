@@ -26,12 +26,18 @@ def register(app, core):
         if err: return err, code
         since_h = request.args.get("since")
         since_hours = int(since_h) if since_h and since_h.isdigit() and int(since_h) > 0 else None
-        return jsonify(core.db.get_events(
+        rows = core.db.get_events(
             machine_id=request.args.get("machine_id"),
             event_type=request.args.get("event_type"),
             limit=request.args.get("limit", 100, type=int),
             since_hours=since_hours
-        ))
+        )
+        # v5.0.4 (MEDIUM-15): a single raw_data can exceed 100KB and freeze the
+        # dashboard - cap before sending; the detail modal reads what it needs.
+        for r in (rows or []):
+            if isinstance(r, dict) and isinstance(r.get("raw_data"), str) and len(r["raw_data"]) > 2000:
+                r["raw_data"] = r["raw_data"][:2000] + "...[truncated]"
+        return jsonify(rows)
 
     @app.route("/api/fim")
     def api_fim():

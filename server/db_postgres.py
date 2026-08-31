@@ -3403,7 +3403,9 @@ class PostgresDatabase:
                  data.get("assigned_to") or "", data.get("computer_asset_id") or "",
                  data.get("ip_address") or "", data.get("mac_address") or "", data.get("location") or "",
                  data.get("purchase_date") or "", data.get("warranty_until") or "",
-                 float(data.get("cost") or 0), int(data.get("quantity") or 1),
+                 # v5.0.4: guard numeric asset fields (invalid JSON must not 500)
+                 float(data.get("cost") or 0) if isinstance(data.get("cost"), (int, float)) else 0,
+                 int(data.get("quantity") or 1) if isinstance(data.get("quantity"), (int, float)) else 1,
                  data.get("notes") or "", data.get("source") or "manual",
                  _json.dumps(extra, ensure_ascii=False)))
             return {"asset_id": asset_id, "display_id": display_id}

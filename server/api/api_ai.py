@@ -51,8 +51,15 @@ def register(app, core):
         data = request.json
         model = data.get("model", "deepseek-chat")
         messages = data.get("messages", [])
-        temperature = min(float(data.get("temperature", 0.7)), 1.5)
-        max_tokens = min(int(data.get("max_tokens", 4096)), core.AI_MAX_TOKENS_CAP if hasattr(core, 'AI_MAX_TOKENS_CAP') else 8192)
+        # v5.0.4: guard numeric payloads so NaN/strings cannot 500
+        try:
+            temperature = min(float(data.get("temperature", 0.7)), 1.5)
+        except (TypeError, ValueError):
+            temperature = 0.7
+        try:
+            max_tokens = min(int(data.get("max_tokens", 4096)), core.AI_MAX_TOKENS_CAP if hasattr(core, 'AI_MAX_TOKENS_CAP') else 8192)
+        except (TypeError, ValueError):
+            max_tokens = 4096
 
         if not messages or not isinstance(messages, list):
             return jsonify({"error": "No messages"}), 400
@@ -136,7 +143,11 @@ def register(app, core):
         provider = data.get("provider", "deepseek")
         api_key = data.get("api_key", "")
         context_data = data.get("context_data", "")
-        max_context = min(int(data.get("max_context", 28000) or 28000), 8000)
+        # v5.0.4: guard numeric payloads
+        try:
+            max_context = min(int(data.get("max_context", 28000) or 28000), 8000)
+        except (TypeError, ValueError):
+            max_context = 28000
 
         if not question:
             return jsonify({"response": "Vui lòng nhập câu hỏi."})

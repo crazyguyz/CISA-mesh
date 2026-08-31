@@ -36,7 +36,11 @@ def register(app, core):
         if err: return err, code
         data = request.get_json(silent=True) or {}
         types = data.get("types", None)  # None = all
-        days = int(data.get("days", 30))
+        # v5.0.4: invalid/NaN days must not 500
+        try:
+            days = max(1, min(int(data.get("days", 30)), 36500))
+        except (TypeError, ValueError):
+            days = 30
         keep_threats = data.get("keep_threats", True)
 
         if days < 1:
