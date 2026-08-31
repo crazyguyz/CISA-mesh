@@ -115,11 +115,17 @@ def lookup(ip_str, use_cache=True):
         result = None
     if use_cache:
         with _lock:
-            _cache[ip_str] = result or {}
-            if len(_cache) > _CACHE_LIMIT:
-                # drop ~half the oldest entries (dict preserves insertion order)
-                for k in list(_cache.keys())[:_CACHE_LIMIT // 2]:
-                    _cache.pop(k, None)
+            # v5.0.4 (LOW-1): do NOT cache empty/miss results forever - a cache
+            # miss for a stale/missing mmdb entry used to be cached as {} so an
+            # updated database was never consulted again.
+            if result:
+                _cache[ip_str] = result
+                if len(_cache) > _CACHE_LIMIT:
+                    # drop ~half the oldest entries (dict preserves insertion order)
+                    for k in list(_cache.keys())[:_CACHE_LIMIT // 2]:
+                        _cache.pop(k, None)
+            else:
+                _cache.pop(ip_str, None)
     return result
 
 

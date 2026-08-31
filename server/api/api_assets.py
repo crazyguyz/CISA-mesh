@@ -48,7 +48,11 @@ def init_assets_api(app, db):
         status = request.args.get("status", "").strip() or None
         source = request.args.get("source", "").strip() or None
         search = request.args.get("search", "").strip() or None
-        limit = int(request.args.get("limit", 500))
+        # v5.0.4 (MEDIUM-19): never let invalid limit values raise a 500
+        try:
+            limit = max(1, min(int(request.args.get("limit", 500)), 5000))
+        except (TypeError, ValueError):
+            limit = 500
         rows = m(category=category, status=status, source=source, search=search, limit=limit)
         return jsonify({"assets": rows})
 

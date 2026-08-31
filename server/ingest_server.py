@@ -144,7 +144,14 @@ class IngestServer:
                     try:
                         client_sock = self.tls_context.wrap_socket(client_sock, server_side=True)
                     except ssl.SSLError:
-                        pass  # Fallback plaintext
+                        # v5.0.4 (MEDIUM-3): fail-CLOSED, never fall back to
+                        # plaintext (mirrors tcp_server.py) - PSK/register/
+                        # heartbeat/commands must not leak in the clear.
+                        try:
+                            client_sock.close()
+                        except Exception:
+                            pass
+                        continue
 
                 self.stats["connections"] += 1
                 print(f"[+] Ingest #{self.port}: Agent connected from {address[0]}:{address[1]} ({len(self.clients)}/{self.max_agents})")

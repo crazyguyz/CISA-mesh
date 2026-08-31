@@ -416,8 +416,8 @@ var Assets = {
                     '<td>' + Assets.esc(a.location || '-') + '</td>' +
                     '<td><span class="badge ' + stCls + '">' + Assets.esc(stLbl) + '</span></td>' +
                     '<td>' + srcBadge + '</td>' +
-                    '<td><button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editUser(\'' + a.asset_id + '\')">✏️</button>' +
-                    '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteUser(\'' + a.asset_id + '\')">🗑</button></td></tr>';
+                    '<td><button class="btn btn-sm py-0 px-1 me-1" style="background:none;border:none;color:#6ea8dc;font-size:11px;" onclick="Assets.editUser(\'' + Assets.escJs(a.asset_id) + '\')">✏️</button>' +
+                    '<button class="btn btn-sm py-0 px-1" style="background:none;border:none;color:#e0836a;font-size:11px;" onclick="Assets.deleteUser(\'' + Assets.escJs(a.asset_id) + '\')">🗑</button></td></tr>';
             });
             html += '</tbody></table>';
             container.innerHTML = html;

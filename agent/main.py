@@ -666,42 +666,53 @@ _log("All functions defined. Entering __main__...")
 def _cleanup_old_temp_runtimes():
     """v3.9.7: Clean up old PyInstaller _MEI* temp dirs.
     Cleans both %TEMP% and the custom runtime_tmpdir in ProgramData.
-    Skips the current runtime directory to avoid locking issues."""
-    import glob as _glob, shutil as _shutil
+    v5.0.4 FIX (HIGH-3): the old code rmtree'd EVERY _MEI* except the current one
+    with no age guard / in-use probe - it deleted the runtime of other PyInstaller
+    apps of the same user AND (with watchdog/agent starting concurrently) the
+    agent's own runtime, causing 'Failed to load Python DLL ...python311.dll'.
+    Now mirror updater.py: age guard (>6h) + rename probe (in-use dir cannot be
+    renamed on Windows)."""
+    import glob as _glob, shutil as _shutil, time as _time
 
+    now = _time.time()
 
-    
-    # Get current runtime dir (the one this process is using)
-    current_mei = getattr(sys, '_MEIPASS', '')
-    
-    # 1. Clean %TEMP%
-    temp_dir = os.environ.get("TEMP", os.path.join(os.environ.get("USERPROFILE", "C:\\"), "AppData", "Local", "Temp"))
-    try:
-        for meipass in _glob.glob(os.path.join(temp_dir, "_MEI*")):
-            if meipass == current_mei:
-                continue
-            try:
-                _shutil.rmtree(meipass, ignore_errors=True)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    
-    # 2. Clean custom runtime_tmpdir (C:\ProgramData\GIAM-SAT\Agent\runtime)
-    # This is where PyInstaller extracts _MEI* due to runtime_tmpdir in .spec
-    runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                               "GIAM-SAT", "Agent", "runtime")
-    try:
-        if os.path.exists(runtime_dir):
-            for meipass in _glob.glob(os.path.join(runtime_dir, "_MEI*")):
+    def _safe_cleanup(base_dir):
+        if not base_dir:
+            return
+        try:
+            if not os.path.isdir(base_dir):
+                return
+            for meipass in _glob.glob(os.path.join(base_dir, "_MEI*")):
                 if meipass == current_mei:
                     continue
+                try:
+                    # 1) age guard: keep fresh extractions (possibly starting)
+                    if now - os.path.getmtime(meipass) < 6 * 3600:
+                        continue
+                    # 2) in-use probe: renaming fails while a process holds files open
+                    probe = meipass + ".probe"
+                    os.rename(meipass, probe)
+                    os.rename(probe, meipass)
+                except Exception:
+                    continue  # in use or locked - keep it
                 try:
                     _shutil.rmtree(meipass, ignore_errors=True)
                 except Exception:
                     pass
-    except Exception:
-        pass
+        except Exception:
+            pass
+
+    # Get current runtime dir (the one this process is using)
+    current_mei = getattr(sys, '_MEIPASS', '')
+
+    # 1. Clean %TEMP%
+    temp_dir = os.environ.get("TEMP", os.path.join(os.environ.get("USERPROFILE", "C:\\"), "AppData", "Local", "Temp"))
+    _safe_cleanup(temp_dir)
+
+    # 2. Clean custom runtime_tmpdir (C:\ProgramData\GIAM-SAT\Agent\runtime)
+    runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                               "GIAM-SAT", "Agent", "runtime")
+    _safe_cleanup(runtime_dir)
 
 # v3.9.7: Cleanup old temp runtimes at startup (before PyInstaller extracts new one)
 if os.name == "nt" and getattr(sys, 'frozen', False):

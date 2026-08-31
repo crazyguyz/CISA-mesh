@@ -40,6 +40,13 @@ def register(app, core):
             if len(core._ai_rate_limit[client_ip]) >= AI_RATE_LIMIT_MAX:
                 return jsonify({"success": False, "error": f"Rate limit exceeded. Tối đa {AI_RATE_LIMIT_MAX} requests mỗi {AI_RATE_LIMIT_WINDOW}s."}), 429
             core._ai_rate_limit[client_ip].append(now)
+            # v5.0.4 (MEDIUM-5): idle-GC so rotating IPs cannot grow the dict
+            # unbounded (memory leak) - mirrors server_core._api_rate_last GC.
+            if len(core._ai_rate_limit) > 1000:
+                _idle = now - 2 * AI_RATE_LIMIT_WINDOW
+                for _ip in [k for k, v in core._ai_rate_limit.items()
+                            if not v or v[-1] < _idle]:
+                    del core._ai_rate_limit[_ip]
 
         data = request.json
         model = data.get("model", "deepseek-chat")

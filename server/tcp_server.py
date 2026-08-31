@@ -314,8 +314,15 @@ class TCPServer(threading.Thread):
             return False
         # v5.0.3 (LOW-9): strip HTML/control chars from agent-supplied hostname
         hostname = sanitize_hostname(hostname)
-        platform = msg.get("platform", "Windows")
-        version = msg.get("version", "1.0.0")
+        # v5.0.4 (MEDIUM-6): version/platform are also agent-supplied and shown
+        # on the dashboard - sanitize them too (LOW-9 only covered hostname).
+        try:
+            from agent_auth import sanitize_text
+            platform = sanitize_text(msg.get("platform", "Windows"), max_len=32, default="Windows")
+            version = sanitize_text(msg.get("version", "1.0.0"), max_len=32, default="1.0.0")
+        except Exception:
+            platform = str(msg.get("platform", "Windows"))[:32]
+            version = str(msg.get("version", "1.0.0"))[:32]
         tls = msg.get("tls", False)
         if self.db:
             self.db.register_machine(machine_id, hostname, ip, platform, version)
@@ -347,7 +354,13 @@ class TCPServer(threading.Thread):
             except Exception:
                 hostname = msg.get("hostname", "")
             agent_version = msg.get("version", "")
+            # v5.0.4 (MEDIUM-6): sanitize agent-supplied version before storing
             if agent_version:
+                try:
+                    from agent_auth import sanitize_text
+                    agent_version = sanitize_text(agent_version, max_len=32, default="")
+                except Exception:
+                    agent_version = str(agent_version)[:32]
                 try:
                     self.db.conn.execute(
                         "UPDATE machines SET version=? WHERE machine_id=?",

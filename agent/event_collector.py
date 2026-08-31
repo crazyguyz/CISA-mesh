@@ -408,17 +408,20 @@ class EnhancedEventCollector(threading.Thread):
             # After 'wevtutil cl Security', Windows restarts record numbering at 1,
             # so every new event (incl. 1102 'audit log cleared') has a record number
             # <= the old watermark and gets skipped forever -> the host goes blind.
+            # v5.0.4 FIX (CRIT): the drain loop reads BACKWARDS, so event_records[0]
+            # is the NEWEST record and event_records[-1] the OLDEST. Comparing
+            # min() (the OLDEST record of the batch) with last_seen flagged a false
+            # 'LOG RESET' on EVERY poll of any busy log (span > 50 records) and then
+            # rewound the watermark to min-1 -> re-sent the whole range (duplicate
+            # storm). A reset is real only when the NEWEST record <= last_seen.
             if last_seen > 0 and event_records:
-                _min_rec = None
-                for _ev in event_records:
-                    try:
-                        _rn = int(_ev.RecordNumber)
-                    except (AttributeError, TypeError, ValueError):
-                        continue
-                    if _min_rec is None or _rn < _min_rec:
-                        _min_rec = _rn
-                if _min_rec is not None and _min_rec <= last_seen and (last_seen - _min_rec) > 50:
-                    print(f"[!] LOG RESET DETECTED on '{log_name}': record number dropped from {last_seen} to {_min_rec}")
+                _newest_rec = None
+                try:
+                    _newest_rec = int(event_records[0].RecordNumber)
+                except (AttributeError, TypeError, ValueError):
+                    pass
+                if _newest_rec is not None and _newest_rec <= last_seen:
+                    print(f"[!] LOG RESET DETECTED on '{log_name}': record number dropped from {last_seen} to {_newest_rec}")
                     events.append({
                         "type": "windows_event",
                         "subtype": log_name,
@@ -430,13 +433,12 @@ class EnhancedEventCollector(threading.Thread):
                         "user": "N/A",
                         "category": "Tampering",
                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "description": f"Event log '{log_name}' was CLEARED or reset (record number dropped from {last_seen} to {_min_rec}). Possible log tampering - historical events lost.",
+                        "description": f"Event log '{log_name}' was CLEARED or reset (record number dropped from {last_seen} to {_newest_rec}). Possible log tampering - historical events lost.",
                         "raw_data": "",
                         "severity": "HIGH",
                     })
                     # Reset the watermark so the restarted log (incl. 1102) IS collected
-                    last_seen = _min_rec - 1
-                    new_max_id = last_seen
+                    last_seen = 0
                     self.last_event_ids[log_name] = last_seen
 
             for event in event_records:

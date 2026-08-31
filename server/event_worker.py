@@ -426,7 +426,13 @@ class EventWorkerPool:
                     try:
                         from datetime import datetime as _dt, timezone
                         if last_seen_str:
-                            if last_seen_str.endswith("Z"):
+                            # v5.0.4 (MEDIUM-1): PG returns a datetime object
+                            # (TIMESTAMPTZ via psycopg2) - .endswith() crashed and
+                            # the bare except skipped the machine, so the
+                            # dead-man's switch never fired on PostgreSQL.
+                            if isinstance(last_seen_str, _dt):
+                                last_seen_dt = last_seen_str
+                            elif last_seen_str.endswith("Z"):
                                 last_seen_dt = _dt.strptime(
                                     last_seen_str[:19], "%Y-%m-%dT%H:%M:%S"
                                 ).replace(tzinfo=timezone.utc)

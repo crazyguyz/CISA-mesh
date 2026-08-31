@@ -50,13 +50,29 @@ def register(app, core):
         # but never reported back - because the agent went offline/crashed between
         # fetch and result - was stuck in 'sent' forever and never re-delivered.
         # Requeue it as 'pending' after 5 minutes so it is delivered on reconnect.
-        # ISO-string comparison is backend-agnostic (SQLite TEXT + PG timestamptz).
+        # v5.0.4 FIX (HIGH-6): only requeue when the machine is currently OFFLINE.
+        # An online agent may legitimately still be executing a long task
+        # (forensic_snapshot, kill, file copy...) - re-delivering while it runs
+        # would execute the (potentially destructive) command a SECOND time.
         try:
             _cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
-            core.db.conn.execute(
-                "UPDATE commands SET status='pending' WHERE status='sent' AND executed_at < ?",
+            try:
+                online = set(core.tcp_server.clients.keys())
+            except Exception:
+                online = set()
+            _stuck = core.db.conn.execute(
+                "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
                 (_cutoff,)
-            )
+            ).fetchall()
+            for _r in _stuck:
+                if _r["machine_id"] == machine_id:
+                    continue  # this machine is polling right now -> it is online
+                if _r["machine_id"] in online:
+                    continue  # still connected -> assume still executing
+                core.db.conn.execute(
+                    "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
+                    (_r["exec_id"],)
+                )
             core.db.conn.commit()
         except Exception:
             pass

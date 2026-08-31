@@ -382,10 +382,26 @@ def apply_update(new_exe_path, version=None):
     # and the updater.exe can run concurrently; exclusive lock file stops the race
     # (taskkill/copy over each other -> 'Access is denied: .bak' + corrupt launch).
     lock_path = os.path.join(INSTALL_DIR, "update.lock")
-    try:
-        _lock_fd = open(lock_path, "x")  # O_EXCL - fails if another updater is running
-    except OSError:
-        _log("Update skipped: another update is in progress (update.lock exists)")
+    # v5.0.4 (HIGH-4): O_EXCL lock is never released if the updater is killed /
+    # the PC reboots mid-update -> agent would be stuck on the old version forever.
+    # Reclaim a lock that is older than 10 minutes (crash/reboot leaves it behind).
+    _lock_fd = None
+    for _lock_try in range(2):
+        try:
+            _lock_fd = open(lock_path, "x")  # O_EXCL - fails if another updater is running
+            break
+        except OSError:
+            try:
+                if time.time() - os.path.getmtime(lock_path) > 600:
+                    _log("Reclaiming stale update.lock (>10 min old)")
+                    os.remove(lock_path)
+                    continue
+            except OSError:
+                pass
+            _log("Update skipped: another update is in progress (update.lock exists)")
+            return False
+    if _lock_fd is None:
+        _log("Update skipped: could not acquire update.lock")
         return False
     try:
         _lock_fd.write(str(os.getpid()))
@@ -526,7 +542,17 @@ def reset_user():
         # pid-based name in %TEMP% was predictable/racy for local users.
         _fd, ps_file = tempfile.mkstemp(suffix=".ps1", prefix="giamsat_reset_")
         os.close(_fd)
-        result_file = os.path.join(tempfile.gettempdir(), f"giamsat_reset_result_{os.getpid()}.json")
+        # v5.0.4 (HIGH-5): result_file must also be unpredictable - the old
+        # giamsat_reset_result_<pid>.json was guessable, letting a same-user
+        # process plant a fake result that redirected agent_config.json to an
+        # attacker server (PSK leak). mkstemp + nonce marker prove ownership.
+        _fd2, result_file = tempfile.mkstemp(suffix=".json", prefix="giamsat_reset_result_")
+        os.close(_fd2)
+        try:
+            os.remove(result_file)  # PowerShell Out-File -Force will (re)create it
+        except OSError:
+            pass
+        _nonce = os.urandom(8).hex()
 
         # Escape host/port for the PowerShell double-quoted string literal
         # (block ' $ " injection via a crafted server_host config).
@@ -573,6 +599,7 @@ $txtHost.SelectAll();$txtHost.Focus()
 $r=$f.ShowDialog()
 $d=@{}
 if($r -eq [System.Windows.Forms.DialogResult]::OK){$d["host"]=$txtHost.Text.Trim();$d["port"]=$txtPort.Text.Trim();$d["user_name"]=$txtName.Text.Trim();$d["employee_id"]=$txtID.Text.Trim();$d["email"]=$txtEmail.Text.Trim();$d["confirmed"]=$true}else{$d["confirmed"]=$false}
+$d["_nonce"]="''' + _nonce + r'''"
 $d|ConvertTo-Json|Out-File -FilePath "''' + result_file.replace('\\', '\\\\') + r'''" -Encoding UTF8 -Force
 ''')
 
@@ -584,6 +611,11 @@ $d|ConvertTo-Json|Out-File -FilePath "''' + result_file.replace('\\', '\\\\') + 
             with open(result_file, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
             os.remove(result_file)
+            # v5.0.4 (HIGH-5): only trust a result that carries our nonce - a
+            # file planted at a guessable path must never rewrite agent_config.
+            if str(data.get("_nonce") or "") != _nonce:
+                _log("Reset result missing/invalid nonce - ignoring (possible file planting)")
+                return
             if data.get("confirmed"):
                 cfg_path = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
                                         "GIAM-SAT", "Agent", "agent_config.json")
@@ -608,14 +640,14 @@ $d|ConvertTo-Json|Out-File -FilePath "''' + result_file.replace('\\', '\\\\') + 
                                 "/c", "GIAM-SAT: Khoi dong lai de ap dung thong tin nguoi dung moi."],
                                timeout=10)
             else:
-                _log("User cancelled, restarting anyway...")
-                subprocess.run(["shutdown", "/r", "/t", "20", "/c", "GIAM-SAT: Khoi dong lai."],
-                               timeout=10)
+                # v5.0.4 (MEDIUM-13): user pressed Cancel -> do NOT reboot the
+                # machine; keep the existing config and stay online.
+                _log("User cancelled - no restart, keeping existing config.")
         if os.path.exists(ps_file):
             os.remove(ps_file)
     except Exception as e:
+        # v5.0.4 (MEDIUM-13): an error must not reboot the machine either.
         _log(f"Reset user failed: {e}")
-        subprocess.run(["shutdown", "/r", "/t", "60"], timeout=10)
 
 
 # ===================================================================

@@ -102,7 +102,15 @@ def register(app, core):
                         else:
                             new_events = []
                     if new_events:
-                        data = json.dumps(new_events, ensure_ascii=False)
+                        # v5.0.4 (MEDIUM-15): cap raw_data pushed over SSE so a
+                        # single huge event cannot freeze the dashboard UI.
+                        _out = []
+                        for _e in new_events:
+                            if isinstance(_e, dict) and isinstance(_e.get("raw_data"), str) and len(_e["raw_data"]) > 2000:
+                                _e = dict(_e)
+                                _e["raw_data"] = _e["raw_data"][:2000] + "...[truncated]"
+                            _out.append(_e)
+                        data = json.dumps(_out, ensure_ascii=False)
                         yield f"data: {data}\n\n"
                     else:
                         yield "data: []\n\n"

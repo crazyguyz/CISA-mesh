@@ -1537,7 +1537,7 @@ function loadMachines() {
         document.getElementById('machineTableContainer').innerHTML = tableWrap([t('dash.status'),t('ui.hostname'),t('ui.user'),t('ui.uptime'),'IP',t('ui.machineId'),t('ui.online'),t('ui.actions')], ms.map(m => {
             const userCell = (m.user_name) ? `👤 ${escapeHtml(m.user_name)}${m.employee_id?'<br><small style="font-size:9px;">'+escapeHtml(m.employee_id)+'</small>':''}` : '-';
             const uptimeCell = (m.is_online==1 && m.uptime_hours > 0) ? `<span style="color:${m.uptime_alert_24h?'#ff4444':'#8892a4'};">⏱ ${m.uptime_hours.toFixed(1)}h${m.uptime_alert_24h?' ⚠':''}</span>` : '-';
-            return `<tr><td><span class="online-dot ${m.is_online==1?'online':'offline'}"></span></td><td><strong>${m.hostname||'Unknown'}</strong></td><td style="font-size:11px;">${userCell}</td><td style="font-size:11px;">${uptimeCell}</td><td>${m.ip_address||'-'}</td><td style="font-family:monospace;font-size:11px;">${m.machine_id}</td><td>${m.is_online==1?'<span class="badge bg-success">Online</span>':'<span class="badge bg-secondary">Offline</span>'}</td><td class="text-nowrap"><button class="btn btn-stop btn-sm py-0 px-1" onclick="event.stopPropagation();stopMachineById('${m.machine_id}')"><i class="bi bi-stop-circle"></i></button><button class="btn btn-del btn-sm py-0 px-1 ms-1" onclick="event.stopPropagation();deleteMachineById('${m.machine_id}')"><i class="bi bi-trash3"></i></button></td></tr>`;
+            return `<tr><td><span class="online-dot ${m.is_online==1?'online':'offline'}"></span></td><td><strong>${escapeHtml(m.hostname)||'Unknown'}</strong></td><td style="font-size:11px;">${userCell}</td><td style="font-size:11px;">${uptimeCell}</td><td>${escapeHtml(m.ip_address)||'-'}</td><td style="font-family:monospace;font-size:11px;">${escapeHtml(m.machine_id)}</td><td>${m.is_online==1?'<span class="badge bg-success">Online</span>':'<span class="badge bg-secondary">Offline</span>'}</td><td class="text-nowrap"><button class="btn btn-stop btn-sm py-0 px-1" onclick="event.stopPropagation();stopMachineById('${m.machine_id}')"><i class="bi bi-stop-circle"></i></button><button class="btn btn-del btn-sm py-0 px-1 ms-1" onclick="event.stopPropagation();deleteMachineById('${m.machine_id}')"><i class="bi bi-trash3"></i></button></td></tr>`;
         }));
         
     });
@@ -2378,7 +2378,7 @@ function loadGroups(){
             html += '</div>';
             html += '<small class="text-muted">' + escapeHtml(g.description || '') + ' | ' + t('ui.groupsMembers',[g.members ? g.members.length : 0]) + '</small>';
             if (g.members && g.members.length) {
-                html += '<div style="margin-top:4px;">' + g.members.map(m => '<span class="badge bg-info me-1" style="cursor:pointer;" onclick="removeFromGroup(\'' + m.machine_id + '\',' + g.id + ')" title="' + t('ui.remFromGroupTitle') + '">' + (m.hostname || m.machine_id) + ' ✕</span>').join('') + '</div>';
+                html += '<div style="margin-top:4px;">' + g.members.map(m => '<span class="badge bg-info me-1" style="cursor:pointer;" onclick="removeFromGroup(\'' + m.machine_id + '\',' + g.id + ')" title="' + t('ui.remFromGroupTitle') + '">' + (escapeHtml(m.hostname) || escapeHtml(m.machine_id)) + ' ✕</span>').join('') + '</div>';
             }
             html += '<div class="mt-2"><select class="form-select form-select-sm d-inline-block" id="addMachSelect_' + g.id + '" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;"><option value="">'+t('ui.addMachineHint')+'</option></select>';
             html += '<button class="btn btn-sm export-btn ms-1" onclick="addToGroup(' + g.id + ')" style="font-size:10px;">'+t('btn.add')+'</button></div>';
@@ -4743,10 +4743,11 @@ function renderHuntResults(data) {
     }
     var results = data.results;
     var html = '<div style="background:rgba(0,212,170,0.08);border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;">';
-    html += '<strong>🎯 Hypothesis:</strong> ' + (data.hypothesis || '') + '<br>';
-    html += '<strong>📊 Matches:</strong> <span style="color:#00d4aa;font-weight:bold;">' + data.match_count + '</span> | ';
-    html += '<strong>⏱ Created:</strong> ' + (data.created_at || '') + ' | ';
-    html += '<strong>✅ Completed:</strong> ' + (data.completed_at || '');
+    // v5.0.4 (CRIT): hypothesis comes from admin/AI input -> escape before innerHTML
+    html += '<strong>🎯 Hypothesis:</strong> ' + escapeHtml(data.hypothesis || '') + '<br>';
+    html += '<strong>📊 Matches:</strong> <span style="color:#00d4aa;font-weight:bold;">' + escapeHtml(data.match_count) + '</span> | ';
+    html += '<strong>⏱ Created:</strong> ' + escapeHtml(data.created_at || '') + ' | ';
+    html += '<strong>✅ Completed:</strong> ' + escapeHtml(data.completed_at || '');
     html += '</div>';
 
     html += tableWrap(
@@ -4757,10 +4758,12 @@ function renderHuntResults(data) {
             else if (r.raw_data) detail = String(r.raw_data);
             else detail = JSON.stringify(r).substring(0, 150);
             if (detail.length > 150) detail = detail.substring(0, 150) + '...';
-            return '<tr><td><span class="log-type event">' + (r.table || '?') + '</span></td>' +
-                   '<td style="font-size:10px;">' + (r.timestamp || '').substring(0,19) + '</td>' +
-                   '<td>' + (r.machine_id || '-') + '</td>' +
-                   '<td style="font-size:10px;max-width:400px;word-break:break-all;">' + detail + '</td></tr>';
+            // v5.0.4 (CRIT): description/raw_data come from agent-supplied events -
+            // must be escaped (showAlertRowDetail already escapes; this sink did not)
+            return '<tr><td><span class="log-type event">' + escapeHtml(r.table || '?') + '</span></td>' +
+                   '<td style="font-size:10px;">' + escapeHtml((r.timestamp || '').substring(0,19)) + '</td>' +
+                   '<td>' + escapeHtml(r.machine_id || '-') + '</td>' +
+                   '<td style="font-size:10px;max-width:400px;word-break:break-all;">' + escapeHtml(detail) + '</td></tr>';
         })
     );
     html += '<div class="text-center text-muted mt-1" style="font-size:10px;">' + t('ui.showingResults',[Math.min(results.length,100), data.match_count]) + '</div>';
@@ -4778,7 +4781,9 @@ function loadDashboardList() {
             var templates = data.templates || [];
             sel.innerHTML = '<option value="">'+t('ui.selectTemplate')+'</option>' +
                 templates.map(function(t) {
-                    return '<option value="' + t.name + '">' + t.name + ' (' + t.panel_count + ' panels, ' + t.refresh_interval + 's) - ' + (t.category || '') + '</option>';
+                    // v5.0.4 (MEDIUM-17): t.name can contain quotes/HTML (template
+                    // import) -> escape both the value attribute and the label
+                    return '<option value="' + escapeHtml(t.name) + '">' + escapeHtml(t.name) + ' (' + (t.panel_count||'') + ' panels, ' + (t.refresh_interval||'') + 's) - ' + escapeHtml(t.category||'') + '</option>';
                 }).join('');
         })
         .catch(function() {});
@@ -4855,7 +4860,7 @@ function showPendingList() {
                     html += '<div style="background:#1a0a0a;border:1px solid #3a1a1a;border-radius:6px;padding:8px 10px;margin-bottom:6px;">';
                     html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
                     html += '<div>';
-                    html += '<strong style="color:#eef4f8;">' + (p.hostname || p.machine_id) + '</strong> ';
+                    html += '<strong style="color:#eef4f8;">' + (escapeHtml(p.hostname) || escapeHtml(p.machine_id)) + '</strong> ';
                     html += '<span class="badge bg-danger">' + actionLabel + '</span>';
                     html += '<div style="font-size:10px;color:#8892a4;margin-top:2px;">Rule: ' + escapeHtml(p.rule_id || '?') + ' | ' + escapeHtml(p.description || '') + '</div>';
                     html += '</div>';
@@ -4889,10 +4894,10 @@ function showApprovalModal(approval) {
     html += '<i class="bi bi-exclamation-triangle-fill"></i> <strong>'+t('ui.approvalRequired')+'</strong> '+t('ui.approvalHint');
     html += '</div>';
     html += '<table class="table table-sm table-dark" style="font-size:12px;">';
-    html += '<tr><td style="width:120px;">'+t('ui.machineRow')+'</td><td><strong>' + (approval.hostname || approval.machine_id) + '</strong></td></tr>';
+    html += '<tr><td style="width:120px;">'+t('ui.machineRow')+'</td><td><strong>' + (escapeHtml(approval.hostname) || escapeHtml(approval.machine_id)) + '</strong></td></tr>';
     html += '<tr><td>'+t('ui.action')+'</td><td><span class="badge bg-danger">' + actionLabel + '</span></td></tr>';
     html += '<tr><td>Rule</td><td>' + escapeHtml(approval.rule_id || '?') + '</td></tr>';
-    html += '<tr><td>'+t('ui.description')+'</td><td>' + (approval.description || '') + '</td></tr>';
+    html += '<tr><td>'+t('ui.description')+'</td><td>' + escapeHtml(approval.description || '') + '</td></tr>';
     html += '</table>';
     html += '<div class="d-flex gap-2">';
     html += '<button class="btn btn-success btn-sm flex-grow-1" onclick="approvePending(\'' + approval.id + '\', \'approve\')"><i class="bi bi-check-lg"></i>'+t('ui.approve')+'</button>';

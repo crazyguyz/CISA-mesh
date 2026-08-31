@@ -172,10 +172,17 @@ class HuntingEngine:
             "results": [],
             "match_count": 0,
             "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "created_ts": time.time(),  # v5.0.4 (MEDIUM-7): for TTL cleanup
             "completed_at": None,
         }
 
         with self._lock:
+            # v5.0.4 (MEDIUM-7): expire old campaigns so the in-memory dict
+            # cannot grow forever on a long-running server.
+            _ttl = time.time() - 86400  # 24h
+            for _cid in [k for k, c in self._campaigns.items()
+                         if c.get("created_ts", 0) < _ttl]:
+                del self._campaigns[_cid]
             self._campaigns[campaign_id] = campaign
 
         # Run query in background
@@ -413,9 +420,13 @@ class HuntingEngine:
                 sub_clauses = []
                 for v in values:
                     # v5.0.3 (LOW-3): escape LIKE wildcards so user values containing
-                    # % or _ match literally instead of matching nearly every row
+                    # % or _ match literally instead of matching nearly every row.
+                    # v5.0.4 FIX (CRIT): ESCAPE must be exactly ONE character - the
+                    # previous '\\\\' produced 2 chars in SQL and every "contains"
+                    # query died with "ESCAPE expression must be a single character"
+                    # (silently swallowed by the except below -> hunting returned []).
                     ev = str(v).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                    sub_clauses.append(f"{field} LIKE ? ESCAPE '\\\\'")
+                    sub_clauses.append(f"{field} LIKE ? ESCAPE '\\'")
                     params.append(f"%{ev}%")
                 where_clauses.append("(" + " OR ".join(sub_clauses) + ")")
             elif "equals" in cond:

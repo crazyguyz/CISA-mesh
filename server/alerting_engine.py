@@ -382,6 +382,7 @@ Description: {alert_data.get('description', 'N/A')}
         try:
             import urllib.request
             import os as _os
+            import html as _html
             cfg = self.config["telegram"]
             bot_token = _os.environ.get("TELEGRAM_BOT_TOKEN") or cfg.get("bot_token", "")
             chat_id = _os.environ.get("TELEGRAM_CHAT_ID") or cfg.get("chat_id", "")
@@ -390,27 +391,30 @@ Description: {alert_data.get('description', 'N/A')}
 
             sev = alert_data.get("severity", "LOW")
             sev_emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(sev, "⚪")
-            rule_id = alert_data.get("rule_id") or alert_data.get("cve", "?")
-            rule_name = alert_data.get("rule_name") or alert_data.get("cve", "Unknown")
-            hostname = alert_data.get("hostname", "Unknown")
-            machine_id = alert_data.get("machine_id", "")
-            desc = alert_data.get("description", "")[:200]
+            # v5.0.4 (MEDIUM-4): escape EVERY agent-controlled value - Telegram
+            # Markdown lets [x](javascript/evil) / * / _ smuggle fake links into
+            # the trusted SOC channel; HTML parse_mode + escape closes that.
+            rule_id = _html.escape(str(alert_data.get("rule_id") or alert_data.get("cve", "?")), quote=False)
+            rule_name = _html.escape(str(alert_data.get("rule_name") or alert_data.get("cve", "Unknown")), quote=False)
+            hostname = _html.escape(str(alert_data.get("hostname", "Unknown")), quote=False)
+            machine_id = _html.escape(str(alert_data.get("machine_id", "")), quote=False)
+            desc = _html.escape(str(alert_data.get("description", ""))[:200], quote=False)
             confidence = alert_data.get("confidence_score", 0)
-            pending_action = alert_data.get("pending_action", "")
 
             # Enrich with context
             trigger_event = alert_data.get("trigger_event", {})
             process_chain = trigger_event.get("process_chain", []) or alert_data.get("process_chain", [])
-            mitre_tactic = alert_data.get("mitre_tactic", trigger_event.get("mitre_tactic", ""))
-            mitre_tech = alert_data.get("mitre_technique_id", trigger_event.get("mitre_technique_id", ""))
+            mitre_tactic = _html.escape(str(alert_data.get("mitre_tactic", trigger_event.get("mitre_tactic", ""))), quote=False)
+            mitre_tech = _html.escape(str(alert_data.get("mitre_technique_id", trigger_event.get("mitre_technique_id", ""))), quote=False)
             mitre_sev = alert_data.get("mitre_severity", "")
             event_count_24h = alert_data.get("event_count_24h", 0)
-            machine_ip = alert_data.get("ip_address", "")
-            platform = alert_data.get("platform", "")
+            machine_ip = _html.escape(str(alert_data.get("ip_address", "")), quote=False)
+            platform = _html.escape(str(alert_data.get("platform", "")), quote=False)
+            pending_action = _html.escape(str(alert_data.get("pending_action", "")), quote=False)
             
-            # Build rich message text
-            text = f"{sev_emoji} *{sev} ALERT* — {hostname}\n"
-            text += f"Rule: `{rule_id}` — {rule_name}\n"
+            # Build rich message text (HTML format)
+            text = f"{sev_emoji} <b>{sev} ALERT</b> — {hostname}\n"
+            text += f"Rule: <code>{rule_id}</code> — {rule_name}\n"
             if mitre_tactic:
                 text += f"MITRE: {mitre_tactic}"
                 if mitre_tech: text += f" ({mitre_tech})"
@@ -418,7 +422,7 @@ Description: {alert_data.get('description', 'N/A')}
             text += f"Confidence: {confidence}%"
             if mitre_sev: text += f" | MITRE Severity: {mitre_sev}"
             text += "\n"
-            text += f"Machine: `{machine_id}`"
+            text += f"Machine: <code>{machine_id}</code>"
             if machine_ip: text += f" ({machine_ip})"
             if platform: text += f" [{platform}]"
             text += "\n"
@@ -426,20 +430,20 @@ Description: {alert_data.get('description', 'N/A')}
             
             # Process chain context
             if process_chain:
-                chain_str = " → ".join(process_chain[-5:])
-                text += f"Process Chain: `{chain_str}`\n"
+                chain_str = _html.escape(" → ".join(str(c) for c in process_chain[-5:]), quote=False)
+                text += f"Process Chain: <code>{chain_str}</code>\n"
             
             if event_count_24h > 0:
                 text += f"Events 24h: {event_count_24h}\n"
             
-            server_url = self.config.get("server_url", f"http://{hostname}:5000")
-            text += f"\n📊 [Open Dashboard]({server_url}/#incident)"
+            server_url = _html.escape(str(self.config.get("server_url", f"http://{hostname}:5000")), quote=True)
+            text += f"\n📊 <a href=\"{server_url}/#incident\">Open Dashboard</a>"
 
             reply_markup = None
             if pending_action:
                 timeout = cfg.get("approval_timeout", 300)
                 mins = timeout // 60
-                text += f"\n⚠️ Proposed action: *{pending_action}*\n⏰ Auto-deny in {mins}:00"
+                text += f"\n⚠️ Proposed action: <b>{pending_action}</b>\n⏰ Auto-deny in {mins}:00"
                 callback_data = f"giamsat_approve|{machine_id}|{pending_action}|{rule_id}"
                 reply_markup = {
                     "inline_keyboard": [[
@@ -452,7 +456,7 @@ Description: {alert_data.get('description', 'N/A')}
             payload = {
                 "chat_id": chat_id,
                 "text": text,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
             }
             if reply_markup:
                 payload["reply_markup"] = json.dumps(reply_markup)

@@ -165,7 +165,14 @@ def register(app, core):
         action = data.get("action", "")
         rule_id = data.get("rule_id", "")
         params = data.get("params", {})
+        # v5.0.4 (HIGH-1): hostname is agent-supplied and rendered raw in the SOC
+        # approval modal (auto-opened via 30s poll) -> strip stored-XSS payloads.
         hostname = data.get("hostname", "")
+        try:
+            from agent_auth import sanitize_hostname
+            hostname = sanitize_hostname(hostname, default="")
+        except Exception:
+            hostname = "".join(ch for ch in str(hostname)[:128] if ord(ch) >= 32 and ch not in "<>\"'`")
 
         if not machine_id or not action:
             return jsonify({"error": "machine_id and action required"}), 400
@@ -181,7 +188,9 @@ def register(app, core):
         except Exception:
             pass
 
-        approval_id = f"apr_{machine_id}_{action}_{int(time.time())}"
+        # v5.0.4 (LOW-3): nonce so two requests in the same second cannot collide
+        import uuid as _uuid
+        approval_id = f"apr_{machine_id}_{action}_{int(time.time())}_{_uuid.uuid4().hex[:6]}"
         with _approval_lock:
             _pending_approvals[approval_id] = {
                 "machine_id": machine_id,

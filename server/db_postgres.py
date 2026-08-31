@@ -1943,7 +1943,12 @@ class PostgresDatabase:
             "events": event_days, "fim_events": fim_days,
             "network_traffic": traffic_days, "threat_alerts": threat_days,
             "vuln_alerts": vuln_days, "syslog": syslog_days,
-            "heartbeats": 7, "sysmon_events": event_days
+            "heartbeats": 7, "sysmon_events": event_days,
+            # v5.0.4 (MEDIUM-2): these were missing vs SQLite (db_manager) ->
+            # they grew without bound on the PostgreSQL production backend.
+            "network_inspection": event_days, "yara_alerts": threat_days,
+            "sca_events": event_days, "agentless_events": event_days,
+            "response_results": event_days,
         }
         for table, days in policies.items():
             try:
@@ -1953,6 +1958,14 @@ class PostgresDatabase:
                 )
             except Exception:
                 pass
+        # audit_log has no received_at column - it uses `timestamp`
+        try:
+            self._execute(
+                "DELETE FROM audit_log WHERE timestamp < NOW() - (%s || ' days')::INTERVAL",
+                (str(event_days),)
+            )
+        except Exception:
+            pass
 
     def close(self):
         if self.pool:

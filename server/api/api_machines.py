@@ -100,10 +100,18 @@ def register(app, core):
         username, err, code = check_auth("command")
         if err: return err, code
         data = request.json
-        if data.get("name"):
-            core.db.update_machine_hostname(machine_id, data["name"])
+        new_name = (data.get("name") or "").strip()
+        # v5.0.4 (HIGH-2): hostname is rendered raw in several dashboard sinks
+        # (machine table, group badges) -> sanitize stored-XSS payloads + cap length.
+        try:
+            from agent_auth import sanitize_hostname
+            new_name = sanitize_hostname(new_name, default="")
+        except Exception:
+            new_name = "".join(ch for ch in new_name[:128] if ord(ch) >= 32 and ch not in "<>\"'`")
+        if new_name:
+            core.db.update_machine_hostname(machine_id, new_name)
             core.db.insert_audit_log(username, "rename_machine",
-                f"Machine: {machine_id} -> {data['name']}", request.remote_addr)
+                f"Machine: {machine_id} -> {new_name}", request.remote_addr)
             return jsonify({"success": True})
         return jsonify({"success": False}), 400
 

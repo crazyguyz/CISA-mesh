@@ -44,7 +44,11 @@ def register(app, core):
             return jsonify({"error": "hypothesis is required"}), 400
 
         tactic = data.get("tactic", None)
-        since_hours = int(data.get("since_hours", 168))
+        # v5.0.4 (MEDIUM-19): never let invalid/NaN payloads raise a 500
+        try:
+            since_hours = max(1, min(int(data.get("since_hours", 168)), 8760))
+        except (TypeError, ValueError):
+            since_hours = 168
         use_ai = data.get("use_ai", True)
 
         try:

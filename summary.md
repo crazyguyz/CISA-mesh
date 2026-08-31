@@ -37,6 +37,35 @@
 - **Tool dọn orphan cũ:** `tools/cleanup_orphan_assets.py` (dry-run mặc định, `--apply` để xóa; hỗ trợ SQLite/PG từ `.env`) — đã chạy trên PG production: xóa **3 cấu hình máy tính** (LAPTOP-14, IT-YSNT, YSNTBK) + 3 màn hình + 3 relation + 17 messages + 5 machine_users + 1 uptime + 1831 agent_update_log + 759 fim_baseline.
 - **Test:** `tests/delete_machine_tests.py` (16 check: purge toàn bộ + màn hình shared còn sống).
 
+### Round 7 — Review 2026-08-31 (đã verify + fix)
+| # | Nội dung | Fix |
+|---|----------|-----|
+| CRIT-1 | Watermark LOG_RESET: đọc BACKWARDS nhưng so `min(batch)` (record CŨ nhất) với `last_seen` → **alert giả mỗi poll** + tua ngược watermark → **trùng lặp event ồ ạt** | `event_collector.py`: so **record MỚI nhất** (`event_records[0]`) — reset chỉ khi `newest <= last_seen` |
+| CRIT-2 | `ESCAPE '\\\\'` = **2 ký tự** trong SQL → mọi query hunting **"contains"** chết (exception bị nuốt → `[]` âm thầm) trên cả SQLite lẫn PG | `hunting_engine.py`: `ESCAPE '\'` (1 ký tự) + test `tests/hunting_engine_tests.py` |
+| CRIT-3 | Stored XSS `renderHuntResults` (hypothesis/description/raw_data/machine_id nối thẳng innerHTML) | `dashboard.js`: `escapeHtml()` toàn bộ sink |
+| HIGH-1 | Stored XSS SOC Approval modal (hostname lưu THÔ + sink `showPendingList`/`showApprovalModal`, modal tự mở 30s) | `api_alert_approval.py` `sanitize_hostname` + 2 sink escape |
+| HIGH-2 | Stored XSS qua `/rename` (không sanitize) + sink `loadMachines`/`loadGroups` không escape | `api_machines.py` sanitize + escape 2 sink |
+| HIGH-3 | `main.py` xóa MỌI `_MEI*` không age-guard → xóa runtime app khác + agent khởi động song song → **python311.dll lỗi** (fix v5.0.4 chỉ ở updater) | `main.py`: copy logic age-guard (>6h) + rename probe |
+| HIGH-4 | `update.lock` O_EXCL không stale-reclaim → crash/reboot giữa update = **agent kẹt version vĩnh viễn** | `updater.py`: lock cũ >10' → reclaim |
+| HIGH-5 | `reset_user` result_file theo PID (predictable) + đọc lại không verify chủ → **file planting → lộ PSK** | `updater.py`: mkstemp + nonce marker verify |
+| HIGH-6 | Requeue 'sent' sau 5' có thể **giao lại lệnh destructive đang chạy** (executed_at = lúc GIAO) | `api_agent_commands.py`: chỉ requeue khi máy OFFLINE |
+| MEDIUM-1 | Deadman `endswith("Z")` crash trên PG (datetime) → **HEARTBEAT-001 không bao giờ chạy** | `event_worker.py`: isinstance datetime |
+| MEDIUM-2 | PG retention THIẾU 6 bảng so SQLite → phình vô hạn trên prod | `db_postgres.py`: + network_inspection/yara/sca/agentless/response_results/audit_log |
+| MEDIUM-3 | Ingest TLS fail-OPEN (`except ssl.SSLError: pass`) | `ingest_server.py`: đóng kết nối, không fallback |
+| MEDIUM-4 | Telegram parse_mode Markdown: agent control → link giả `[x](evil)` vào kênh SOC | `alerting_engine.py`: parse_mode **HTML** + escape mọi field |
+| MEDIUM-5 | AI rate-limit dict không GC → memory leak (xoay IP) | `api_ai.py`: idle-GC |
+| MEDIUM-6 | `version/platform` lưu RAW (LOW-9 chỉ sanitize hostname) | `tcp_server.py`: `sanitize_text` |
+| MEDIUM-7 | Hunting `_campaigns` không expire → memory leak | `hunting_engine.py`: TTL 24h |
+| MEDIUM-13 | reset_user **Cancel vẫn reboot** + exception reboot máy | `updater.py`: bỏ shutdown cả 2 case |
+| MEDIUM-15 | SSE đẩy raw_data >100KB → treo UI | `api_events.py`: cắt raw_data 2000 |
+| MEDIUM-16 | assets.js onclick asset_id raw | `escJs()` |
+| MEDIUM-17 | Dashboard template name raw trong option value | escapeHtml |
+| MEDIUM-19 | `int(since_hours/limit)` không bẫy → 500 | clamp + try/except |
+| LOW-1 | GeoIP cache miss `{}` vĩnh viễn → file mới không bao giờ đọc | chỉ cache khi có kết quả |
+| LOW-3 | approval_id trùng giây → ghi đè | + uuid nonce |
+
+**Để lại (cần agent rebuild / quyết định):** MEDIUM-9 (process_name full-path vs basename — Sigma), MEDIUM-10 (sysmon drain inclusive timestamp), MEDIUM-11 (command_key plaintext → DPAPI), MEDIUM-12 (show_message HTTP poll thiếu field), MEDIUM-14 (sca shlex), MEDIUM-18 (sanitize sâu các trường text — defense-in-depth), MEDIUM-20/21 ([CẦN XÁC MINH] múi giờ, FIM escJs), LOW-2 (CROSS machine), LOW-4 (dead code module), LOW-5 (i18n key).
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng
