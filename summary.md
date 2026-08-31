@@ -31,6 +31,12 @@
 - Response: thẻ **Hành động phản hồi khả dụng** (8 SOAR action).
 - Ổn định: fix lũ 429 (SSE loadStats debounce + rate limit 1800/min), fix TypeError khi click tab Email/Assets/Agentless.
 
+### Hotfix — Xóa máy trạm dọn sạch asset registry
+- **Bug:** `delete_machine()` trước đây chỉ xóa events/alerts/... — KHÔNG xóa bảng Assets → máy đã xóa vẫn hiện **Máy tính/Màn hình** trên dashboard Tài sản (cấu hình orphan).
+- **Fix (cả SQLite + PG):** `delete_machine()` giờ xóa thêm 22 bảng machine-scoped (`sysmon_events`, `sca_events`, `messages`, `policy_apply_status`, `machine_users`, `machine_uptime`, `agent_update_log`, `alert_suppression`, `fim_baseline`, `agent_group_members`...) + toàn bộ asset registry theo thứ tự: `assets_computers` → `assets_relations` → `assets_monitors` (giữ màn hình còn được máy khác dùng) → `assets_inventory` → `assets_change_log`.
+- **Tool dọn orphan cũ:** `tools/cleanup_orphan_assets.py` (dry-run mặc định, `--apply` để xóa; hỗ trợ SQLite/PG từ `.env`) — đã chạy trên PG production: xóa **3 cấu hình máy tính** (LAPTOP-14, IT-YSNT, YSNTBK) + 3 màn hình + 3 relation + 17 messages + 5 machine_users + 1 uptime + 1831 agent_update_log + 759 fim_baseline.
+- **Test:** `tests/delete_machine_tests.py` (16 check: purge toàn bộ + màn hình shared còn sống).
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

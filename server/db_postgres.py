@@ -709,21 +709,61 @@ class PostgresDatabase:
             print(f"[-] PG check_heartbeat_timeout: {e}")
             return 0
 
+    # Tables whose rows are keyed by machine_id and must be purged when a
+    # machine is deleted (v5.0.4 fix: previously assets/messages/etc. were left
+    # orphaned and kept showing up on the dashboard).
+    _MACHINE_SCOPED_TABLES = (
+        "events", "fim_events", "heartbeats", "response_results", "commands",
+        "hardware_info", "hardware_baseline", "network_traffic", "threat_alerts",
+        "vuln_alerts", "network_inspection", "yara_alerts", "sca_events", "sysmon_events",
+        "agent_group_members", "policy_apply_status", "fim_baseline", "machine_users",
+        "machine_uptime", "agent_update_log", "alert_suppression", "messages",
+    )
+
     def delete_machine(self, machine_id):
         if not self._connected:
             return
-        tables = ["events", "fim_events", "heartbeats", "response_results", "commands",
-                  "hardware_info", "hardware_baseline", "network_traffic", "threat_alerts",
-                  "vuln_alerts", "network_inspection", "yara_alerts", "sysmon_events"]
-        for t in tables:
+        for t in self._MACHINE_SCOPED_TABLES:
             try:
                 self._execute(f"DELETE FROM {t} WHERE machine_id=%s", (machine_id,))
             except Exception:
-                pass
+                pass  # table may not exist on older DBs
+        try:
+            self._delete_machine_assets(machine_id)
+        except Exception as e:
+            print(f"[-] delete_machine asset cleanup error: {e}")
         try:
             self._execute("DELETE FROM machines WHERE machine_id=%s", (machine_id,))
         except Exception:
             pass
+
+    def _delete_machine_assets(self, machine_id):
+        """Remove asset-registry rows linked to a deleted machine (v5.0.4 fix)."""
+        rows = self._execute("SELECT asset_id FROM assets_computers WHERE machine_id=%s",
+                             (machine_id,), fetchall=True) or []
+        computer_ids = [r["asset_id"] for r in rows]
+        self._execute("DELETE FROM assets_computers WHERE machine_id=%s", (machine_id,))
+        if not computer_ids:
+            return
+        ph = ",".join(["%s"] * len(computer_ids))
+        mrows = self._execute(f"SELECT monitor_asset_id FROM assets_relations WHERE computer_asset_id IN ({ph})",
+                              computer_ids, fetchall=True) or []
+        monitor_ids = [r["monitor_asset_id"] for r in mrows]
+        irows = self._execute(f"SELECT asset_id FROM assets_inventory WHERE computer_asset_id IN ({ph})",
+                              computer_ids, fetchall=True) or []
+        inv_ids = [r["asset_id"] for r in irows]
+        self._execute(f"DELETE FROM assets_relations WHERE computer_asset_id IN ({ph})", computer_ids)
+        self._execute(f"DELETE FROM assets_inventory WHERE computer_asset_id IN ({ph})", computer_ids)
+        if monitor_ids:
+            mph = ",".join(["%s"] * len(monitor_ids))
+            # Keep monitors that are still referenced by another remaining computer.
+            self._execute(
+                f"DELETE FROM assets_monitors WHERE asset_id IN ({mph}) AND NOT EXISTS "
+                "(SELECT 1 FROM assets_relations r WHERE r.monitor_asset_id = assets_monitors.asset_id)",
+                monitor_ids)
+        all_ids = list(dict.fromkeys(computer_ids + monitor_ids + inv_ids))
+        aph = ",".join(["%s"] * len(all_ids))
+        self._execute(f"DELETE FROM assets_change_log WHERE asset_id IN ({aph})", all_ids)
 
     def get_machines(self):
         if not self._connected:

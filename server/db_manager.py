@@ -451,13 +451,62 @@ class DatabaseManager:
             self.conn.commit()
             return c.rowcount
 
+    # Tables whose rows are keyed by machine_id and must be purged when a
+    # machine is deleted (v5.0.4 fix: previously assets/messages/etc. were left
+    # orphaned and kept showing up on the dashboard).
+    _MACHINE_SCOPED_TABLES = (
+        "events", "fim_events", "heartbeats", "response_results", "commands",
+        "hardware_info", "hardware_baseline", "network_traffic", "threat_alerts",
+        "vuln_alerts", "network_inspection", "yara_alerts", "sca_events", "sysmon_events",
+        "agent_group_members", "policy_apply_status", "fim_baseline", "machine_users",
+        "machine_uptime", "agent_update_log", "alert_suppression", "messages",
+    )
+
     def delete_machine(self, machine_id):
-        """Delete a machine and all its data."""
+        """Delete a machine and all its data (events, alerts, messages, asset registry...)."""
         with self.lock:
-            for t in ["events","fim_events","heartbeats","response_results","commands","hardware_info","hardware_baseline","network_traffic","threat_alerts","vuln_alerts","network_inspection","yara_alerts"]:
-                self.conn.execute(f"DELETE FROM {t} WHERE machine_id=?", (machine_id,))
+            for t in self._MACHINE_SCOPED_TABLES:
+                try:
+                    self.conn.execute(f"DELETE FROM {t} WHERE machine_id=?", (machine_id,))
+                except sqlite3.OperationalError:
+                    pass  # table may not exist on older DBs
+            try:
+                self._delete_machine_assets(machine_id)
+            except Exception as e:
+                print(f"[-] delete_machine asset cleanup error: {e}")
             self.conn.execute("DELETE FROM machines WHERE machine_id=?", (machine_id,))
             self.conn.commit()
+
+    def _delete_machine_assets(self, machine_id):
+        """Remove asset-registry rows linked to a deleted machine.
+
+        Order matters: resolve the computer asset(s) first, then the relations /
+        monitors / inventory / change-log rows that reference them, so nothing
+        referencing the deleted machine survives (v5.0.4 fix).
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT asset_id FROM assets_computers WHERE machine_id=?", (machine_id,))
+        computer_ids = [r[0] for r in c.fetchall()]
+        c.execute("DELETE FROM assets_computers WHERE machine_id=?", (machine_id,))
+        if not computer_ids:
+            return
+        ph = ",".join("?" * len(computer_ids))
+        c.execute(f"SELECT monitor_asset_id FROM assets_relations WHERE computer_asset_id IN ({ph})", computer_ids)
+        monitor_ids = [r[0] for r in c.fetchall()]
+        c.execute(f"SELECT asset_id FROM assets_inventory WHERE computer_asset_id IN ({ph})", computer_ids)
+        inv_ids = [r[0] for r in c.fetchall()]
+        c.execute(f"DELETE FROM assets_relations WHERE computer_asset_id IN ({ph})", computer_ids)
+        c.execute(f"DELETE FROM assets_inventory WHERE computer_asset_id IN ({ph})", computer_ids)
+        if monitor_ids:
+            mph = ",".join("?" * len(monitor_ids))
+            # Keep monitors that are still referenced by another remaining computer.
+            c.execute(
+                f"DELETE FROM assets_monitors WHERE asset_id IN ({mph}) AND NOT EXISTS "
+                "(SELECT 1 FROM assets_relations r WHERE r.monitor_asset_id = assets_monitors.asset_id)",
+                monitor_ids)
+        all_ids = list(dict.fromkeys(computer_ids + monitor_ids + inv_ids))
+        aph = ",".join("?" * len(all_ids))
+        c.execute(f"DELETE FROM assets_change_log WHERE asset_id IN ({aph})", all_ids)
 
     def register_machine(self, machine_id, hostname, ip_address, platform="Windows", version="1.0.0"):
         with self.lock:
