@@ -413,6 +413,44 @@ class ServerCore:
 
         threading.Thread(target=heartbeat_monitor, daemon=True).start()
 
+        # v5.0.4 (Phase1 A2): log-source health - alert when an online machine's
+        # event volume drops below 50% of its 7-day average (silent source = attack)
+        def loghealth_monitor():
+            _alerted = {}
+            time.sleep(90)
+            while self._retention_running:
+                time.sleep(600)
+                try:
+                    v24 = self.db.get_event_volume(hours=24) or {}
+                    v168 = self.db.get_event_volume(hours=168) or {}
+                    for m in (self.db.get_machines() or []):
+                        if not m.get("is_online"):
+                            continue
+                        mid = m.get("machine_id", "")
+                        e24 = (v24.get(mid) or {}).get("events", 0) + (v24.get(mid) or {}).get("sysmon", 0)
+                        e168 = (v168.get(mid) or {}).get("events", 0) + (v168.get(mid) or {}).get("sysmon", 0)
+                        avg = e168 / 7.0 if e168 else 0
+                        if avg > 10 and e24 < avg * 0.5 and not _alerted.get(mid):
+                            _alerted[mid] = True
+                            label = m.get("hostname") or mid
+                            drop = int((1 - e24 / avg) * 100)
+                            self.alerting.send_alert({
+                                "title": f"[LOG SOURCE DROP] {label} [HIGH]",
+                                "message": f"Machine '{label}' ({mid}) event volume dropped "
+                                           f"{drop}% below its 7-day average (last 24h: {e24} vs avg {avg:.0f}). "
+                                           f"Possible logging disabled by attacker.",
+                                "severity": "HIGH",
+                                "rule_id": "LOGHEALTH-001",
+                                "machine_id": mid,
+                                "hostname": label,
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            })
+                        elif not m.get("is_online") or avg == 0 or e24 >= avg * 0.5:
+                            _alerted.pop(mid, None)
+                except Exception as e:
+                    print(f"[-] Log-health monitor error: {e}")
+        threading.Thread(target=loghealth_monitor, daemon=True).start()
+
         # Retention loop
         def retention_loop():
             while self._retention_running:

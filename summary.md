@@ -109,6 +109,15 @@
 | LOW-6 | ✅ Đúng — dedup inspection thiếu dst_port | key `(sni, dst_ip, dst_port)` |
 **Test:** thêm 4 check IPv6 vào `network_alerting_tests` (12 total) + verify callback hash roundtrip (41 bytes, khớp).
 
+### Phase 1 — SIEM cơ bản (ROADMAP.md mục 1) ✅ đã triển khai
+- **A2 Log-source health** — `/api/health/coverage` (file mới `api_health.py`) + menu **Log Coverage**: per-machine `sysmon_present/auditpol_enabled/baseline_hardened`, event 24h vs TB 7 ngày, badge "🚫 Không log / 📉 Log sụt / Sysmon? / Auditpol?"; rule **LOGHEALTH-001** (server_core, 10 phút): volume < 50% TB → alert HIGH.
+- **A1b Syslog RFC5424** — parser `syslog_server.py` `<PRI>1 TS HOST APP PID MSGID [SD] MSG`; lưu `app_name` + `structured` (cột mới SQLite+PG).
+- **B3 Alert grouping** — `get_threat_alerts_grouped` (bucket 10 phút) + `/api/threats/grouped` + toggle "📊 Nhóm theo rule" trong tab Đe dọa (1 rule × N máy → 1 row + count).
+- **B1 SOC triage queue** — cột `assignee/comment/updated_by/due_at/updated_at`; lifecycle `new→investigating→contained→in_progress→resolved/fp` + SLA due_at; API `/assign`, `/comment`, `/status`; UI nút 👤/💬 + badge assignee.
+- **B7 Events pagination** — `get_events(offset, sort_by, order)` + `/api/events?offset=` + UI 100/trang.
+- **A3b Agent coverage** — `_coverage_state()` gửi hardening/sysmon/auditpol qua heartbeat (cần rebuild agent); `update_machine_coverage` 2 path.
+- **Bonus fix:** requeue HIGH-6 nằm ở `/api/agent/pending-commands` — **endpoint agent không bao giờ gọi** → đã chuyển sang `/api/agent/heartbeat` (endpoint thật, fail-closed).
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

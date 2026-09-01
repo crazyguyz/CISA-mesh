@@ -41,6 +41,14 @@ class DatabaseManager:
                     c.execute(f"ALTER TABLE machines ADD COLUMN {col} {col_type}")
                 except sqlite3.OperationalError:
                     pass
+            # v5.0.4 (Phase1 A2/A3b): log-source coverage - hardening/telemetry state
+            for col, col_type in [("baseline_hardened", "INTEGER DEFAULT 0"),
+                                  ("sysmon_present", "INTEGER DEFAULT 0"),
+                                  ("auditpol_enabled", "INTEGER DEFAULT 0")]:
+                try:
+                    c.execute(f"ALTER TABLE machines ADD COLUMN {col} {col_type}")
+                except sqlite3.OperationalError:
+                    pass
             c.execute("""CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,type TEXT,subtype TEXT,event_id TEXT,event_type TEXT,source TEXT,computer TEXT,user TEXT,category TEXT,time TEXT,description TEXT,raw_data TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             # v4.6.5 MIGRATION: dedup_key (hash of machine+event+source+time+desc) so
             # double-sent events (two agent instances / restart races) are dropped by
@@ -80,6 +88,14 @@ class DatabaseManager:
             c.execute("""CREATE TABLE IF NOT EXISTS heartbeats (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("""CREATE TABLE IF NOT EXISTS response_results (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,exec_id TEXT,status TEXT,output TEXT,error TEXT,exit_code INTEGER,action TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("""CREATE TABLE IF NOT EXISTS syslog (id INTEGER PRIMARY KEY AUTOINCREMENT,source_ip TEXT,hostname TEXT,facility TEXT,severity TEXT,timestamp TEXT,message TEXT,raw_data TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            # v5.0.4 (Phase1 A1b): RFC5424 structured fields
+            for col, col_type in [("facility", "TEXT DEFAULT ''"),
+                                  ("app_name", "TEXT DEFAULT ''"),
+                                  ("structured", "TEXT DEFAULT '{}'")]:
+                try:
+                    c.execute(f"ALTER TABLE syslog ADD COLUMN {col} {col_type}")
+                except sqlite3.OperationalError:
+                    pass
             c.execute("""CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,action TEXT,command TEXT,exec_id TEXT UNIQUE,status TEXT DEFAULT 'pending',created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,executed_at TIMESTAMP)""")
 
             # Hardware info: stores current config
@@ -143,6 +159,16 @@ class DatabaseManager:
                 c.execute("ALTER TABLE threat_alerts ADD COLUMN status TEXT DEFAULT 'new'")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.4 (Phase1 B1): SOC triage queue - assignee/comment/SLA columns
+            for _col, _typ in [("assignee", "TEXT DEFAULT ''"),
+                               ("comment", "TEXT DEFAULT ''"),
+                               ("updated_by", "TEXT DEFAULT ''"),
+                               ("due_at", "TIMESTAMP"),
+                               ("updated_at", "TIMESTAMP")]:
+                try:
+                    c.execute(f"ALTER TABLE threat_alerts ADD COLUMN {_col} {_typ}")
+                except sqlite3.OperationalError:
+                    pass
 
             # Vulnerability alerts
             c.execute("""CREATE TABLE IF NOT EXISTS vuln_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,machine_id TEXT,hostname TEXT,software TEXT,version TEXT,publisher TEXT,cve TEXT,severity TEXT,description TEXT,timestamp TEXT,received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -532,6 +558,26 @@ class DatabaseManager:
             self.conn.execute("UPDATE machines SET hostname=? WHERE machine_id=?", (new_hostname, machine_id))
             self.conn.commit()
 
+    def update_machine_coverage(self, machine_id, baseline_hardened=None, sysmon_present=None, auditpol_enabled=None):
+        """v5.0.4 (Phase1 A3b/A2): store agent-reported log-source coverage state."""
+        with self.lock:
+            sets = []
+            p = []
+            if baseline_hardened is not None:
+                sets.append("baseline_hardened=?")
+                p.append(1 if baseline_hardened else 0)
+            if sysmon_present is not None:
+                sets.append("sysmon_present=?")
+                p.append(1 if sysmon_present else 0)
+            if auditpol_enabled is not None:
+                sets.append("auditpol_enabled=?")
+                p.append(1 if auditpol_enabled else 0)
+            if not sets:
+                return
+            p.append(machine_id)
+            self.conn.execute(f"UPDATE machines SET {', '.join(sets)} WHERE machine_id=?", p)
+            self.conn.commit()
+
     # v3.8.0: Enrollment Token & Certificate Revocation
     def is_machine_revoked(self, machine_id):
         """Check if a machine has been revoked."""
@@ -904,9 +950,9 @@ class DatabaseManager:
             self.conn.execute("""UPDATE commands SET status=?, executed_at=CURRENT_TIMESTAMP WHERE exec_id=?""", (data.get("status","completed"), data.get("exec_id","")))
             self.conn.commit()
 
-    def insert_syslog(self, source_ip, hostname, facility, severity, timestamp, message, raw_data):
+    def insert_syslog(self, source_ip, hostname, facility, severity, timestamp, message, raw_data, app_name="", structured=""):
         with self.lock:
-            self.conn.execute("""INSERT INTO syslog (source_ip,hostname,facility,severity,timestamp,message,raw_data) VALUES (?,?,?,?,?,?,?)""", (source_ip, hostname, facility, severity, timestamp, message, raw_data))
+            self.conn.execute("""INSERT INTO syslog (source_ip,hostname,facility,severity,timestamp,message,raw_data,app_name,structured) VALUES (?,?,?,?,?,?,?,?,?)""", (source_ip, hostname, facility, severity, timestamp, message, raw_data, app_name, structured))
             self.conn.commit()
 
     def add_command(self, machine_id, action, command, exec_id):
@@ -919,8 +965,10 @@ class DatabaseManager:
             c = self.conn.execute("""SELECT * FROM machines ORDER BY hostname ASC""")
             return [dict(row) for row in c.fetchall()]
 
-    def get_events(self, machine_id=None, event_type=None, limit=100, since_hours=None):
-        """v2.5.22: Added since_hours to limit scan to recent data only."""
+    def get_events(self, machine_id=None, event_type=None, limit=100, since_hours=None,
+                   offset=None, sort_by=None, order="desc"):
+        """v2.5.22: Added since_hours to limit scan to recent data only.
+        v5.0.4 (Phase1 B7): offset + server-side sort for real pagination."""
         with self.lock:
             q = "SELECT * FROM events WHERE 1=1"
             p = []
@@ -928,7 +976,13 @@ class DatabaseManager:
             if event_type: q += " AND subtype=?"; p.append(event_type)
             if since_hours:
                 q += " AND received_at >= datetime('now', ?)"; p.append(f'-{since_hours} hours')
-            q += " ORDER BY id DESC LIMIT ?"; p.append(limit)
+            _sort_col = sort_by if sort_by in ("received_at", "time", "event_id", "subtype", "machine_id") else "id"
+            _order = "ASC" if str(order).lower() == "asc" else "DESC"
+            q += f" ORDER BY {_sort_col} {_order} LIMIT ?"
+            p.append(limit)
+            if offset:
+                q += " OFFSET ?"
+                p.append(int(offset))
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
 
@@ -1085,11 +1139,87 @@ class DatabaseManager:
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
 
-    def set_threat_status(self, threat_id, status):
-        """v4.13 (E1): triage status on a threat alert."""
+    def set_threat_status(self, threat_id, status, username=None):
+        """v4.13 (E1): triage status on a threat alert.
+        v5.0.4 (Phase1 B1): also record who + when + SLA due date."""
         with self.lock:
-            self.conn.execute("UPDATE threat_alerts SET status=? WHERE id=?", (status, threat_id))
+            self.conn.execute(
+                "UPDATE threat_alerts SET status=?, updated_by=COALESCE(?, updated_by), "
+                "updated_at=CURRENT_TIMESTAMP, "
+                "due_at=CASE WHEN status='new' AND ?!='' THEN datetime('now', ?) ELSE due_at END "
+                "WHERE id=?",
+                (status, username, status, self._sla_offset(status), threat_id))
             self.conn.commit()
+
+    @staticmethod
+    def _sla_offset(status):
+        """SLA window per lifecycle state (hours). 'contained'/'investigating' need
+        review within 24h; resolved/fp close it."""
+        return {"new": "+24 hours", "investigating": "+24 hours",
+                "contained": "+48 hours", "in_progress": "+24 hours",
+                "resolved": "+0 hours", "false_positive": "+0 hours"}.get(status, "+24 hours")
+
+    def set_threat_assign(self, threat_id, assignee, username):
+        """v5.0.4 (Phase1 B1): assign an alert to a SOC analyst."""
+        with self.lock:
+            self.conn.execute(
+                "UPDATE threat_alerts SET assignee=?, updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (assignee, username, threat_id))
+            self.conn.commit()
+
+    def set_threat_comment(self, threat_id, comment, username):
+        """v5.0.4 (Phase1 B1): add/append a comment to an alert."""
+        with self.lock:
+            self.conn.execute(
+                "UPDATE threat_alerts SET comment=CASE WHEN comment='' THEN ? ELSE comment || char(10) || ? END, "
+                "updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (comment, comment, username, threat_id))
+            self.conn.commit()
+
+    def get_threat_alerts_grouped(self, since_hours=24, min_machines=1, status=None):
+        """v5.0.4 (Phase1 B3): group alerts by (rule_id, 10-min bucket) with machine
+        count - one row per rule per window instead of N rows."""
+        with self.lock:
+            q = ("SELECT rule_id, rule_name, severity, COUNT(*) AS alert_count, "
+                 "COUNT(DISTINCT machine_id) AS machine_count, "
+                 "MAX(description) AS description, MAX(received_at) AS last_at, "
+                 "GROUP_CONCAT(DISTINCT machine_id) AS machines "
+                 "FROM threat_alerts WHERE received_at >= datetime('now', ?)")
+            p = [f"-{since_hours} hours"]
+            if status:
+                q += " AND status=?"
+                p.append(status)
+            q += " GROUP BY rule_id, strftime('%Y-%m-%d %H:%M', received_at, '-10 minutes')"
+            q += " HAVING COUNT(DISTINCT machine_id) >= ? ORDER BY last_at DESC LIMIT 200"
+            p.append(int(min_machines))
+            c = self.conn.execute(q, p)
+            return [dict(row) for row in c.fetchall()]
+
+    def get_event_volume(self, hours=24, machine_id=None):
+        """v5.0.4 (Phase1 A2): event count per machine in the last N hours (events +
+        sysmon). Returns {machine_id: {events, sysmon}}."""
+        out = {}
+        try:
+            with self.lock:
+                q = ("SELECT machine_id, COUNT(*) n FROM events WHERE received_at >= datetime('now', ?)")
+                p = [f"-{hours} hours"]
+                if machine_id:
+                    q += " AND machine_id=?"
+                    p.append(machine_id)
+                q += " GROUP BY machine_id"
+                for r in self.conn.execute(q, p).fetchall():
+                    out.setdefault(r[0], {"events": 0, "sysmon": 0})["events"] = r[1]
+                q = ("SELECT machine_id, COUNT(*) n FROM sysmon_events WHERE received_at >= datetime('now', ?)")
+                p = [f"-{hours} hours"]
+                if machine_id:
+                    q += " AND machine_id=?"
+                    p.append(machine_id)
+                q += " GROUP BY machine_id"
+                for r in self.conn.execute(q, p).fetchall():
+                    out.setdefault(r[0], {"events": 0, "sysmon": 0})["sysmon"] = r[1]
+        except Exception:
+            pass
+        return out
 
     def insert_vuln_alert(self, data):
         """v2.1.1: UPSERT dedup - same machine + cve + software updates timestamp instead of duplicate."""

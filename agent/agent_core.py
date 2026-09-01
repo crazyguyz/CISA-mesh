@@ -1736,6 +1736,12 @@ del "%~f0"
             if not self.connected:
                 continue
             hb = {"type": "heartbeat", "version": AGENT_VERSION}
+            # v5.0.4 (Phase1 A3b): report log-source coverage for the server's
+            # health/coverage dashboard (A2).
+            try:
+                hb.update(self._coverage_state())
+            except Exception:
+                pass
             try:
                 if _has_psutil:
                     hb["cpu_percent"] = round(_psu.cpu_percent(interval=0.1), 1)
@@ -1751,6 +1757,25 @@ del "%~f0"
             except Exception:
                 pass
             self._real_send(hb)
+
+    def _coverage_state(self):
+        """v5.0.4 (Phase1 A3b): report log-source coverage for the server A2 dashboard.
+        baseline_hardened/auditpol_enabled = the one-shot hardening marker ran;
+        sysmon_present = Sysmon service is installed and readable."""
+        try:
+            marker = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                                  "GIAM-SAT", "Agent", ".baseline_hardened")
+            hardened = 1 if os.path.exists(marker) else 0
+        except Exception:
+            hardened = 0
+        sysmon = 0
+        try:
+            _sc = getattr(self, "sysmon_collector", None)
+            if _sc is not None:
+                sysmon = 1 if (getattr(_sc, "sysmon_available", False) or getattr(_sc, "sysmon_ok", False)) else 0
+        except Exception:
+            pass
+        return {"baseline_hardened": hardened, "sysmon_present": sysmon, "auditpol_enabled": hardened}
 
     # ================ v3.9.8: HTTP POLL LOOP (Independent, 30s interval) ================
     def _http_poll_loop(self):
@@ -1771,6 +1796,7 @@ del "%~f0"
                     "hostname": self.hostname,
                     "psk": self.config.get("psk", ""),
                     "version": AGENT_VERSION,
+                    **self._coverage_state(),  # v5.0.4 (Phase1 A3b)
                 }).encode("utf-8")
                 req = urlreq.Request(url, data=req_data,
                                       headers={"Content-Type": "application/json"})

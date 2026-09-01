@@ -22,19 +22,71 @@ def register(app, core):
             status=request.args.get("status")
         ))
 
+    @app.route("/api/threats/grouped")
+    def api_threats_grouped():
+        """v5.0.4 (Phase1 B3): alerts grouped by (rule, window) with machine count."""
+        _, err, code = check_auth("api")
+        if err: return err, code
+        try:
+            since_hours = max(1, min(int(request.args.get("since", 24)), 720))
+        except (TypeError, ValueError):
+            since_hours = 24
+        try:
+            min_machines = max(1, min(int(request.args.get("min_machines", 2)), 1000))
+        except (TypeError, ValueError):
+            min_machines = 2
+        rows = core.db.get_threat_alerts_grouped(
+            since_hours=since_hours,
+            min_machines=min_machines,
+            status=request.args.get("status"))
+        return jsonify({"groups": rows})
+
     @app.route("/api/threats/<int:threat_id>/status", methods=["POST"])
     def api_threat_status(threat_id):
-        """v4.13 (E1): triage status on a threat alert."""
+        """v4.13 (E1): triage status on a threat alert.
+        v5.0.4 (Phase1 B1): lifecycle states + audit who/when."""
         username, err, code = check_auth("settings")
         if err: return err, code
         data = request.json or {}
         status = data.get("status", "new")
-        if status not in ("new", "in_progress", "resolved", "false_positive"):
+        if status not in ("new", "in_progress", "investigating", "contained", "resolved", "false_positive"):
             return jsonify({"success": False, "error": "Invalid status"}), 400
         try:
-            core.db.set_threat_status(threat_id, status)
+            core.db.set_threat_status(threat_id, status, username)
             core.db.insert_audit_log(username, "threat_status",
                 f"Threat #{threat_id} -> {status}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
+
+    @app.route("/api/threats/<int:threat_id>/assign", methods=["POST"])
+    def api_threat_assign(threat_id):
+        """v5.0.4 (Phase1 B1): assign an alert to a SOC analyst."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        assignee = ((request.json or {}).get("assignee") or "").strip()[:64]
+        if not assignee:
+            return jsonify({"success": False, "error": "assignee required"}), 400
+        try:
+            core.db.set_threat_assign(threat_id, assignee, username)
+            core.db.insert_audit_log(username, "threat_assign",
+                f"Threat #{threat_id} -> {assignee}", request.remote_addr)
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
+
+    @app.route("/api/threats/<int:threat_id>/comment", methods=["POST"])
+    def api_threat_comment(threat_id):
+        """v5.0.4 (Phase1 B1): add a comment to an alert."""
+        username, err, code = check_auth("settings")
+        if err: return err, code
+        comment = ((request.json or {}).get("comment") or "").strip()[:2000]
+        if not comment:
+            return jsonify({"success": False, "error": "comment required"}), 400
+        try:
+            core.db.set_threat_comment(threat_id, comment, username)
+            core.db.insert_audit_log(username, "threat_comment",
+                f"Threat #{threat_id}: {comment[:80]}", request.remote_addr)
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)[:200]}), 500

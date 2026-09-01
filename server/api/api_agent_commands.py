@@ -45,6 +45,15 @@ def register(app, core):
             core.db.conn.commit()
         except Exception:
             pass
+        # v5.0.4 (Phase1 A3b): agent-reported log-source coverage state (HTTP poll)
+        try:
+            _cov = {"baseline_hardened": data.get("baseline_hardened"),
+                    "sysmon_present": data.get("sysmon_present"),
+                    "auditpol_enabled": data.get("auditpol_enabled")}
+            if any(v is not None for v in _cov.values()):
+                core.db.update_machine_coverage(machine_id, **_cov)
+        except Exception:
+            pass
 
         # v5.0.4 (logic bug): a command marked 'sent' (agent fetched it via poll)
         # but never reported back - because the agent went offline/crashed between
@@ -222,6 +231,42 @@ def register(app, core):
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "version": agent_version,
             })
+        except Exception:
+            pass
+
+        # v5.0.4 (Phase1 A3b): agent-reported log-source coverage state
+        try:
+            _cov = {"baseline_hardened": data.get("baseline_hardened"),
+                    "sysmon_present": data.get("sysmon_present"),
+                    "auditpol_enabled": data.get("auditpol_enabled")}
+            if any(v is not None for v in _cov.values()):
+                core.db.update_machine_coverage(machine_id, **_cov)
+        except Exception:
+            pass
+
+        # v5.0.4 R8 (HIGH-6 relocation): the requeue logic originally lived only in
+        # /api/agent/pending-commands - an endpoint agents NEVER call (they poll
+        # THIS heartbeat endpoint). Move the offline-only requeue here so a command
+        # marked 'sent' to a machine that died mid-execution actually gets re-delivered.
+        try:
+            _cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                online = set(core.tcp_server.clients.keys())
+            except Exception:
+                online = None  # fail-closed: cannot read online set -> do not requeue
+            if online is not None:
+                _stuck = core.db.conn.execute(
+                    "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
+                    (_cutoff,)).fetchall()
+                for _r in _stuck:
+                    if _r["machine_id"] == machine_id:
+                        continue
+                    if _r["machine_id"] in online:
+                        continue
+                    core.db.conn.execute(
+                        "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
+                        (_r["exec_id"],))
+                core.db.conn.commit()
         except Exception:
             pass
 

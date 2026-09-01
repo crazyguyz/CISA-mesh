@@ -3,6 +3,9 @@
 > Nguồn: `review.txt` (R8) — đối chiếu với code HEAD `6f10e0e` (2026-09-01).
 > Các finding Phần 2 (HIGH-1/2, MEDIUM-1/2/3, LOW-1..6) **đã fix hết** ở commit
 > `6f10e0e`. Phần còn lại = cải tiến chiều sâu (Phần 4: A1-A10, B1-B12).
+>
+> **Cập nhật 2026-09-01: PHASE 1 ĐÃ TRIỂN KHAI XONG** (commit triển khai Phase 1) —
+> A2 log-health, A1b syslog RFC5424, B3 grouping, B1 triage queue, B7 pagination, A3b coverage report.
 
 ---
 
@@ -34,45 +37,35 @@
 
 ---
 
-## 1) PHASE 1 — "SIEM cơ bản" (ưu tiên cao nhất, giá trị/chi phí tốt nhất)
+## 1) PHASE 1 — "SIEM cơ bản" (ưu tiên cao nhất, giá trị/chi phí tốt nhất) — ✅ DONE 2026-09-01
 
-### 1.1 A2 — Log source health / coverage dashboard  【Server + UI · M】
-**Mục tiêu:** biết agent nào đang mù (thiếu Sysmon/audit), event volume sụt giảm đột ngột.
-- API `/api/health/coverage`:
-  - per-machine: `sysmon_present`, `auditpol_enabled`, `event_count_24h`, `event_count_7d_avg`, `delta%`
-  - từ bảng `machines` + đếm `events`/`sysmon_events` theo received_at.
-- UI: tab **Coverage** (menu mới) — bảng máy + badge đỏ "Log sụt >50%", "Thiếu Sysmon".
-- Rule alert `LOGHEALTH-001` khi 1 máy volume hôm nay < 50% trung bình 7 ngày (cooldown 24h).
-- **File:** `server/api/api_dashboard.py` (hoặc mới `api_health.py`), `server/static/js/dashboard.js`, `server/db_manager.py` + `db_postgres.py` (query volume).
+### 1.1 A2 — Log source health / coverage dashboard  【Server + UI · M】✅
+- API `/api/health/coverage` (file mới `api_health.py`): per-machine `sysmon_present`, `auditpol_enabled`, `baseline_hardened`, `event_count_24h`, `event_count_7d_avg`, `delta%`, flags.
+- UI: menu **Log Coverage** + view: bảng máy + badge "🚫 Không log" / "📉 Log sụt" / "Sysmon?" / "Auditpol?".
+- Rule `LOGHEALTH-001` (server_core loghealth_monitor, 10 phút): volume 24h < 50% TB 7 ngày → alert HIGH.
 
-### 1.2 A1b — Syslog nâng cấp (bổ sung phần còn thiếu)  【Server · M】
-- RFC5424 (structured data `<PRI>1 ts host app msgid sd msg`): parser trong `syslog_server.py`.
-- Map severity → mức alert; thêm rule `SYSLOG-001..004` (auth fail, config change, access) cho DrayTek/TP-Link/Ricoh/HP/Linux.
-- Lưu thêm `facility`, `app_name`, `structured` vào bảng `syslog`.
-- (TCP 514 / TLS 6514 để sau — UDP đủ cho LAN).
-- **File:** `syslog_server.py`, `db_manager.py`/`db_postgres.py` (schema), `server_core.py` (rule hook).
+### 1.2 A1b — Syslog nâng cấp  【Server · M】✅
+- RFC5424 structured parser trong `syslog_server.py` (`<PRI>1 TS HOST APP PID MSGID [SD] MSG`).
+- Lưu `app_name`, `structured` (cột mới SQLite+PG); RFC3164 giữ nguyên.
+- (TCP 514/TLS 6514 để sau — UDP đủ cho LAN; firewall/device patterns đã có sẵn.)
 
-### 1.3 B3 — Alert grouping theo rule  【Server + UI · M】
-- Khi 1 rule fire cho N máy trong cửa sổ 10 phút → 1 alert group `{rule_id, count, machines[]}` thay vì N dòng.
-- Thêm bảng `alert_groups` hoặc cột `group_id` trên `threat_alerts`.
-- UI: badge "N máy" + expand xem danh sách.
-- **File:** `db_manager.py`/`db_postgres.py`, `event_worker.py` (aggregate), `dashboard.js`.
+### 1.3 B3 — Alert grouping theo rule  【Server + UI · M】✅
+- `get_threat_alerts_grouped` (SQLite `strftime` bucket / PG `date_trunc`): 1 row/rule/10-min + machine_count + machines list.
+- API `/api/threats/grouped`; UI toggle "📊 Nhóm theo rule" trong tab Đe dọa.
 
-### 1.4 B1 — SOC triage queue (nâng cấp từ dropdown)  【Server + UI · L】
-- Trạng thái lifecycle: `new → investigating → contained → resolved/false_positive`.
-- Thêm cột `assignee`, `comment`, `updated_by`, `due_at` (SLA 24h/48h theo severity) trên `threat_alerts` (SQLite+PG migration).
-- API: `/api/threats/<id>/assign`, `/comment`, `/status` (audit log).
-- UI: view "Chờ xử lý" (unresolved) có filter severity/group + SLA countdown đỏ.
-- **File:** `api/api_threats.py`, `db_manager.py`/`db_postgres.py`, `dashboard.js`.
+### 1.4 B1 — SOC triage queue  【Server + UI · L】✅
+- Cột mới `assignee`, `comment`, `updated_by`, `due_at`, `updated_at` (SQLite+PG).
+- Lifecycle: `new → investigating → contained → in_progress → resolved/false_positive`; SLA `due_at` (24h/48h).
+- API `/api/threats/<id>/assign`, `/comment`, `/status` (ghi audit).
+- UI: nút 👤 gán / 💬 ghi chú + badge assignee trên từng alert.
 
-### 1.5 B7 — Events table: pagination + sort thật  【Server + UI · S】
-- `get_events(offset, sort_by, order)`; `/api/events?offset=&sort=`; UI pagination (50/trang) + click header sort.
-- **File:** `api/api_events.py`, `db_manager.py`/`db_postgres.py`, `dashboard.js`.
+### 1.5 B7 — Events table: pagination  【Server + UI · S】✅
+- `get_events(offset, sort_by, order)` (cả 2 backend); `/api/events?offset=&sort_by=`; UI 100/trang + nút Trước/Sau.
 
-### 1.6 A3b — Agent báo trạng thái hardening  【Agent + Server · S】
-- Agent heartbeat gửi `baseline_hardened: true/false`, `sysmon_present`, `auditpol_enabled` (từ `baseline_hardening.py` + `sysmon_collector`).
-- Server lưu vào `machines` (cột mới) → A2 hiển thị.
-- **File:** `agent/agent_core.py` (heartbeat), `tcp_server.py`/`api_agent_commands.py` (update), `db_manager.py`/`db_postgres.py`.
+### 1.6 A3b — Agent báo trạng thái hardening  【Agent + Server · S】✅ (cần rebuild agent)
+- Agent `_coverage_state()` gửi `baseline_hardened/sysmon_present/auditpol_enabled` qua TCP heartbeat + HTTP poll.
+- Server lưu `update_machine_coverage` (cả 2 path: TCP heartbeat + `/api/agent/heartbeat`).
+- **Bonus fix:** requeue HIGH-6 đặt nhầm ở `/api/agent/pending-commands` (endpoint agent KHÔNG gọi) → **đã chuyển sang `/api/agent/heartbeat`** (endpoint thật).
 
 ---
 

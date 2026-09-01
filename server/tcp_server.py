@@ -369,6 +369,15 @@ class TCPServer(threading.Thread):
                     self.db.conn.commit()
                 except Exception:
                     pass
+            # v5.0.4 (Phase1 A3b): agent-reported log-source coverage state
+            try:
+                _cov = {"baseline_hardened": msg.get("baseline_hardened"),
+                        "sysmon_present": msg.get("sysmon_present"),
+                        "auditpol_enabled": msg.get("auditpol_enabled")}
+                if any(v is not None for v in _cov.values()):
+                    self.db.update_machine_coverage(mid, **_cov)
+            except Exception:
+                pass
             # v2.3.0: Track uptime and check 24h threshold
             uptime_hours, should_alert = self.db.track_machine_uptime(mid, hostname, boot_time=msg.get("boot_time"))
             if should_alert:

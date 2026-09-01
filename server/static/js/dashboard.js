@@ -28,6 +28,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         const loadingVD = '<div class="text-center py-5"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">' + t('dash.loadingData') + '</p></div>';
         var viewMap = {
             events: { el: 'viewEvents', container: 'allEventList', load: function() { loadAllEvents(); } },
+            coverage: { el: 'viewCoverage', container: 'coverageList', load: function() { loadCoverage(); } },
             fim: { el: 'viewFim', container: 'allFimList', load: function() { loadAllFim(); } },
             syslog: { el: 'viewSyslog', container: 'syslogList', load: function() { loadSyslog(); } },
             response: { el: 'viewResponse', container: 'allResponseList', load: function() { loadAllResponses(); loadResponseActions(); } },
@@ -339,24 +340,39 @@ function downloadAssistContextFile(fullReport) {
 }
 
 // ===== ALL VIEWS =====
-function loadAllEvents() {
+let allEventsPage = 0;
+const ALL_EVENTS_PAGE_SIZE = 100;
+function loadAllEvents(page) {
+    if (typeof page === 'number') allEventsPage = page;
     const el = document.getElementById('allEventList');
-    fetch('/api/events?limit=300').then(r => r.json()).then(events => {
-        if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noEvents') + '</div>'; return; }
-        el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),t('ui.type')+' / '+t('ui.channel'),'ID',t('dash.source'),t('ui.detail')],
-            events.map(e => {
-                const cat = e.event_category || '';
-                const catBadge = cat ? `<span class="badge bg-secondary me-1" style="font-size:9px;">${escapeHtml(cat)}</span>` : '';
-                const targetUser = e.target_username ? `<span style="color:#3399ff;">👤${escapeHtml(e.target_username)}</span> ` : '';
-                const srcIp = e.source_ip ? `<span style="color:#ff9966;">🌐${escapeHtml(e.source_ip)}</span> ` : '';
-                const procName = e.process_name ? `<span style="color:#88ccff;">⚙${escapeHtml(e.process_name.split('\\').pop())}</span> ` : '';
-                const cmdLine = e.command_line ? `<span style="color:#ffcc66;font-size:9px;">${escapeHtml((e.command_line||'').substring(0,40))}</span>` : '';
-                var desc = escapeHtml(e.description||'');
-                var extraInfo = targetUser + srcIp + procName + cmdLine;
-                return `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.time||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td>${catBadge}<span class="log-type event">${escapeHtml((e.subtype||'').split('/').pop())}</span></td><td>${escapeHtml(e.event_id||'-')}</td><td>${escapeHtml(e.source||'-')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extraInfo}${desc.substring(0,50)}</td></tr>`;
-            }));
-        document.getElementById('allEventSearch').oninput = function() { const q = this.value.toLowerCase(); el.querySelectorAll('tbody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'); };
-    });
+    // v5.0.4 (Phase1 B7): server-side pagination (offset) + page controls
+    fetch('/api/events?limit=' + ALL_EVENTS_PAGE_SIZE + '&offset=' + (allEventsPage * ALL_EVENTS_PAGE_SIZE))
+        .then(r => r.json()).then(events => {
+            if (!events.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noEvents') + '</div>'; return; }
+            el.innerHTML = tableWrap([t('dash.time'),t('dash.machine'),t('ui.type')+' / '+t('ui.channel'),'ID',t('dash.source'),t('ui.detail')],
+                events.map(e => {
+                    const cat = e.event_category || '';
+                    const catBadge = cat ? `<span class="badge bg-secondary me-1" style="font-size:9px;">${escapeHtml(cat)}</span>` : '';
+                    const targetUser = e.target_username ? `<span style="color:#3399ff;">👤${escapeHtml(e.target_username)}</span> ` : '';
+                    const srcIp = e.source_ip ? `<span style="color:#ff9966;">🌐${escapeHtml(e.source_ip)}</span> ` : '';
+                    const procName = e.process_name ? `<span style="color:#88ccff;">⚙${escapeHtml(e.process_name.split('\\').pop())}</span> ` : '';
+                    const cmdLine = e.command_line ? `<span style="color:#ffcc66;font-size:9px;">${escapeHtml((e.command_line||'').substring(0,40))}</span>` : '';
+                    var desc = escapeHtml(e.description||'');
+                    var extraInfo = targetUser + srcIp + procName + cmdLine;
+                    return `<tr data-row='${JSON.stringify(e).replace(/'/g,"&#39;")}' style="cursor:pointer;"><td style="font-family:monospace;font-size:11px;color:#666!important;white-space:nowrap;">${escapeHtml((e.time||'').substring(0,19))}</td><td>${escapeHtml(e.hostname||e.machine_id||'-')}</td><td>${catBadge}<span class="log-type event">${escapeHtml((e.subtype||'').split('/').pop())}</span></td><td>${escapeHtml(e.event_id||'-')}</td><td>${escapeHtml(e.source||'-')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${extraInfo}${desc.substring(0,50)}</td></tr>`;
+                }));
+            const oldPg = document.getElementById('allEventsPagination');
+            if (oldPg) oldPg.remove();
+            const pgEl = document.createElement('div');
+            pgEl.id = 'allEventsPagination';
+            pgEl.className = 'd-flex justify-content-center align-items-center p-2';
+            pgEl.style.cssText = 'font-size:11px;color:#8892a4;gap:10px;';
+            pgEl.innerHTML = '<button class="btn btn-sm btn-outline-secondary" style="font-size:10px;" onclick="loadAllEvents(' + Math.max(0, allEventsPage-1) + ')" ' + (allEventsPage === 0 ? 'disabled' : '') + '>← Trước</button>' +
+                '<span>Trang ' + (allEventsPage + 1) + '</span>' +
+                '<button class="btn btn-sm btn-outline-secondary" style="font-size:10px;" onclick="loadAllEvents(' + (allEventsPage + 1) + ')">Sau →</button>';
+            el.parentNode.insertBefore(pgEl, el.nextSibling);
+            document.getElementById('allEventSearch').oninput = function() { const q = this.value.toLowerCase(); el.querySelectorAll('tbody tr').forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'); };
+        });
 }
 
 function loadMachineEvents(machineId) {
@@ -605,8 +621,30 @@ function setInspectionStatus(id, status) {
 
 function statusOptions(cur) {
     var st = cur || 'new';
-    var opts = [['new', t('tr.new')], ['in_progress', t('tr.inProgress')], ['resolved', t('tr.resolved')], ['false_positive', t('tr.fp')]];
+    // v5.0.4 (Phase1 B1): extended SOC triage lifecycle
+    var opts = [['new', t('tr.new')], ['investigating', 'Điều tra'], ['contained', 'Đã cô lập'],
+                ['in_progress', t('tr.inProgress')], ['resolved', t('tr.resolved')], ['false_positive', t('tr.fp')]];
     return opts.map(function(o) { return '<option value="' + o[0] + '"' + (st === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('');
+}
+
+// v5.0.4 (Phase1 B1): assign/comment on a threat
+function assignThreat(id, cur) {
+    var name = prompt('Gán cho ai (username)?', cur || '');
+    if (!name) return;
+    fetch('/api/threats/' + id + '/assign', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({assignee: name})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ Đã gán cho ' + name); loadThreats(); }
+            else showToast('❌ ' + (d.error || ''));
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+function commentThreat(id) {
+    var c = prompt('Ghi chú điều tra:');
+    if (c === null) return;
+    fetch('/api/threats/' + id + '/comment', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({comment: c})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ Đã lưu ghi chú'); loadThreats(); }
+            else showToast('❌ ' + (d.error || ''));
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
 function setThreatStatus(id, status) {
@@ -624,13 +662,17 @@ function setThreatStatus(id, status) {
 
 function loadThreats() {
     const el = document.getElementById('threatList');
+    // v5.0.4 (Phase1 B3): optional grouping by (rule, window) to cut noise
+    const groupByRule = (document.getElementById('threatGroupByRule') || {}).checked === true;
+    if (groupByRule) { loadThreatsGrouped(); return; }
     fetch('/api/threats?limit=500').then(r => r.json()).then(data => {
         if (!data.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('dash.noCriticalAlerts') + '</div>'; return; }
         // v4.6.6: hide triaged alerts (resolved/false_positive) by default so handled
         // items disappear from the dashboard; a toggle reveals them again. Marking an
         // alert handled is NOT a suppression rule - future identical alerts still appear.
         const showHandled = (document.getElementById('threatShowHandled') || {}).checked === true;
-        const toolbar = '<div class="p-2 d-flex justify-content-end" style="font-size:11px;color:#8892a4;">' +
+        const toolbar = '<div class="p-2 d-flex justify-content-end align-items-center" style="font-size:11px;color:#8892a4;gap:12px;">' +
+            '<label class="me-2"><input type="checkbox" id="threatGroupByRule" onchange="loadThreats()"> 📊 Nhóm theo rule</label>' +
             '<label class="me-2"><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
         const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
         if (!rows.length) {
@@ -639,6 +681,30 @@ function loadThreats() {
         }
         el.innerHTML = toolbar + buildGroupedByMachine(rows, 'threats', '⚠ Threat Alerts');
     });
+}
+
+// v5.0.4 (Phase1 B3): one row per (rule, 10-min window) with machine count
+function loadThreatsGrouped() {
+    const el = document.getElementById('threatList');
+    const showHandled = (document.getElementById('threatShowHandled') || {}).checked === true;
+    const toolbar = '<div class="p-2 d-flex justify-content-end align-items-center" style="font-size:11px;color:#8892a4;gap:12px;">' +
+        '<label class="me-2"><input type="checkbox" id="threatGroupByRule" checked onchange="loadThreats()"> 📊 Nhóm theo rule</label>' +
+        '<label class="me-2"><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
+    fetch('/api/threats/grouped?since=24&min_machines=2' + (showHandled ? '' : '&status=new'))
+        .then(r => r.json()).then(d => {
+            const groups = d.groups || [];
+            if (!groups.length) { el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('dash.noCriticalAlerts') + '</div>'; return; }
+            el.innerHTML = toolbar + '<div class="p-2">' + groups.map(function(g) {
+                const sev = g.severity || '?';
+                return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:6px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                    '<div style="flex:1;min-width:200px;"><span class="badge ' + (sev==='CRITICAL'?'bg-danger':sev==='HIGH'?'bg-warning text-dark':sev==='MEDIUM'?'bg-info':'bg-secondary') + '">' + escapeHtml(sev) + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(g.rule_id||'?') + '</strong> <small style="color:#8892a4;">' + escapeHtml(g.rule_name||'') + '</small><br>' +
+                    '<small style="color:#5a6a7a;">' + escapeHtml((g.description||'').substring(0,90)) + '</small></div>' +
+                    '<div style="text-align:right;font-size:11px;white-space:nowrap;">' +
+                    '<span class="badge bg-danger">' + g.machine_count + ' máy</span> <span class="badge bg-dark">' + g.alert_count + ' alert</span><br>' +
+                    '<small style="color:#8892a4;">' + escapeHtml((g.last_at||'').substring(0,19)) + '</small><br>' +
+                    '<small style="font-family:monospace;font-size:9px;color:#5a6a7a;">' + escapeHtml(g.machines||'').split(',').slice(0,5).join(', ') + (String(g.machines||'').split(',').length>5?'…':'') + '</small></div></div>';
+            }).join('') + '</div>';
+        }).catch(function() { el.innerHTML = toolbar + '<div class="text-center text-muted py-3">'+t('ui.loadErrX')+'</div>'; });
 }
 
 function loadVulns() {
@@ -949,7 +1015,7 @@ function buildGroupedByMachine(data, type, title) {
         if (type === 'threats') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' onclick="showThreatDetail(this)" style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' + _actionButtons('threats', e) + '</tr>';
+                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' onclick="showThreatDetail(this)" style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + (e.assignee ? ' <span class="badge bg-success" style="font-size:9px;">&#128100; '+escapeHtml(e.assignee)+'</span>' : '') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td><td style="white-space:nowrap;">' + _actionButtons('threats', e) + '<button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();assignThreat(' + e.id + ')" title="Gan cho analyst">&#128100;</button><button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();commentThreat(' + e.id + ')" title="Ghi chu dieu tra">&#128172;</button></td></tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
@@ -5165,3 +5231,31 @@ function importDashboard() {
     })
     .catch(function() { showToast('❌ Lỗi kết nối'); });
 }
+
+// ===== v5.0.4 (Phase1 A2): LOG SOURCE COVERAGE =====
+function loadCoverage() {
+    const el = document.getElementById('coverageList');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> ' + t('ui.loading') + '</div>';
+    fetch('/api/health/coverage').then(r => r.json()).then(d => {
+        const machines = d.machines || [];
+        if (!machines.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> Chưa có máy trạm nào.</div>'; return; }
+        const flagBadge = function(f) {
+            return f === 'no_logs' ? '<span class="badge bg-danger" title="Online nhưng 0 event (log bị tắt?)">🚫 Không log</span>' :
+                   f === 'log_drop' ? '<span class="badge bg-warning text-dark" title="Volume 24h < 50% trung bình 7 ngày">📉 Log sụt</span>' :
+                   f === 'no_sysmon' ? '<span class="badge bg-secondary" title="Chưa phát hiện Sysmon">Sysmon?</span>' :
+                   f === 'no_auditpol' ? '<span class="badge bg-secondary" title="Chưa bật auditpol">Auditpol?</span>' : '';
+        };
+        el.innerHTML = tableWrap(['Máy', 'Trạng thái', 'Events 24h', 'TB 7 ngày', 'Độ sụt', 'Cảnh báo'], machines.map(m => {
+            const st = m.online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
+            const dropCls = m.drop_pct > 50 ? 'color:#ff6666;font-weight:bold;' : 'color:#8892a4;';
+            const flags = (m.flags || []).map(flagBadge).join(' ') || '<small class="text-muted">OK</small>';
+            return '<tr><td><strong style="color:#e4e7eb;">' + escapeHtml(m.hostname) + '</strong><br><small style="font-family:monospace;font-size:9px;color:#5a6a7a;">' + escapeHtml(m.machine_id) + '</small></td>' +
+                '<td>' + st + (m.sysmon_present ? ' <span class="badge bg-info" style="font-size:9px;">Sysmon</span>' : '') + (m.auditpol_enabled ? ' <span class="badge bg-info" style="font-size:9px;">Audit</span>' : '') + '</td>' +
+                '<td>' + m.event_24h + '</td><td>' + (m.event_7d_avg || '-') + '</td>' +
+                '<td style="' + dropCls + '">' + (m.drop_pct > 0 ? '-' + m.drop_pct + '%' : '-') + '</td>' +
+                '<td>' + flags + '</td></tr>';
+        }));
+    }).catch(function() { el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
+}
+

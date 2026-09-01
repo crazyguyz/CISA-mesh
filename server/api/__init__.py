@@ -27,6 +27,7 @@ from . import api_policies
 from . import api_mitre
 from . import api_response
 from . import api_agent_commands
+from . import api_health
 from . import api_dashboard
 from . import api_custom_dashboard
 from . import api_alert_approval
@@ -60,6 +61,7 @@ def register_all_routes(app, core):
     api_mitre.register_routes(app, core)
     api_response.register(app, core)
     api_agent_commands.register(app, core)
+    api_health.register(app, core)
     api_dashboard.register(app, core)
     api_custom_dashboard.register(app, core)
     api_alert_approval.register(app, core)

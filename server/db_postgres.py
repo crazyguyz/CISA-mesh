@@ -615,6 +615,19 @@ class PostgresDatabase:
             ("machine_users", "branch", "TEXT DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
             ("network_inspection", "ja3", "TEXT DEFAULT ''"),  # v5.0.4: TLS fingerprint
+            # v5.0.4 (Phase1 A2/A3b): log-source coverage state
+            ("machines", "baseline_hardened", "INTEGER DEFAULT 0"),
+            ("machines", "sysmon_present", "INTEGER DEFAULT 0"),
+            ("machines", "auditpol_enabled", "INTEGER DEFAULT 0"),
+            # v5.0.4 (Phase1 A1b): RFC5424 structured fields
+            ("syslog", "app_name", "TEXT DEFAULT ''"),
+            ("syslog", "structured", "TEXT DEFAULT '{}'"),
+            # v5.0.4 (Phase1 B1): SOC triage queue fields
+            ("threat_alerts", "assignee", "TEXT DEFAULT ''"),
+            ("threat_alerts", "comment", "TEXT DEFAULT ''"),
+            ("threat_alerts", "updated_by", "TEXT DEFAULT ''"),
+            ("threat_alerts", "due_at", "TIMESTAMPTZ"),
+            ("threat_alerts", "updated_at", "TIMESTAMPTZ"),
             # v5.0.1: support-ticket columns (structured workstation requests)
             ("messages", "msg_type", "TEXT DEFAULT 'chat'"),
             ("messages", "category", "TEXT DEFAULT ''"),
@@ -780,6 +793,29 @@ class PostgresDatabase:
             return
         try:
             self._execute("UPDATE machines SET hostname=%s WHERE machine_id=%s", (new_hostname, machine_id))
+        except Exception:
+            pass
+
+    def update_machine_coverage(self, machine_id, baseline_hardened=None, sysmon_present=None, auditpol_enabled=None):
+        """v5.0.4 (Phase1 A3b/A2): store agent-reported log-source coverage state."""
+        if not self._connected:
+            return
+        try:
+            sets = []
+            p = []
+            if baseline_hardened is not None:
+                sets.append("baseline_hardened=%s")
+                p.append(1 if baseline_hardened else 0)
+            if sysmon_present is not None:
+                sets.append("sysmon_present=%s")
+                p.append(1 if sysmon_present else 0)
+            if auditpol_enabled is not None:
+                sets.append("auditpol_enabled=%s")
+                p.append(1 if auditpol_enabled else 0)
+            if not sets:
+                return
+            p.append(machine_id)
+            self._execute(f"UPDATE machines SET {', '.join(sets)} WHERE machine_id=%s", tuple(p))
         except Exception:
             pass
 
@@ -1503,7 +1539,8 @@ class PostgresDatabase:
     # Query Methods
     # =========================================================================
 
-    def get_events(self, machine_id=None, event_type=None, limit=100, since_hours=None):
+    def get_events(self, machine_id=None, event_type=None, limit=100, since_hours=None,
+                   offset=None, sort_by=None, order="desc"):
         if not self._connected:
             return []
         try:
@@ -1518,8 +1555,13 @@ class PostgresDatabase:
             if since_hours:
                 q += " AND received_at >= NOW() - INTERVAL '%s hours'"
                 params.append(str(since_hours))
-            q += " ORDER BY id DESC LIMIT %s"
+            _sort_col = sort_by if sort_by in ("received_at", "time", "event_id", "subtype", "machine_id") else "id"
+            _order = "ASC" if str(order).lower() == "asc" else "DESC"
+            q += f" ORDER BY {_sort_col} {_order} LIMIT %s"
             params.append(limit)
+            if offset:
+                q += " OFFSET %s"
+                params.append(int(offset))
             return self._execute(q, tuple(params), fetchall=True) or []
         except Exception:
             return []
@@ -2272,16 +2314,17 @@ class PostgresDatabase:
         except Exception:
             return []
 
-    def insert_syslog(self, source_ip, hostname, facility, severity, timestamp, message, raw_data):
+    def insert_syslog(self, source_ip, hostname, facility, severity, timestamp, message, raw_data, app_name="", structured=""):
         if not self._connected:
             return
         try:
             safe_msg = (message or "")[:4000]
             # raw_data is JSONB column - convert raw string to JSON object
             raw_json = json.dumps({"raw": str(raw_data)[:4000]}, ensure_ascii=False)
+            # v5.0.4 (Phase1 A1b): RFC5424 app_name + structured data
             self._execute(
-                "INSERT INTO syslog (source_ip, hostname, facility, severity, timestamp, message, raw_data) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (source_ip, hostname, facility, severity, timestamp, safe_msg, raw_json)
+                "INSERT INTO syslog (source_ip, hostname, facility, severity, timestamp, message, raw_data, app_name, structured) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (source_ip, hostname, facility, severity, timestamp, safe_msg, raw_json, app_name or "", structured or "-")
             )
         except Exception as e:
             print(f"[-] insert_syslog ERROR: {e}")
@@ -2709,13 +2752,81 @@ class PostgresDatabase:
 
     # v5.0.3: triage status methods were missing from the PG backend - on a PG
     # deployment POST /api/threats/<id>/status etc. raised AttributeError (500).
-    def set_threat_status(self, threat_id, status):
+    def set_threat_status(self, threat_id, status, username=None):
         if not self._connected:
             return
         try:
-            self._execute("UPDATE threat_alerts SET status=%s WHERE id=%s", (status, threat_id))
+            # v5.0.4 (Phase1 B1): record who/when + SLA due date
+            _sla = {"new": "+24 hours", "investigating": "+24 hours",
+                    "contained": "+48 hours", "in_progress": "+24 hours",
+                    "resolved": "+0 hours", "false_positive": "+0 hours"}.get(status, "+24 hours")
+            self._execute(
+                "UPDATE threat_alerts SET status=%s, updated_by=COALESCE(%s, updated_by), "
+                "updated_at=NOW(), "
+                "due_at=CASE WHEN status='new' AND %s <> '' THEN NOW() + (%s || ' hours')::INTERVAL "
+                "ELSE due_at END WHERE id=%s",
+                (status, username, status, _sla, threat_id))
         except Exception:
             pass
+
+    def set_threat_assign(self, threat_id, assignee, username):
+        if not self._connected:
+            return
+        try:
+            self._execute(
+                "UPDATE threat_alerts SET assignee=%s, updated_by=%s, updated_at=NOW() WHERE id=%s",
+                (assignee, username, threat_id))
+        except Exception:
+            pass
+
+    def set_threat_comment(self, threat_id, comment, username):
+        if not self._connected:
+            return
+        try:
+            self._execute(
+                "UPDATE threat_alerts SET comment=CASE WHEN comment='' THEN %s "
+                "ELSE comment || E'\\n' || %s END, updated_by=%s, updated_at=NOW() WHERE id=%s",
+                (comment, comment, username, threat_id))
+        except Exception:
+            pass
+
+    def get_threat_alerts_grouped(self, since_hours=24, min_machines=1, status=None):
+        if not self._connected:
+            return []
+        try:
+            q = ("SELECT rule_id, rule_name, severity, COUNT(*) AS alert_count, "
+                 "COUNT(DISTINCT machine_id) AS machine_count, "
+                 "MAX(description) AS description, MAX(received_at) AS last_at, "
+                 "string_agg(DISTINCT machine_id, ',') AS machines "
+                 "FROM threat_alerts WHERE received_at >= NOW() - (%s || ' hours')::INTERVAL")
+            p = [str(since_hours)]
+            if status:
+                q += " AND status=%s"
+                p.append(status)
+            q += " GROUP BY rule_id, date_trunc('minute', received_at - INTERVAL '10 minutes')"
+            q += " HAVING COUNT(DISTINCT machine_id) >= %s ORDER BY last_at DESC LIMIT 200"
+            p.append(int(min_machines))
+            return self._execute(q, tuple(p), fetchall=True) or []
+        except Exception:
+            return []
+
+    def get_event_volume(self, hours=24, machine_id=None):
+        if not self._connected:
+            return {}
+        out = {}
+        try:
+            for _tbl in ("events", "sysmon_events"):
+                q = f"SELECT machine_id, COUNT(*) AS n FROM {_tbl} WHERE received_at >= NOW() - (%s || ' hours')::INTERVAL"
+                p = [str(hours)]
+                if machine_id:
+                    q += " AND machine_id=%s"
+                    p.append(machine_id)
+                q += " GROUP BY machine_id"
+                for r in (self._execute(q, tuple(p), fetchall=True) or []):
+                    out.setdefault(r["machine_id"], {"events": 0, "sysmon": 0})[_tbl] = r["n"]
+        except Exception:
+            pass
+        return out
 
     def set_vuln_status(self, alert_id, status):
         if not self._connected:

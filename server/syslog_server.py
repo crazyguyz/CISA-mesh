@@ -36,6 +36,11 @@ class SyslogServer(threading.Thread):
             r'(\S+)?\s*'  # Hostname (optional)
             r'(.*)'  # Message
         )
+        # v5.0.4 (Phase1 A1b): RFC5424 structured format
+        # <PRI>1 TS HOST APP PROCID MSGID STRUCTURED-DATA [MSG]
+        self._rfc5424_pattern = re.compile(
+            r'<(\d{1,3})>\s*1\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)',
+            re.DOTALL)
 
         # v2.0.2 SECURITY: Patterns for DHCP MAC/Hostname redaction
         self._dhcp_mac_pattern = re.compile(r'([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}')
@@ -135,14 +140,6 @@ class SyslogServer(threading.Thread):
             match = self.syslog_pattern.match(raw)
             if match:
                 priority = int(match.group(1))
-                timestamp_str = match.group(2) or datetime.now().strftime("%b %d %H:%M:%S")
-                hostname = match.group(3) or source_ip
-                message = match.group(4)
-
-                # Calculate facility and severity
-                facility = priority >> 3
-                severity = priority & 0x07
-
                 facility_names = {
                     0: "kern", 1: "user", 2: "mail", 3: "daemon",
                     4: "auth", 5: "syslog", 6: "lpr", 7: "news",
@@ -155,24 +152,48 @@ class SyslogServer(threading.Thread):
                     4: "warning", 5: "notice", 6: "info", 7: "debug"
                 }
 
-                facility_name = facility_names.get(facility, f"facility_{facility}")
-                severity_name = severity_names.get(severity, f"severity_{severity}")
+                # ---- v5.0.4 (Phase1 A1b): RFC5424 structured ----
+                m5424 = self._rfc5424_pattern.match(raw)
+                if m5424:
+                    ts_s, hostname, app_name, _proc, _msgid, sd, msg = m5424.groups()
+                    facility_name = facility_names.get(priority >> 3, f"facility_{priority >> 3}")
+                    severity_name = severity_names.get(priority & 0x07, f"severity_{priority & 0x07}")
+                    message = (msg or "").strip()
+                    timestamp_str = ts_s
+                    if "DHCP" in message.upper():
+                        message = self._dhcp_mac_pattern.sub("xx:xx:xx:xx:xx:xx", message)
+                        message = self._dhcp_hostname_pattern.sub(r'\1 [REDACTED]', message)
+                    if self.db:
+                        try:
+                            self.db.insert_syslog(
+                                source_ip, hostname, facility_name, severity_name,
+                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message, raw,
+                                app_name=app_name or "", structured=sd or "-")
+                        except Exception:
+                            pass
+                else:
+                    # ---- RFC 3164 ----
+                    timestamp_str = match.group(2) or datetime.now().strftime("%b %d %H:%M:%S")
+                    hostname = match.group(3) or source_ip
+                    message = match.group(4)
+                    facility_name = facility_names.get(priority >> 3, f"facility_{priority >> 3}")
+                    severity_name = severity_names.get(priority & 0x07, f"severity_{priority & 0x07}")
 
-                # v2.0.2 SECURITY: Redact DHCP MAC addresses and hostnames from syslog
-                # Prevent information disclosure of DHCP lease data
-                if "DHCP" in message.upper() or "dhcp" in facility_name.lower():
-                    message = self._dhcp_mac_pattern.sub("xx:xx:xx:xx:xx:xx", message)
-                    message = self._dhcp_hostname_pattern.sub(r'\1 [REDACTED]', message)
+                    # v2.0.2 SECURITY: Redact DHCP MAC addresses and hostnames from syslog
+                    # Prevent information disclosure of DHCP lease data
+                    if "DHCP" in message.upper() or "dhcp" in facility_name.lower():
+                        message = self._dhcp_mac_pattern.sub("xx:xx:xx:xx:xx:xx", message)
+                        message = self._dhcp_hostname_pattern.sub(r'\1 [REDACTED]', message)
 
-                # Store in DB - use the server receive time (ISO, sortable + cleanable)
-                # instead of the RFC-3164 message timestamp which has NO year and can
-                # never be matched by retention cleanup. The original message time is
-                # kept inside raw_data.
-                if self.db:
-                    self.db.insert_syslog(
-                        source_ip, hostname, facility_name, severity_name,
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message, raw
-                    )
+                    # Store in DB - use the server receive time (ISO, sortable + cleanable)
+                    # instead of the RFC-3164 message timestamp which has NO year and can
+                    # never be matched by retention cleanup. The original message time is
+                    # kept inside raw_data.
+                    if self.db:
+                        self.db.insert_syslog(
+                            source_ip, hostname, facility_name, severity_name,
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message, raw
+                        )
 
                 # Notify web UI
                 if self.message_callback:

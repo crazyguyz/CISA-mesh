@@ -26,11 +26,22 @@ def register(app, core):
         if err: return err, code
         since_h = request.args.get("since")
         since_hours = int(since_h) if since_h and since_h.isdigit() and int(since_h) > 0 else None
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+        except (TypeError, ValueError):
+            offset = 0
+        try:
+            limit = max(1, min(int(request.args.get("limit", 100)), 1000))
+        except (TypeError, ValueError):
+            limit = 100
         rows = core.db.get_events(
             machine_id=request.args.get("machine_id"),
             event_type=request.args.get("event_type"),
-            limit=request.args.get("limit", 100, type=int),
-            since_hours=since_hours
+            limit=limit,
+            since_hours=since_hours,
+            offset=offset,
+            sort_by=request.args.get("sort_by"),
+            order=request.args.get("order", "desc")
         )
         # v5.0.4 (MEDIUM-15): a single raw_data can exceed 100KB and freeze the
         # dashboard - cap before sending; the detail modal reads what it needs.
