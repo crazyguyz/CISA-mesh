@@ -35,19 +35,22 @@ def process_approval(core, callback_data="", approval_id="", action=""):
     if not callback_data and not approval_id:
         return {"error": "callback_data or approval_id required"}, 400
 
-    # Parse Telegram callback: giamsat_approve|machine_id|action|rule_id
+    # Parse Telegram callback: giamsat_approve|<machine_id_hash12>|<action>
     if "|" in callback_data:
         parts = callback_data.split("|")
         if len(parts) >= 3:
             action = "approve" if parts[0] == "giamsat_approve" else "deny"
-            machine_id = parts[1]
+            cb_mid_hash = parts[1]
             pending_action = parts[2]
+            # v5.0.4 R8 (HIGH-2): callback_data carries a 12-char sha1 of the
+            # machine_id (keeps the payload < 64 bytes); match on the hash.
+            import hashlib as _hl
             matched_id = None
             with _approval_lock:
                 for aid, ainfo in _pending_approvals.items():
-                    if (ainfo.get("machine_id") == machine_id and
-                            ainfo.get("action") == pending_action and
-                            ainfo.get("status") == "pending"):
+                    if (ainfo.get("action") == pending_action and
+                            ainfo.get("status") == "pending" and
+                            _hl.sha1(str(ainfo.get("machine_id", "")).encode("utf-8", errors="ignore")).hexdigest()[:12] == cb_mid_hash):
                         matched_id = aid
                         break
             if not matched_id:

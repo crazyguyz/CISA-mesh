@@ -391,13 +391,19 @@ Description: {alert_data.get('description', 'N/A')}
 
             sev = alert_data.get("severity", "LOW")
             sev_emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(sev, "⚪")
+            # v5.0.4 R8 (HIGH-2): keep RAW values for the inline callback (Telegram
+            # matches them exactly) - escaping/truncating them would break approval.
+            _raw_machine_id = str(alert_data.get("machine_id", ""))
+            _raw_pending_action = str(alert_data.get("pending_action", ""))
+            import hashlib as _hl
+            _cb_mid = _hl.sha1(_raw_machine_id.encode("utf-8", errors="ignore")).hexdigest()[:12]
             # v5.0.4 (MEDIUM-4): escape EVERY agent-controlled value - Telegram
             # Markdown lets [x](javascript/evil) / * / _ smuggle fake links into
             # the trusted SOC channel; HTML parse_mode + escape closes that.
             rule_id = _html.escape(str(alert_data.get("rule_id") or alert_data.get("cve", "?")), quote=False)
             rule_name = _html.escape(str(alert_data.get("rule_name") or alert_data.get("cve", "Unknown")), quote=False)
             hostname = _html.escape(str(alert_data.get("hostname", "Unknown")), quote=False)
-            machine_id = _html.escape(str(alert_data.get("machine_id", "")), quote=False)
+            machine_id = _html.escape(_raw_machine_id, quote=False)
             desc = _html.escape(str(alert_data.get("description", ""))[:200], quote=False)
             confidence = alert_data.get("confidence_score", 0)
 
@@ -444,11 +450,16 @@ Description: {alert_data.get('description', 'N/A')}
                 timeout = cfg.get("approval_timeout", 300)
                 mins = timeout // 60
                 text += f"\n⚠️ Proposed action: <b>{pending_action}</b>\n⏰ Auto-deny in {mins}:00"
-                callback_data = f"giamsat_approve|{machine_id}|{pending_action}|{rule_id}"
+                # v5.0.4 R8 (HIGH-2): callback_data must stay < 64 bytes or Telegram
+                # rejects the whole inline keyboard (BUTTON_DATA_INVALID). machine_id
+                # is hashed to 12 chars (matcher compares hashes); rule_id dropped
+                # (the matcher never used it); action kept raw (required for match).
+                callback_data = f"giamsat_approve|{_cb_mid}|{_raw_pending_action}"
+                deny_data = f"giamsat_deny|{_cb_mid}|{_raw_pending_action}"
                 reply_markup = {
                     "inline_keyboard": [[
                         {"text": "✅ Approve", "callback_data": callback_data},
-                        {"text": "❌ Deny", "callback_data": f"giamsat_deny|{machine_id}|{pending_action}"}
+                        {"text": "❌ Deny", "callback_data": deny_data}
                     ]]
                 }
 

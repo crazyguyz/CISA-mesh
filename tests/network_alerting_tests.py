@@ -63,6 +63,13 @@ def main():
     check("non-TLS payload rejected", _parse_tls_client_hello(b"GET / HTTP/1.1\r\n") == ("", ""))
     check("short payload rejected", _parse_tls_client_hello(b"\x16\x03") == ("", ""))
 
+    # v5.0.4 R8 (MEDIUM-2): IPv6 private/ULA/link-local must not be treated as external
+    from network_alerting import _is_private_ip
+    check("IPv6 ULA is private", _is_private_ip("fd00::1"))
+    check("IPv6 link-local is private", _is_private_ip("fe80::1"))
+    check("IPv6 public is external", not _is_private_ip("2001:4860:4860::8888"))
+    check("IPv4 192.168 is private", _is_private_ip("192.168.1.5"))
+
     # -------------------------------------------------------------- 2. Alerts
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)

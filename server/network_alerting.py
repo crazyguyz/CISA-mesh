@@ -21,45 +21,32 @@ threat_alerts (dashboard) and pushed to the alerting engine (Telegram/Email/
 Slack) with per-rule cooldowns so a long-running server stays quiet.
 """
 
+import ipaddress
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def _is_private_ip(ip):
-    """RFC1918 + loopback + link-local + multicast/broadcast (mirrors api_netflow)."""
+    """RFC1918/ULA + loopback + link-local + multicast (IPv4 AND IPv6)."""
     if not ip:
         return True
-    if ip in ("127.0.0.1", "::1", "0.0.0.0", "::"):
-        return True
-    parts = ip.split(".")
-    if len(parts) != 4:
-        return False
     try:
-        a, b = int(parts[0]), int(parts[1])
+        addr = ipaddress.ip_address(ip)
+        return (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_multicast or addr.is_unspecified or addr.is_reserved)
     except ValueError:
-        return False
-    if a == 10:
-        return True
-    if a == 172 and 16 <= b <= 31:
-        return True
-    if a == 192 and b == 168:
-        return True
-    if a == 169 and b == 254:
-        return True
-    if a == 224 or a == 255:
-        return True
-    return False
+        return True  # unparseable -> do not alert novelty/beacon on it
 
 
 class NetworkAlertEngine(threading.Thread):
     """Behaviour-based NetFlow alerting (beaconing / first-seen / off-hours)."""
 
     SCAN_WINDOW_SEC = int(os.environ.get("GIAMSAT_NET_ALERT_WINDOW", "1800"))
-    BEACON_MIN_FLOWS = int(os.environ.get("GIAMSAT_NET_BEACON_MIN_FLOWS", "5"))
-    BEACON_MIN_SPAN = 120                 # seconds between first and last flow
-    BEACON_MAX_CV = 0.30                  # interval coefficient of variation (jitter)
+    BEACON_MIN_FLOWS = int(os.environ.get("GIAMSAT_NET_BEACON_MIN_FLOWS", "6"))
+    BEACON_MIN_SPAN = int(os.environ.get("GIAMSAT_NET_BEACON_MIN_SPAN", "120"))
+    BEACON_MAX_CV = float(os.environ.get("GIAMSAT_NET_BEACON_MAX_CV", "0.30"))
     FIRST_SEEN_DAYS = int(os.environ.get("GIAMSAT_NET_FIRST_SEEN_DAYS", "14"))
     ODD_HOUR_START, ODD_HOUR_END = 0, 5   # local-time window for NET-ODD
 
@@ -77,6 +64,9 @@ class NetworkAlertEngine(threading.Thread):
         self._cooldowns = {}      # (rule, key) -> last alert ts
         self._ip_cache = {}       # src_ip -> (machine_id, hostname)
         self._ip_cache_ts = 0.0
+        # v5.0.4 R8: seen-before pairs cached between scans (DISTINCT query once)
+        self._seen = set()
+        self._seen_ts = 0.0
 
     def stop(self):
         self.running = False
@@ -108,20 +98,23 @@ class NetworkAlertEngine(threading.Thread):
                 pass
         return self._ip_cache.get(src_ip, (src_ip, src_ip))
 
-    def _cooldown_ok(self, rule, key):
+    def _cooldown_check(self, rule, key):
+        """v5.0.4 R8 (LOW-2): check-only - cooldown is MARKED after a successful emit,
+        so a failed insert/send does not consume the window and the alert retries."""
         now = time.time()
-        last = self._cooldowns.get((rule, key), 0)
-        if now - last < self.COOLDOWN.get(rule, 3600):
-            return False
-        self._cooldowns[(rule, key)] = now
-        if len(self._cooldowns) > 2000:  # idle-GC (3 days)
-            cutoff = now - 86400 * 3
-            self._cooldowns = {k: v for k, v in self._cooldowns.items() if v >= cutoff}
-        return True
+        return now - self._cooldowns.get((rule, key), 0) >= self.COOLDOWN.get(rule, 3600)
 
+    def _cooldown_mark(self, rule, key):
+        self._cooldowns[(rule, key)] = time.time()
+        if len(self._cooldowns) > 2000:  # idle-GC (3 days)
+            cutoff = time.time() - 86400 * 3
+            self._cooldowns = {k: v for k, v in self._cooldowns.items() if v >= cutoff}
 
     def _emit(self, rule_id, rule_name, severity, mid, hostname, description,
               dst_ip, src_ip, dst_port):
+        """Persist + notify. Returns True when at least one side succeeded (so the
+        cooldown is only marked on success)."""
+        ok = False
         alert = {
             "machine_id": mid,
             "hostname": hostname,
@@ -129,7 +122,7 @@ class NetworkAlertEngine(threading.Thread):
             "rule_name": rule_name,
             "severity": severity,
             "description": description,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "source_ip": src_ip,
             "dst_ip": dst_ip,
             "dst_port": dst_port,
@@ -138,6 +131,7 @@ class NetworkAlertEngine(threading.Thread):
         try:
             if self.db:
                 self.db.insert_threat_alert(alert)
+                ok = True
         except Exception:
             pass
         if self.alerting:
@@ -151,17 +145,47 @@ class NetworkAlertEngine(threading.Thread):
                     "hostname": hostname,
                     "timestamp": alert["timestamp"],
                 })
+                ok = True
             except Exception:
                 pass
+        return ok
 
     # ------------------------------------------------------------- scan logic
+    def _seen_before(self, pairs, win_start):
+        """v5.0.4 R8 (HIGH-1): ONE DISTINCT query per scan (cached 5 min) instead
+        of one query per (src,dst) pair. Cache tolerates staleness - novelty
+        detection only needs 'has this pair ever been seen'. Read is done through
+        a db method that holds the backend lock (no raw conn poke)."""
+        now = time.time()
+        if now - self._seen_ts > 300:
+            try:
+                if hasattr(self.db, "get_netflow_seen_pairs"):
+                    rows = self.db.get_netflow_seen_pairs(win_start) or []
+                else:
+                    rows = self.db.conn.execute(
+                        "SELECT DISTINCT src_ip, dst_ip FROM netflow_flows WHERE first < ?",
+                        (win_start,)).fetchall()
+                self._seen = set()
+                for r in rows:
+                    try:
+                        self._seen.add((r[0], r[1]))
+                    except Exception:
+                        self._seen.add((r.get("src_ip"), r.get("dst_ip")))
+                self._seen_ts = now
+            except Exception:
+                pass  # keep previous cache
+        return {p: (p in self._seen) for p in pairs}
+
     def _scan_once(self):
         if not self.db:
             return
         now = time.time()
         win_start = now - self.SCAN_WINDOW_SEC
         try:
-            flows = self.db.get_netflow_flows(limit=30000, since_hours=1) or []
+            # v5.0.4 R8 (LOW-4): filter by first>=win_start server-side instead of
+            # a fixed LIMIT that silently dropped old flows on big networks.
+            flows = self.db.get_netflow_flows(limit=500000, since_hours=1,
+                                              first_since=win_start - 60) or []
         except Exception:
             return
         if not flows:
@@ -183,17 +207,8 @@ class NetworkAlertEngine(threading.Thread):
         if not groups:
             return
 
-        # Has each (src, dst) pair ever been seen BEFORE this window?
-        seen_before = {}
-        for src, dst in pairs:
-            try:
-                row = self.db.conn.execute(
-                    "SELECT 1 FROM netflow_flows WHERE src_ip=? AND dst_ip=? AND first < ? LIMIT 1",
-                    (src, dst, win_start)).fetchone()
-                seen_before[(src, dst)] = bool(row)
-            except Exception:
-                # On DB error do not raise first-seen alerts (avoid FP storm)
-                seen_before[(src, dst)] = True
+        # v5.0.4 R8 (HIGH-1): batch DISTINCT lookup (one query, cached 5 min)
+        seen_before = self._seen_before(pairs, win_start)
 
         hour = datetime.now().hour
         for (src, dst, dport, proto), times in groups.items():
@@ -210,36 +225,41 @@ class NetworkAlertEngine(threading.Thread):
                     if mean_i > 0:
                         var_i = sum((x - mean_i) ** 2 for x in intervals) / len(intervals)
                         cv = (var_i ** 0.5) / mean_i
-                        if cv <= self.BEACON_MAX_CV and self._cooldown_ok("NET-BEACON", f"{src}|{dst}|{dport}"):
-                            self._emit(
-                                "NET-BEACON",
-                                "Periodic C2 Beacon (regular outbound connections)",
-                                "HIGH", mid, hostname,
-                                f"Source {src} ({hostname}) -> {dst}:{dport} ({proto}): "
-                                f"{len(times_sorted)} connections over {int(span)}s at regular "
-                                f"intervals (avg {mean_i:.0f}s, jitter CV {cv:.2f}). The pattern - "
-                                f"not the destination IP - is the C2 signature.",
-                                dst, src, dport)
+                        _bk = f"{src}|{dst}|{dport}"
+                        if cv <= self.BEACON_MAX_CV and self._cooldown_check("NET-BEACON", _bk):
+                            if self._emit(
+                                    "NET-BEACON",
+                                    "Periodic C2 Beacon (regular outbound connections)",
+                                    "HIGH", mid, hostname,
+                                    f"Source {src} ({hostname}) -> {dst}:{dport} ({proto}): "
+                                    f"{len(times_sorted)} connections over {int(span)}s at regular "
+                                    f"intervals (avg {mean_i:.0f}s, jitter CV {cv:.2f}). The pattern - "
+                                    f"not the destination IP - is the C2 signature.",
+                                    dst, src, dport):
+                                self._cooldown_mark("NET-BEACON", _bk)
 
             # --- First-seen external destination (novelty) ---
             if not seen_before.get((src, dst), True):
                 if self.ODD_HOUR_START <= hour < self.ODD_HOUR_END:
-                    if self._cooldown_ok("NET-ODD", f"{src}|{dst}"):
-                        self._emit(
-                            "NET-ODD",
-                            "First-seen external connection in off-hours",
-                            "HIGH", mid, hostname,
-                            f"Source {src} ({hostname}) made its first-ever connection to "
-                            f"external destination {dst}:{dport} ({proto}) during off-hours "
-                            f"({hour:02d}:00). Fresh cloud VPS destinations look 'normal' - "
-                            f"the never-seen-before timing is the anomaly.",
-                            dst, src, dport)
-                elif self._cooldown_ok("NET-FIRST", f"{src}|{dst}"):
-                    self._emit(
-                        "NET-FIRST",
-                        "First-seen external destination",
-                        "MEDIUM", mid, hostname,
-                        f"Source {src} ({hostname}) connected to {dst}:{dport} ({proto}) for "
-                        f"the first time in the last {self.FIRST_SEEN_DAYS} days. New external "
-                        f"destinations are worth a quick check even when the IP looks benign.",
-                        dst, src, dport)
+                    _ok = "NET-ODD"
+                    if self._cooldown_check(_ok, f"{src}|{dst}"):
+                        if self._emit(
+                                "NET-ODD",
+                                "First-seen external connection in off-hours",
+                                "HIGH", mid, hostname,
+                                f"Source {src} ({hostname}) made its first-ever connection to "
+                                f"external destination {dst}:{dport} ({proto}) during off-hours "
+                                f"({hour:02d}:00). Fresh cloud VPS destinations look 'normal' - "
+                                f"the never-seen-before timing is the anomaly.",
+                                dst, src, dport):
+                            self._cooldown_mark(_ok, f"{src}|{dst}")
+                elif self._cooldown_check("NET-FIRST", f"{src}|{dst}"):
+                    if self._emit(
+                            "NET-FIRST",
+                            "First-seen external destination",
+                            "MEDIUM", mid, hostname,
+                            f"Source {src} ({hostname}) connected to {dst}:{dport} ({proto}) for "
+                            f"the first time in the last {self.FIRST_SEEN_DAYS} days. New external "
+                            f"destinations are worth a quick check even when the IP looks benign.",
+                            dst, src, dport):
+                        self._cooldown_mark("NET-FIRST", f"{src}|{dst}")

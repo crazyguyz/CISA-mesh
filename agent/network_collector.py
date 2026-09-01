@@ -16,7 +16,7 @@ try:
     # Scapy may crash with PermissionError on cache dir when running as SYSTEM
     import os as _os
     _os.environ.setdefault("SCAPY_CACHE_DIR", _os.path.join(_os.environ.get("TEMP", _os.path.expanduser("~")), "scapy_cache"))
-    from scapy.all import sniff, IP, TCP, UDP, DNS, DNSQR, Raw, Ether
+    from scapy.all import sniff, IP, IPv6, TCP, UDP, DNS, DNSQR, Raw, Ether
     HAS_SCAPY = True
 except (ImportError, PermissionError, OSError):
     HAS_SCAPY = False
@@ -314,9 +314,10 @@ class NetworkCollector(threading.Thread):
         if not self.running:
             return
         try:
-            if IP not in pkt:
+            # v5.0.4 R8 (LOW-5): sniff filter is "ip or ip6" - support both families
+            if IP not in pkt and IPv6 not in pkt:
                 return
-            ip = pkt[IP]
+            ip = pkt[IP] if IP in pkt else pkt[IPv6]
 
             data = {
                 "size": len(pkt),
@@ -420,8 +421,11 @@ class NetworkCollector(threading.Thread):
             return
         sni = data.get("tls_sni", "")
         dst_ip = data.get("dst_ip", "")
+        dst_port = data.get("dst_port", 0)
         now_ts = time.time()
-        key = (sni, dst_ip)
+        # v5.0.4 R8 (LOW-6): dedup on (sni, dst_ip, dst_port) so the same SNI to
+        # two different ports is not collapsed
+        key = (sni, dst_ip, dst_port)
         if now_ts - self._insp_dedup.get(key, 0) < 300:
             return
         self._insp_dedup[key] = now_ts
@@ -447,7 +451,8 @@ class NetworkCollector(threading.Thread):
 
     def _scapy_loop(self):
         print("[NET] Scapy sniff mode (full packet capture)")
-        sniff(prn=self._packet_handler, store=False, filter="ip",
+        # v5.0.4 R8 (LOW-5): include IPv6 traffic so TLS/DNS DPI covers both families
+        sniff(prn=self._packet_handler, store=False, filter="ip or ip6",
               stop_filter=lambda x: not self.running)
 
     # ===== NETSTAT FALLBACK =====

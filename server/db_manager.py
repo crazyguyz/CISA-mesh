@@ -1061,8 +1061,12 @@ class DatabaseManager:
                 (machine_id, rule_id)
             ).fetchone()
             if existing:
+                # v5.0.4 R8 (MEDIUM-1): do NOT refresh received_at on update - the
+                # 10-min dedup window is anchored at the FIRST occurrence, so a
+                # persistent rule cannot slide its window forever and collapse the
+                # whole history into one row.
                 self.conn.execute(
-                    """UPDATE threat_alerts SET hostname=?, rule_name=?, description=?, severity=?, timestamp=?, raw_data=?, received_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    """UPDATE threat_alerts SET hostname=?, rule_name=?, description=?, severity=?, timestamp=?, raw_data=? WHERE id=?""",
                     (data.get("hostname",""), data.get("rule_name",""), data.get("description",""), data.get("severity",""), data.get("timestamp",""), json.dumps(data, ensure_ascii=False), existing["id"])
                 )
             else:
@@ -1289,17 +1293,31 @@ class DatabaseManager:
                   f.get("first", 0), f.get("last", 0)) for f in flows])
             self.conn.commit()
 
-    def get_netflow_flows(self, limit=100, since_hours=None):
+    def get_netflow_flows(self, limit=100, since_hours=None, first_since=None):
         q = "SELECT * FROM netflow_flows WHERE 1=1"
         p = []
         if since_hours:
             q += " AND received_at >= datetime('now', ?)"
             p.append(f"-{since_hours} hours")
+        if first_since:
+            # v5.0.4 R8 (LOW-4): filter by flow `first` timestamp so scans read
+            # the whole window instead of a fixed LIMIT cutting old flows.
+            q += " AND first >= ?"
+            p.append(first_since)
         q += " ORDER BY id DESC LIMIT ?"
         p.append(limit)
         with self.lock:
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
+
+    def get_netflow_seen_pairs(self, before_ts):
+        """v5.0.4 R8 (HIGH-1): all (src_ip, dst_ip) pairs seen before `before_ts` -
+        ONE DISTINCT query so the network alert engine does not do N queries."""
+        with self.lock:
+            c = self.conn.execute(
+                "SELECT DISTINCT src_ip, dst_ip FROM netflow_flows WHERE first < ?",
+                (before_ts,))
+            return [{"src_ip": r[0], "dst_ip": r[1]} for r in c.fetchall()]
 
     # ---- NEW v1.6.0: Retention Policy ----
     def cleanup_old_logs(self, days=30, keep_threats=True):

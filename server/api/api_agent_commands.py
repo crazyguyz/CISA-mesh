@@ -54,26 +54,31 @@ def register(app, core):
         # An online agent may legitimately still be executing a long task
         # (forensic_snapshot, kill, file copy...) - re-delivering while it runs
         # would execute the (potentially destructive) command a SECOND time.
+        # v5.0.4 R8 (MEDIUM-3): fail-CLOSED - if the online set cannot be read
+        # (tcp_server unavailable/error), do NOT requeue anything rather than
+        # requeueing every stuck command blindly.
         try:
             _cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
             try:
                 online = set(core.tcp_server.clients.keys())
             except Exception:
-                online = set()
-            _stuck = core.db.conn.execute(
-                "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
-                (_cutoff,)
-            ).fetchall()
-            for _r in _stuck:
-                if _r["machine_id"] == machine_id:
-                    continue  # this machine is polling right now -> it is online
-                if _r["machine_id"] in online:
-                    continue  # still connected -> assume still executing
-                core.db.conn.execute(
-                    "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
-                    (_r["exec_id"],)
-                )
-            core.db.conn.commit()
+                print("[-] Requeue skipped: cannot read tcp_server.clients (fail-closed)")
+                online = None
+            if online is not None:
+                _stuck = core.db.conn.execute(
+                    "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
+                    (_cutoff,)
+                ).fetchall()
+                for _r in _stuck:
+                    if _r["machine_id"] == machine_id:
+                        continue  # this machine is polling right now -> it is online
+                    if _r["machine_id"] in online:
+                        continue  # still connected -> assume still executing
+                    core.db.conn.execute(
+                        "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
+                        (_r["exec_id"],)
+                    )
+                core.db.conn.commit()
         except Exception:
             pass
 

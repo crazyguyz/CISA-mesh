@@ -91,6 +91,24 @@
 - `.env.example` thêm 4 biến network-alert.
 **Ghi nhận (chưa sửa, quyết định):** deadman `alerted` chỉ fire 1 lần/phiên/rule (chống spam — chấp nhận được); MEDIUM-20 múi giờ vẫn [CẦN XÁC MINH]; agent-side fixes cần rebuild.
 
+### Round 8 — Review 2026-09-01 (verify 7 cũ + findings mới, đã fix)
+**Verify Round 7:** 22/22 đã fix đúng (CRIT-1 newest-record, ESCAPE 1 ký tự đã chạy SQL thật, XSS sinks escape, _MEI age-guard, update.lock reclaim, reset_user nonce, requeue, MEDIUM-1..19, LOW-1/3).
+**Findings mới — đối chiếu:**
+| # | Kết quả | Fix |
+|---|---------|-----|
+| HIGH-1 | ✅ Đúng — N+1 query theo từng cặp (src,dst) + poke `conn` không lock | 1 query `SELECT DISTINCT src_ip,dst_ip` + cache 5 phút (`get_netflow_seen_pairs` SQLite+PG) |
+| HIGH-2 | ⚠️ **False positive** phần "escape trước cắt" — code thật là `_html.escape(str(...)[:200])` = cắt trước, escape sau (đúng). **Nhưng callback_data >64 bytes → Telegram mất nút Approve/Deny là THẬT** | callback bỏ `rule_id` (matcher không dùng) + **hash machine_id 12 ký tự** (giữ khớp chính xác qua hash), action giữ raw → 41 bytes < 64. Matcher `process_approval` so hash |
+| MEDIUM-1 | ✅ Đúng — dedup 10' là rolling window: update refresh `received_at` → rule nóng gộp mãi | UPDATE **không refresh** `received_at` — window neo tại lần đầu |
+| MEDIUM-2 | ✅ Đúng — `_is_private_ip` bỏ qua IPv6 (fd00/fe80 → coi là external → FP) | dùng `ipaddress.ip_address().is_private/is_link_local/...` (cả 2 họ) |
+| MEDIUM-3 | ✅ Đúng — requeue fail-OPEN khi `tcp_server` lỗi → `online=set()` → requeue tất cả | **fail-closed**: không lấy được online → không requeue |
+| LOW-1 | ✅ Đúng — BEACON_MIN_SPAN hardcode + CV nhạy | env `GIAMSAT_NET_BEACON_MIN_SPAN` / `GIAMSAT_NET_BEACON_MAX_CV`, min flows 6 |
+| LOW-2 | ✅ Đúng — cooldown set TRƯỚC khi emit → emit fail vẫn bị cooldown (mất alert) | tách `_cooldown_check`/`_cooldown_mark` — mark chỉ sau emit thành công |
+| LOW-3 | ✅ Đúng — timestamp local vs DB UTC | `datetime.now(timezone.utc)` |
+| LOW-4 | ✅ Đúng — LIMIT 30000 cắt flow cũ trong window | `get_netflow_flows(first_since=...)` filter `first >= ?` (SQLite+PG) |
+| LOW-5 | ✅ Đúng — sniff `filter="ip"` bỏ IPv6 | `"ip or ip6"` + `IPv6` parse |
+| LOW-6 | ✅ Đúng — dedup inspection thiếu dst_port | key `(sni, dst_ip, dst_port)` |
+**Test:** thêm 4 check IPv6 vào `network_alerting_tests` (12 total) + verify callback hash roundtrip (41 bytes, khớp).
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

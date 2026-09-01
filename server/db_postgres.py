@@ -2775,7 +2775,7 @@ class PostgresDatabase:
                 except Exception:
                     pass
 
-    def get_netflow_flows(self, limit=100, since_hours=None):
+    def get_netflow_flows(self, limit=100, since_hours=None, first_since=None):
         if not self._connected:
             return []
         try:
@@ -2785,9 +2785,24 @@ class PostgresDatabase:
                 # concatenation + cast avoids psycopg2 %s-inside-quotes bug
                 q += " AND received_at >= NOW() - (%s || ' hours')::INTERVAL"
                 p.append(str(since_hours))
+            if first_since:
+                # v5.0.4 R8 (LOW-4): scan the whole window, not a fixed LIMIT
+                q += " AND first >= %s"
+                p.append(float(first_since))
             q += " ORDER BY id DESC LIMIT %s"
             p.append(int(limit))
             return self._execute(q, tuple(p), fetchall=True) or []
+        except Exception:
+            return []
+
+    def get_netflow_seen_pairs(self, before_ts):
+        """v5.0.4 R8 (HIGH-1): ONE DISTINCT query for the network alert engine."""
+        if not self._connected:
+            return []
+        try:
+            return self._execute(
+                "SELECT DISTINCT src_ip, dst_ip FROM netflow_flows WHERE first < %s",
+                (float(before_ts),), fetchall=True) or []
         except Exception:
             return []
 
