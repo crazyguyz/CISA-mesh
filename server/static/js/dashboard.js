@@ -29,6 +29,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         var viewMap = {
             events: { el: 'viewEvents', container: 'allEventList', load: function() { loadAllEvents(); } },
             coverage: { el: 'viewCoverage', container: 'coverageList', load: function() { loadCoverage(); } },
+            cases: { el: 'viewCases', container: 'casesList', load: function() { loadCases(); } },
             fim: { el: 'viewFim', container: 'allFimList', load: function() { loadAllFim(); } },
             syslog: { el: 'viewSyslog', container: 'syslogList', load: function() { loadSyslog(); } },
             response: { el: 'viewResponse', container: 'allResponseList', load: function() { loadAllResponses(); loadResponseActions(); } },
@@ -5025,9 +5026,10 @@ function loadUsers() {
         let html = '<table class="table table-sm table-hover align-middle mb-0" style="font-size:11px;"><thead><tr><th>'+t('users.username')+'</th><th>'+t('users.role')+'</th><th>'+t('ui.status')+'</th><th></th></tr></thead><tbody>';
         html += names.map(function(u) {
             const usr = users[u] || {};
-            const cur = usr.role === 'admin' ? 'admin' : (usr.role === 'operator' ? 'operator' : 'viewer');
+            const cur = usr.role === 'admin' ? 'admin' : (usr.role === 'operator' ? 'operator' : (usr.role === 'analyst' ? 'analyst' : 'viewer'));
             let roleSel = '<select class="form-select form-select-sm" style="width:auto;display:inline-block;font-size:10px;padding:1px 4px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);" onchange="changeUserRole(\'' + u.replace(/'/g, "\\'") + '\', this.value)">';
-            ['viewer','operator','admin'].forEach(function(r) {
+            // v5.0.4 (Phase3 B11): analyst role = read + triage
+            ['viewer','analyst','operator','admin'].forEach(function(r) {
                 roleSel += '<option value="'+r+'"'+(cur === r ? ' selected' : '')+'>'+t('users.role'+r.charAt(0).toUpperCase()+r.slice(1))+'</option>';
             });
             roleSel += '</select>';
@@ -5232,30 +5234,135 @@ function importDashboard() {
     .catch(function() { showToast('❌ Lỗi kết nối'); });
 }
 
-// ===== v5.0.4 (Phase1 A2): LOG SOURCE COVERAGE =====
+// ===== v5.0.4 (Phase1 A2 + Phase2 A7): LOG SOURCE COVERAGE =====
 function loadCoverage() {
     const el = document.getElementById('coverageList');
     if (!el) return;
     el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> ' + t('ui.loading') + '</div>';
-    fetch('/api/health/coverage').then(r => r.json()).then(d => {
-        const machines = d.machines || [];
-        if (!machines.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> Chưa có máy trạm nào.</div>'; return; }
-        const flagBadge = function(f) {
-            return f === 'no_logs' ? '<span class="badge bg-danger" title="Online nhưng 0 event (log bị tắt?)">🚫 Không log</span>' :
-                   f === 'log_drop' ? '<span class="badge bg-warning text-dark" title="Volume 24h < 50% trung bình 7 ngày">📉 Log sụt</span>' :
-                   f === 'no_sysmon' ? '<span class="badge bg-secondary" title="Chưa phát hiện Sysmon">Sysmon?</span>' :
-                   f === 'no_auditpol' ? '<span class="badge bg-secondary" title="Chưa bật auditpol">Auditpol?</span>' : '';
-        };
-        el.innerHTML = tableWrap(['Máy', 'Trạng thái', 'Events 24h', 'TB 7 ngày', 'Độ sụt', 'Cảnh báo'], machines.map(m => {
-            const st = m.online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
-            const dropCls = m.drop_pct > 50 ? 'color:#ff6666;font-weight:bold;' : 'color:#8892a4;';
-            const flags = (m.flags || []).map(flagBadge).join(' ') || '<small class="text-muted">OK</small>';
-            return '<tr><td><strong style="color:#e4e7eb;">' + escapeHtml(m.hostname) + '</strong><br><small style="font-family:monospace;font-size:9px;color:#5a6a7a;">' + escapeHtml(m.machine_id) + '</small></td>' +
-                '<td>' + st + (m.sysmon_present ? ' <span class="badge bg-info" style="font-size:9px;">Sysmon</span>' : '') + (m.auditpol_enabled ? ' <span class="badge bg-info" style="font-size:9px;">Audit</span>' : '') + '</td>' +
-                '<td>' + m.event_24h + '</td><td>' + (m.event_7d_avg || '-') + '</td>' +
-                '<td style="' + dropCls + '">' + (m.drop_pct > 0 ? '-' + m.drop_pct + '%' : '-') + '</td>' +
-                '<td>' + flags + '</td></tr>';
-        }));
+    // Top Risk Hosts (A7) + coverage table
+    fetch('/api/risk/hosts?since=168').then(r => r.json()).then(rd => {
+        const hosts = (rd.hosts || []).slice(0, 5);
+        let riskCard = '';
+        if (hosts.length) {
+            const bars = hosts.map(function(h) {
+                const pct = Math.max(4, h.score);
+                const color = h.score >= 70 ? '#ff6666' : h.score >= 40 ? '#ffcc66' : '#66cc99';
+                return '<div style="margin-bottom:4px;"><div class="d-flex justify-content-between" style="font-size:10px;color:#8892a4;"><span>' + escapeHtml(h.hostname || h.machine_id) + '</span><span>' + h.score + ' / ' + h.alerts + ' alert</span></div>' +
+                    '<div style="height:6px;background:#1e2a3a;border-radius:3px;"><div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:3px;"></div></div></div>';
+            }).join('');
+            riskCard = '<div style="background:#0f1923;border:1px solid #2a3a4a;border-radius:8px;padding:10px 12px;margin:8px;margin-bottom:0;"><strong style="color:#e4e7eb;font-size:12px;">🔥 Top Risk Hosts (7 ngày)</strong>' + bars + '</div>';
+        }
+        fetch('/api/health/coverage').then(r2 => r2.json()).then(d => {
+            const machines = d.machines || [];
+            if (!machines.length) { el.innerHTML = riskCard + '<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> Chưa có máy trạm nào.</div>'; return; }
+            const flagBadge = function(f) {
+                return f === 'no_logs' ? '<span class="badge bg-danger" title="Online nhưng 0 event (log bị tắt?)">🚫 Không log</span>' :
+                       f === 'log_drop' ? '<span class="badge bg-warning text-dark" title="Volume 24h < 50% trung bình 7 ngày">📉 Log sụt</span>' :
+                       f === 'no_sysmon' ? '<span class="badge bg-secondary" title="Chưa phát hiện Sysmon">Sysmon?</span>' :
+                       f === 'no_auditpol' ? '<span class="badge bg-secondary" title="Chưa bật auditpol">Auditpol?</span>' : '';
+            };
+            el.innerHTML = riskCard + tableWrap(['Máy', 'Version', 'Trạng thái', 'Events 24h', 'TB 7 ngày', 'Độ sụt', 'Cảnh báo'], machines.map(m => {
+                const st = m.online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
+                const dropCls = m.drop_pct > 50 ? 'color:#ff6666;font-weight:bold;' : 'color:#8892a4;';
+                const flags = (m.flags || []).map(flagBadge).join(' ') || '<small class="text-muted">OK</small>';
+                return '<tr><td><strong style="color:#e4e7eb;">' + escapeHtml(m.hostname) + '</strong><br><small style="font-family:monospace;font-size:9px;color:#5a6a7a;">' + escapeHtml(m.machine_id) + '</small></td>' +
+                    '<td style="font-size:10px;">' + escapeHtml(m.version || '-') + '</td>' +
+                    '<td>' + st + (m.sysmon_present ? ' <span class="badge bg-info" style="font-size:9px;">Sysmon</span>' : '') + (m.auditpol_enabled ? ' <span class="badge bg-info" style="font-size:9px;">Audit</span>' : '') + '</td>' +
+                    '<td>' + m.event_24h + '</td><td>' + (m.event_7d_avg || '-') + '</td>' +
+                    '<td style="' + dropCls + '">' + (m.drop_pct > 0 ? '-' + m.drop_pct + '%' : '-') + '</td>' +
+                    '<td>' + flags + '</td></tr>';
+            }));
+        }).catch(function() { el.innerHTML = riskCard + '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
     }).catch(function() { el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
 }
 
+
+// ===== v5.0.4 (Phase2 B2): CASE MANAGEMENT =====
+let casesData = [];
+function loadCases() {
+    const el = document.getElementById('casesList');
+    if (!el) return;
+    el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> ' + t('ui.loading') + '</div>';
+    fetch('/api/cases').then(r => r.json()).then(d => {
+        casesData = d.cases || [];
+        const open = casesData.filter(c => c.status !== 'closed').length;
+        const badge = document.getElementById('openCasesBadge');
+        if (badge) { badge.textContent = open; badge.style.display = open ? '' : 'none'; }
+        if (!casesData.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> Chưa có case.</div>'; return; }
+        const sevCls = function(s) { return s === 'CRITICAL' ? 'bg-danger' : s === 'HIGH' ? 'bg-warning text-dark' : s === 'MEDIUM' ? 'bg-info' : 'bg-secondary'; };
+        el.innerHTML = '<div class="p-2">' + casesData.map(function(c) {
+            const aids = (c.alert_ids || []).length;
+            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:6px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
+                '<div style="flex:1;min-width:220px;"><span class="badge ' + sevCls(c.severity) + '">' + escapeHtml(c.severity || '?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(c.title || ('Case #' + c.id)) + '</strong> <small style="color:#5a6a7a;">#' + c.id + ' · ' + escapeHtml(c.machine_id) + '</small><br>' +
+                '<small style="color:#8892a4;">' + escapeHtml((c.description || '').substring(0, 110)) + '</small></div>' +
+                '<div style="text-align:right;font-size:11px;white-space:nowrap;">' +
+                (aids ? '<span class="badge bg-dark">' + aids + ' alert</span> ' : '') +
+                '<select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setCaseStatus(' + c.id + ', this.value)">' +
+                ['open','investigating','contained','closed','false_positive'].map(function(s) { return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>'; }).join('') + '</select><br>' +
+                '<small style="color:#8892a4;">' + escapeHtml((c.created_at || '').substring(0,19)) + '</small></div></div>';
+        }).join('') + '</div>';
+    }).catch(function() { el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
+}
+function setCaseStatus(id, status) {
+    fetch('/api/cases/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
+        .then(function(r) { return r.json(); }).then(function(d) { if (d.success) { showToast('✅ Case #' + id + ' -> ' + status); loadCases(); } else showToast('❌ ' + (d.error || '')); })
+        .catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+
+// ===== v5.0.4 (Phase3 B4): GLOBAL SEARCH (Ctrl+K) =====
+function openGlobalSearch() {
+    const ov = document.getElementById('globalSearchOverlay');
+    if (!ov) return;
+    ov.style.display = 'block';
+    const inp = document.getElementById('globalSearchInput');
+    inp.value = ''; inp.focus();
+    document.getElementById('globalSearchResults').innerHTML = '';
+}
+function closeGlobalSearch() {
+    const ov = document.getElementById('globalSearchOverlay');
+    if (ov) ov.style.display = 'none';
+}
+function doGlobalSearch() {
+    const q = document.getElementById('globalSearchInput').value.trim();
+    const res = document.getElementById('globalSearchResults');
+    if (!q) { res.innerHTML = ''; return; }
+    fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json()).then(d => {
+        let html = '';
+        if (d.machines && d.machines.length) {
+            html += '<div style="color:#88ccff;font-size:11px;margin-top:6px;">🖥 MÁY (' + d.machines.length + ')</div>';
+            html += d.machines.map(m => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;"><a href="#" onclick="event.preventDefault();selectMachine(\'' + m.machine_id + '\');closeGlobalSearch()" style="color:#d0d8e0;">' + escapeHtml(m.hostname || m.machine_id) + '</a> <small style="color:#5a6a7a;">' + escapeHtml(m.ip_address || '') + '</small></div>').join('');
+        }
+        if (d.alerts && d.alerts.length) {
+            html += '<div style="color:#ff8888;font-size:11px;margin-top:6px;">⚠ ALERTS (' + d.alerts.length + ')</div>';
+            html += d.alerts.map(a => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;font-size:11px;"><a href="#" onclick="event.preventDefault();closeGlobalSearch();showView(\'threats\')" style="color:#d0d8e0;">[' + escapeHtml(a.severity || '?') + '] ' + escapeHtml(a.rule_id || '?') + '</a> <small style="color:#8892a4;">' + escapeHtml(a.hostname || a.machine_id) + ' · ' + escapeHtml((a.description || '').substring(0, 50)) + '</small></div>').join('');
+        }
+        if (d.events && d.events.length) {
+            html += '<div style="color:#88dd99;font-size:11px;margin-top:6px;">📋 EVENTS (' + d.events.length + ')</div>';
+            html += d.events.map(e => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;font-size:11px;color:#8892a4;">' + escapeHtml(e.hostname || e.machine_id) + ' · ' + escapeHtml(e.subtype || '') + ' · ' + escapeHtml((e.description || '').substring(0, 60)) + '</div>').join('');
+        }
+        res.innerHTML = html || '<div class="text-muted" style="padding:8px;">Không có kết quả.</div>';
+    }).catch(function() { res.innerHTML = '<div class="text-muted">Lỗi tìm kiếm.</div>'; });
+}
+document.addEventListener('keydown', function(ev) {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') {
+        ev.preventDefault();
+        const ov = document.getElementById('globalSearchOverlay');
+        if (ov && ov.style.display === 'block') closeGlobalSearch(); else openGlobalSearch();
+    }
+    if (ev.key === 'Escape') closeGlobalSearch();
+});
+document.addEventListener('input', function(ev) { if (ev.target && ev.target.id === 'globalSearchInput') doGlobalSearch(); });
+
+
+// v5.0.4 (Phase3 B10): onboarding modal
+function showOnboarding() {
+    fetch("/api/agent/onboarding").then(function(r){return r.json();}).then(function(d){
+        if (d.error) { showToast("Loi: " + d.error); return; }
+        showDetailModal("+ Cai dat Agent", '<div style="font-size:12px;">' +
+            '<p>Copy file <b>GiamSatAgent.exe</b> vao may tram, chay:</p>' +
+            '<pre style="background:#0a0f14;padding:10px;border-radius:6px;color:#88dd99;font-size:12px;">' + escapeHtml(d.install_cmd) + '</pre>' +
+            '<p>TCP: <b>' + d.tcp_port + '</b> | Web: <b>' + d.web_port + '</b>' + (d.enrollment_secret ? ' | Enroll secret: co' : '') + '</p>' +
+            '<p style="color:#8892a4;font-size:11px;">Agent tu dong gui heartbeat, hien thi trong danh sach may sau vai giay.</p></div>');
+    }).catch(function(){ showToast("Loi ket noi"); });
+}

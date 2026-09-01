@@ -159,6 +159,14 @@ class DatabaseManager:
                 c.execute("ALTER TABLE threat_alerts ADD COLUMN status TEXT DEFAULT 'new'")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.4 (Phase2 B2): case management - auto/cluster or manual alert cases
+            c.execute("""CREATE TABLE IF NOT EXISTS cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                machine_id TEXT, hostname TEXT, title TEXT, description TEXT,
+                severity TEXT DEFAULT 'MEDIUM', alert_ids TEXT DEFAULT '[]',
+                status TEXT DEFAULT 'open', created_by TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             # v5.0.4 (Phase1 B1): SOC triage queue - assignee/comment/SLA columns
             for _col, _typ in [("assignee", "TEXT DEFAULT ''"),
                                ("comment", "TEXT DEFAULT ''"),
@@ -1221,6 +1229,97 @@ class DatabaseManager:
             pass
         return out
 
+    # =========================================================================
+    # v5.0.4 (Phase2 A7/B2 + Phase3 B4): risk scoring, case management, search
+    # =========================================================================
+    _SEV_WEIGHT = {"CRITICAL": 40, "HIGH": 20, "MEDIUM": 10, "LOW": 3}
+
+    def get_risk_scores(self, since_hours=168):
+        """Per-machine risk 0-100 from open threat_alerts: severity-weighted count +
+        rule coverage, capped, oldest alerts decayed."""
+        import time as _t
+        scores = {}
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT machine_id, hostname, severity, rule_id, received_at FROM threat_alerts "
+                    "WHERE received_at >= datetime('now', ?) AND status NOT IN ('resolved','false_positive')",
+                    (f"-{since_hours} hours",)).fetchall()
+            now = _t.time()
+            for r in rows:
+                mid = r["machine_id"]
+                ent = scores.setdefault(mid, {"hostname": r["hostname"] or mid, "score": 0, "alerts": 0, "rules": set()})
+                ent["alerts"] += 1
+                ent["rules"].add(r["rule_id"] or "?")
+                age_h = 0
+                try:
+                    age_h = (now - _t.mktime(_t.strptime(str(r["received_at"])[:19], "%Y-%m-%d %H:%M:%S"))) / 3600
+                except Exception:
+                    age_h = 0
+                decay = max(0.3, 1 - age_h / (since_hours + 24))
+                ent["score"] += self._SEV_WEIGHT.get(r["severity"] or "LOW", 5) * decay
+            for mid, ent in scores.items():
+                if len(ent["rules"]) >= 3:
+                    ent["score"] += 10  # kill-chain coverage bonus
+                ent["score"] = min(100, int(ent["score"]))
+                ent["rule_count"] = len(ent["rules"])
+                ent.pop("rules", None)
+        except Exception:
+            pass
+        return scores
+
+    def create_case(self, machine_id, hostname, title, description, severity, alert_ids, created_by=""):
+        import json as _j
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO cases (machine_id,hostname,title,description,severity,alert_ids,status,created_by) "
+                "VALUES (?,?,?,?,?,?, 'open', ?)",
+                (machine_id, hostname or machine_id, title[:200], description[:2000], severity, _j.dumps(alert_ids), created_by))
+            self.conn.commit()
+            return self.conn.execute("SELECT last_insert_rowid() AS id").fetchone()[0]
+
+    def list_cases(self, limit=100, status=None):
+        with self.lock:
+            q = "SELECT * FROM cases WHERE 1=1"
+            p = []
+            if status:
+                q += " AND status=?"
+                p.append(status)
+            q += " ORDER BY id DESC LIMIT ?"
+            p.append(limit)
+            return [dict(r) for r in self.conn.execute(q, p).fetchall()]
+
+    def set_case_status(self, case_id, status):
+        with self.lock:
+            self.conn.execute(
+                "UPDATE cases SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, case_id))
+            self.conn.commit()
+
+    def search_all(self, q, limit=25):
+        """Phase3 B4: global search across machines, alerts, events (best-effort)."""
+        out = {"machines": [], "alerts": [], "events": []}
+        if not q:
+            return out
+        like = f"%{_like_escape(q)}%"
+        try:
+            with self.lock:
+                out["machines"] = [dict(r) for r in self.conn.execute(
+                    "SELECT machine_id, hostname, ip_address, is_online FROM machines "
+                    "WHERE hostname LIKE ? ESCAPE '\\' OR machine_id LIKE ? ESCAPE '\\' OR ip_address LIKE ? ESCAPE '\\' LIMIT ?",
+                    (like, like, like, limit)).fetchall()]
+                out["alerts"] = [dict(r) for r in self.conn.execute(
+                    "SELECT id, machine_id, hostname, rule_id, severity, description, timestamp FROM threat_alerts "
+                    "WHERE rule_id LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR hostname LIKE ? ESCAPE '\\' "
+                    "ORDER BY id DESC LIMIT ?", (like, like, like, limit)).fetchall()]
+                out["events"] = [dict(r) for r in self.conn.execute(
+                    "SELECT id, machine_id, hostname, subtype, event_id, description, time FROM events "
+                    "WHERE description LIKE ? ESCAPE '\\' OR hostname LIKE ? ESCAPE '\\' OR subtype LIKE ? ESCAPE '\\' "
+                    "ORDER BY id DESC LIMIT ?", (like, like, like, limit)).fetchall()]
+        except Exception:
+            pass
+        return out
+
     def insert_vuln_alert(self, data):
         """v2.1.1: UPSERT dedup - same machine + cve + software updates timestamp instead of duplicate."""
         with self.lock:
@@ -1448,6 +1547,17 @@ class DatabaseManager:
                 "SELECT DISTINCT src_ip, dst_ip FROM netflow_flows WHERE first < ?",
                 (before_ts,))
             return [{"src_ip": r[0], "dst_ip": r[1]} for r in c.fetchall()]
+
+    def get_netflow_seen_windows(self, before_ts):
+        """v5.0.4 (Phase2 A6): (src, dst, weekday, hour) combos seen before - the
+        weekly baseline for novelty detection (a pair seen before is NOT novel if
+        it was at the same weekday+hour in a past week)."""
+        with self.lock:
+            c = self.conn.execute(
+                "SELECT DISTINCT src_ip, dst_ip, strftime('%w', first, 'unixepoch') AS w, "
+                "strftime('%H', first, 'unixepoch') AS h FROM netflow_flows WHERE first < ?",
+                (before_ts,))
+            return [{"src_ip": r[0], "dst_ip": r[1], "w": r[2], "h": r[3]} for r in c.fetchall()]
 
     # ---- NEW v1.6.0: Retention Policy ----
     def cleanup_old_logs(self, days=30, keep_threats=True):

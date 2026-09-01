@@ -118,6 +118,21 @@
 - **A3b Agent coverage** — `_coverage_state()` gửi hardening/sysmon/auditpol qua heartbeat (cần rebuild agent); `update_machine_coverage` 2 path.
 - **Bonus fix:** requeue HIGH-6 nằm ở `/api/agent/pending-commands` — **endpoint agent không bao giờ gọi** → đã chuyển sang `/api/agent/heartbeat` (endpoint thật, fail-closed).
 
+### Phase 2+3 — Chiều sâu phát hiện + Trải nghiệm SOC ✅
+- **A5 Rule stats** — `/api/rules/stats` (hit 7 ngày + dead-rule list); tool `rule_replay.py` đã có.
+- **A4 DNS ETW** — parser EID 3008/3009 → `network_inspection` subtype `dns_query` (domain C2 hunting không cần Npcap; cần rebuild agent).
+- **A7 Risk score** — `get_risk_scores` + `/api/risk/hosts` + card "🔥 Top Risk Hosts" trong Log Coverage.
+- **A6 Baseline tuần** — `get_netflow_seen_windows` (weekday+hour): NET-FIRST/ODD chỉ fire khi (src,dst,thứ,giờ) mới + máy < 48h học baseline (không FP).
+- **A8+B2 Kill-chain/Case** — bảng `cases` (SQLite+PG) + auto-detector (5 phút, ≥2 rule/1h/máy → case) + menu **Cases** + `/api/cases`.
+- **A9 Intel enrich** — `threat_intel_server.py` (local file + OTX, rate-limit 1/s), chỉ enrich alert NET-*.
+- **B4 Ctrl+K search** — `/api/search` + overlay (máy/alert/event).
+- **B5 Report catch-up** — `report_state.json`, daily/weekly tự chạy bù khi server down.
+- **B6 Quiet hours** — chặn MEDIUM/LOW trong `quiet_hours_*` (CRITICAL/HIGH luôn qua).
+- **B10 Onboarding** — `/api/agent/onboarding` + nút "＋ Cài Agent".
+- **B11 RBAC analyst** — role `analyst` (read+triage); 6 triage endpoint dùng `threat_triage`.
+- **B12 i18n+compact** — keys đủ; nút ⇅ Compact mode.
+- **A10 Version coverage** — cột Version + badge "outdated" trong Log Coverage.
+
 ---
 
 ## 1. Cấu Trúc Dự Án & Chức Năng

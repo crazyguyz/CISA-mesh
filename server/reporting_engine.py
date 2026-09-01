@@ -155,6 +155,12 @@ class ReportingEngine:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(html)
 
+        # v5.0.4 (Phase3 B5): record last successful run so a missed schedule can catch up
+        try:
+            self._save_report_state(report_type, datetime.now().strftime("%Y-%m-%d"))
+        except Exception:
+            pass
+
         print(f"[*] Report generated: {filepath}")
         return filepath
 
@@ -178,12 +184,14 @@ class ReportingEngine:
         return stats
 
     def schedule_weekly_report(self):
-        """Start a background thread that generates a weekly report."""
+        """Start a background thread that generates a weekly report.
+        v5.0.4 (Phase3 B5): catches up if the server was down at the scheduled
+        time (state persisted in server/data/report_state.json)."""
         def weekly():
             import time
             while True:
                 now = datetime.now()
-                # Run every Monday at 08:00
+                # Run every Monday at 08:00 (+ catch-up)
                 if now.weekday() == 0 and now.hour == 8 and now.minute < 5:
                     try:
                         start = (now - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -191,14 +199,45 @@ class ReportingEngine:
                         self.generate_html_report(start, end, "weekly")
                     except Exception as e:
                         print(f"[-] Weekly report error: {e}")
+                else:
+                    try:
+                        state = self._load_report_state()
+                        if state.get("weekly") and state.get("weekly") < (now - timedelta(days=8)).strftime("%Y-%m-%d"):
+                            print("[*] Weekly report catch-up (server was down)")
+                            self.generate_html_report((now - timedelta(days=7)).strftime("%Y-%m-%d"),
+                                                       now.strftime("%Y-%m-%d"), "weekly")
+                    except Exception as e:
+                        print(f"[-] Weekly catch-up error: {e}")
                 time.sleep(300)
 
         t = threading.Thread(target=weekly, daemon=True)
         t.start()
-        print("[*] Weekly report scheduler started (Mon 08:00)")
+        print("[*] Weekly report scheduler started (Mon 08:00 + catch-up)")
+
+    def _load_report_state(self):
+        import json as _j
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "report_state.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return _j.load(f)
+        except Exception:
+            return {}
+
+    def _save_report_state(self, key, value):
+        import json as _j
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "report_state.json")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            state = self._load_report_state()
+            state[key] = value
+            with open(path, "w", encoding="utf-8") as f:
+                _j.dump(state, f)
+        except Exception:
+            pass
 
     def schedule_daily_report(self):
-        """Start a background thread that generates a daily report."""
+        """Start a background thread that generates a daily report.
+        v5.0.4 (Phase3 B5): catch-up if server was down at 07:00."""
         def daily():
             import time
             while True:
@@ -210,11 +249,20 @@ class ReportingEngine:
                         self.generate_html_report(start, end, "daily")
                     except Exception as e:
                         print(f"[-] Daily report error: {e}")
+                else:
+                    try:
+                        state = self._load_report_state()
+                        if state.get("daily") and state.get("daily") < (now - timedelta(days=2)).strftime("%Y-%m-%d"):
+                            print("[*] Daily report catch-up (server was down)")
+                            self.generate_html_report((now - timedelta(days=1)).strftime("%Y-%m-%d"),
+                                                       now.strftime("%Y-%m-%d"), "daily")
+                    except Exception as e:
+                        print(f"[-] Daily catch-up error: {e}")
                 time.sleep(300)
 
         t = threading.Thread(target=daily, daemon=True)
         t.start()
-        print("[*] Daily report scheduler started (07:00)")
+        print("[*] Daily report scheduler started (07:00 + catch-up)")
 
     def generate_pdf_report(self, start_date=None, end_date=None, report_type="daily"):
         """Generate PDF version of report. Requires wkhtmltopdf or weasyprint."""

@@ -451,6 +451,51 @@ class ServerCore:
                     print(f"[-] Log-health monitor error: {e}")
         threading.Thread(target=loghealth_monitor, daemon=True).start()
 
+        # v5.0.4 (Phase2 A8/B2): kill-chain case auto-detection - cluster open
+        # alerts per machine within 1h having >= 2 distinct rules -> one case.
+        def case_detector():
+            _last_case = {}  # machine_id -> ts of last auto-case
+            time.sleep(120)
+            while self._retention_running:
+                time.sleep(300)
+                try:
+                    if not hasattr(self.db, "list_cases"):
+                        continue
+                    rows = self.db.conn.execute(
+                        "SELECT id, machine_id, hostname, rule_id, severity, description "
+                        "FROM threat_alerts WHERE status NOT IN ('resolved','false_positive') "
+                        "AND received_at >= datetime('now','-1 hours')").fetchall()
+                    from collections import defaultdict
+                    clusters = defaultdict(list)
+                    for r in rows:
+                        clusters[r["machine_id"]].append(r)
+                    for mid, alerts in clusters.items():
+                        rules = {a["rule_id"] for a in alerts if a["rule_id"]}
+                        if len(rules) < 2:
+                            continue
+                        sev_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+                        sev = max(alerts, key=lambda a: sev_rank.get(a["severity"] or "LOW", 0))["severity"]
+                        now = time.time()
+                        if now - _last_case.get(mid, 0) < 3600:
+                            continue
+                        try:
+                            open_cases = [c for c in (self.db.list_cases(limit=500) or [])
+                                          if c.get("machine_id") == mid and c.get("status") != "closed"]
+                        except Exception:
+                            open_cases = []
+                        if open_cases:
+                            _last_case[mid] = now
+                            continue
+                        _last_case[mid] = now
+                        self.db.create_case(mid, alerts[0]["hostname"],
+                                            f"Kill-chain cluster: {len(rules)} rules in 1h",
+                                            " | ".join(sorted(rules))[:1900], sev,
+                                            [a["id"] for a in alerts], created_by="auto")
+                        print(f"[CASE] auto-case created for {mid}: {len(rules)} rules in 1h")
+                except Exception as e:
+                    print(f"[-] Case detector error: {e}")
+        threading.Thread(target=case_detector, daemon=True).start()
+
         # Retention loop
         def retention_loop():
             while self._retention_running:

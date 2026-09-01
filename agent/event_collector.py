@@ -201,6 +201,15 @@ EVENT_STRINGINSERTS_MAP = {
         'task_name': 1,
         'user_context': 0,
     },
+    '3008': {  # v5.0.4 (Phase2 A4): DNS Client - query completed (domain-based C2)
+        'dns_query': 0,
+        'query_type': 1,
+        'dns_results': 3,
+    },
+    '3009': {  # DNS Client - query timeout
+        'dns_query': 0,
+        'query_type': 1,
+    },
     '1102': {  # v4.13 (P1.3): Audit log cleared
         'subject_username': 1,
         'subject_domain': 2,
@@ -505,6 +514,17 @@ class EnhancedEventCollector(threading.Thread):
 
                 # Merge parsed fields
                 event_data.update(parsed_fields)
+
+                # v5.0.4 (Phase2 A4): DNS Client ETW events (EID 3008/3009) become
+                # network_inspection dns_query records so domain-based C2 hunting
+                # works on every host (no Npcap needed), mirroring the DPI path.
+                if log_name.startswith("Microsoft-Windows-DNS Client") and str(event_id) in ("3008", "3009"):
+                    dq = event_data.get("dns_query") or ""
+                    if dq:
+                        event_data["type"] = "network_inspection"
+                        event_data["subtype"] = "dns_query"
+                        event_data["domain"] = dq
+                        event_data["query_type"] = event_data.get("query_type", "DNS")
 
                 # Description from template
                 try:

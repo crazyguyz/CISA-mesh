@@ -83,7 +83,7 @@ class NetworkAlertEngine(threading.Thread):
 
     # ------------------------------------------------------------------ utils
     def _resolve_machine(self, src_ip):
-        """Map src_ip -> (machine_id, hostname) from machines.ip_address (5-min cache)."""
+        """Map src_ip -> (machine_id, hostname, first_seen_ts) from machines.ip_address (5-min cache)."""
         now = time.time()
         if now - self._ip_cache_ts > 300:
             try:
@@ -91,12 +91,20 @@ class NetworkAlertEngine(threading.Thread):
                 for m in (self.db.get_machines() or []):
                     ip = m.get("ip_address") or ""
                     if ip:
+                        fs = m.get("first_seen") or ""
+                        fs_ts = 0.0
+                        try:
+                            from datetime import datetime as _dt
+                            fs_ts = _dt.strptime(str(fs)[:19], "%Y-%m-%d %H:%M:%S").timestamp()
+                        except Exception:
+                            fs_ts = 0.0
                         self._ip_cache[ip] = (m.get("machine_id", ""),
-                                              m.get("hostname", "") or m.get("machine_id", ""))
+                                              m.get("hostname", "") or m.get("machine_id", ""),
+                                              fs_ts)
                 self._ip_cache_ts = now
             except Exception:
                 pass
-        return self._ip_cache.get(src_ip, (src_ip, src_ip))
+        return self._ip_cache.get(src_ip, (src_ip, src_ip, 0.0))
 
     def _cooldown_check(self, rule, key):
         """v5.0.4 R8 (LOW-2): check-only - cooldown is MARKED after a successful emit,
@@ -115,6 +123,14 @@ class NetworkAlertEngine(threading.Thread):
         """Persist + notify. Returns True when at least one side succeeded (so the
         cooldown is only marked on success)."""
         ok = False
+        # v5.0.4 (Phase2 A9): optional threat-intel enrichment (never blocks emit)
+        try:
+            from threat_intel_server import check_ip
+            tags = check_ip(dst_ip) if dst_ip else []
+            if tags:
+                description = description + " | Intel: " + ", ".join(tags)[:300]
+        except Exception:
+            pass
         alert = {
             "machine_id": mid,
             "hostname": hostname,
@@ -207,12 +223,30 @@ class NetworkAlertEngine(threading.Thread):
         if not groups:
             return
 
-        # v5.0.4 R8 (HIGH-1): batch DISTINCT lookup (one query, cached 5 min)
-        seen_before = self._seen_before(pairs, win_start)
-
-        hour = datetime.now().hour
+        # v5.0.4 (Phase2 A6): weekly baseline - a pair is NOT novel if it was seen
+        # at the same weekday+hour in a past week (learned baseline), and brand-new
+        # machines (< 48h) are in the learning phase (no novelty alerts).
+        try:
+            if hasattr(self.db, "get_netflow_seen_windows"):
+                _wk_rows = self.db.get_netflow_seen_windows(win_start) or []
+            else:
+                _wk_rows = []
+            _wk = set()
+            for r in _wk_rows:
+                try:
+                    _wk.add((r[0], r[1], str(r[2]), str(r[3])))
+                except Exception:
+                    _wk.add((r.get("src_ip"), r.get("dst_ip"), str(r.get("w")), str(r.get("h"))))
+        except Exception:
+            _wk = set()
+        _now_dt = datetime.now()
+        _today_w = str(_now_dt.isoweekday() % 7)  # Sunday=0 (matches SQLite %w / PG D)
+        _today_h = str(_now_dt.hour)
+        hour = _now_dt.hour
+        now_ts = time.time()
         for (src, dst, dport, proto), times in groups.items():
-            mid, hostname = self._resolve_machine(src)
+            mid, hostname, first_seen_ts = self._resolve_machine(src)
+            learning = (now_ts - first_seen_ts) < 48 * 3600 if first_seen_ts else True
 
             # --- Beaconing: periodic low-jitter calls to a fixed dst ---
             times_sorted = sorted(t for t in times if t)
@@ -238,8 +272,10 @@ class NetworkAlertEngine(threading.Thread):
                                     dst, src, dport):
                                 self._cooldown_mark("NET-BEACON", _bk)
 
-            # --- First-seen external destination (novelty) ---
-            if not seen_before.get((src, dst), True):
+            # --- First-seen external destination (novelty, weekly-baseline aware) ---
+            # v5.0.4 (Phase2 A6): skip for learning machines (<48h) and for pairs
+            # already seen at this weekday+hour in a past week.
+            if not learning and (src, dst, _today_w, _today_h) not in _wk:
                 if self.ODD_HOUR_START <= hour < self.ODD_HOUR_END:
                     _ok = "NET-ODD"
                     if self._cooldown_check(_ok, f"{src}|{dst}"):

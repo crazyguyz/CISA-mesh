@@ -34,6 +34,40 @@ def _save_rules_yaml(data):
 def register(app, core):
     """Register rule management routes."""
 
+    @app.route("/api/rules/stats")
+    def api_rules_stats():
+        """v5.0.4 (Phase2 A5): rule hit statistics (7 days) - dead-rule detection."""
+        _, err, code = check_auth("api")
+        if err: return err, code
+        try:
+            rows = core.db.conn.execute(
+                "SELECT rule_id, COUNT(*) AS hits, COUNT(DISTINCT machine_id) AS machines "
+                "FROM threat_alerts WHERE received_at >= datetime('now', '-7 days') "
+                "GROUP BY rule_id ORDER BY hits DESC").fetchall()
+            hits = {r["rule_id"]: {"hits": r["hits"], "machines": r["machines"]} for r in rows}
+            # sigma + built-in rule ids (rough set from the rules YAML + CROSS rules)
+            rule_ids = set()
+            try:
+                data = _load_rules_yaml() or {}
+                for r in data.get("rules", []):
+                    if r.get("rule_id"):
+                        rule_ids.add(r["rule_id"])
+                    if r.get("id"):
+                        rule_ids.add(r["id"])
+            except Exception:
+                pass
+            try:
+                from correlation_engine_server import CROSS_MACHINE_RULES
+                for r in CROSS_MACHINE_RULES:
+                    rule_ids.add(r.get("id", ""))
+            except Exception:
+                pass
+            zero_hit = sorted(rule_ids - set(hits.keys()))
+            return jsonify({"hits": hits, "zero_hit_count": len(zero_hit),
+                            "zero_hit_rules": zero_hit[:200], "total_rules": len(rule_ids)})
+        except Exception as e:
+            return jsonify({"error": str(e)[:200]}), 500
+
     @app.route("/api/rules", methods=["GET"])
     def api_get_rules():
         _, err, code = check_auth("api")

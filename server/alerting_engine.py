@@ -25,6 +25,8 @@ class AlertingEngine:
             "auto_response": {"mode": "off", "require_confidence": 90, "safe_users": ["admin", "administrator"], "safe_machines": []},
             "min_severity": "HIGH",
             "cooldown_seconds": 86400,
+            # v5.0.4 (Phase3 B6): quiet hours - suppress MEDIUM/LOW during window
+            "quiet_hours_enabled": False, "quiet_hours_start": 22, "quiet_hours_end": 7,
             # v4.11 (P3): smart dedup - fingerprint + per-severity cooldowns
             "dedup_fingerprint_fields": ["description", "rule_name", "source_ip", "user", "cve", "event_id"],
             "cooldown_by_severity": {"CRITICAL": 3600, "HIGH": 21600, "MEDIUM": 43200, "LOW": 86400},
@@ -201,6 +203,19 @@ class AlertingEngine:
         event_sev = severity_order.get(alert_data.get("severity", "LOW"), 0)
         if event_sev < min_sev:
             return False
+        # v5.0.4 (Phase3 B6): quiet hours - suppress MEDIUM/LOW notifications
+        # during the configured window (CRITICAL/HIGH always go through).
+        try:
+            if self.config.get("quiet_hours_enabled") and event_sev < 2:
+                _h = time.localtime().tm_hour
+                _s = int(self.config.get("quiet_hours_start", 0) or 0)
+                _e = int(self.config.get("quiet_hours_end", 0) or 0)
+                if _s <= _e and _s <= _h < _e:
+                    return False
+                if _s > _e and (_h >= _s or _h < _e):  # overnight window
+                    return False
+        except Exception:
+            pass
         key = self._dedup_key(alert_data)
         now = time.time()
         with self.lock:

@@ -45,7 +45,7 @@ def register(app, core):
     def api_threat_status(threat_id):
         """v4.13 (E1): triage status on a threat alert.
         v5.0.4 (Phase1 B1): lifecycle states + audit who/when."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         data = request.json or {}
         status = data.get("status", "new")
@@ -62,7 +62,7 @@ def register(app, core):
     @app.route("/api/threats/<int:threat_id>/assign", methods=["POST"])
     def api_threat_assign(threat_id):
         """v5.0.4 (Phase1 B1): assign an alert to a SOC analyst."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         assignee = ((request.json or {}).get("assignee") or "").strip()[:64]
         if not assignee:
@@ -78,7 +78,7 @@ def register(app, core):
     @app.route("/api/threats/<int:threat_id>/comment", methods=["POST"])
     def api_threat_comment(threat_id):
         """v5.0.4 (Phase1 B1): add a comment to an alert."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         comment = ((request.json or {}).get("comment") or "").strip()[:2000]
         if not comment:
@@ -107,7 +107,7 @@ def register(app, core):
     @app.route("/api/vulns/<int:alert_id>/status", methods=["POST"])
     def api_vuln_status(alert_id):
         """v4.6.6: triage status on a vulnerability alert (resolved = mitigated/accepted risk)."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
         if status not in ("new", "in_progress", "resolved", "false_positive"):
@@ -134,7 +134,7 @@ def register(app, core):
     @app.route("/api/inspection/<int:alert_id>/status", methods=["POST"])
     def api_inspection_status(alert_id):
         """v4.6.6: triage status on a network inspection finding."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
         if status not in ("new", "in_progress", "resolved", "false_positive"):
@@ -163,7 +163,7 @@ def register(app, core):
     @app.route("/api/yara/<int:alert_id>/status", methods=["POST"])
     def api_yara_status(alert_id):
         """v4.6.6: triage status on a YARA alert."""
-        username, err, code = check_auth("settings")
+        username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
         if status not in ("new", "in_progress", "resolved", "false_positive"):

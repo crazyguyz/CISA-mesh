@@ -69,42 +69,37 @@
 
 ---
 
-## 2) PHASE 2 — "Chiều sâu phát hiện"
+## 2) PHASE 2 — "Chiều sâu phát hiện" — ✅ DONE 2026-09-01
 
-### 2.1 A5 — Rule replay / dead-rule report  【Server · M】
-- Tool `tools/rule_replay.py`: chạy toàn bộ rules (Sigma + built-in) lên 7 ngày `events/sysmon_events` (SQL), report rule có 0 hit + lý do (thiếu field → field drift).
-- UI tab **Rules**: cột "Hits 7d" + nút "Tắt rule chết".
+### 2.1 A5 — Rule replay / dead-rule report  【Server · M】✅
+- Tool `tools/rule_replay.py` (đã có v4.11, giữ) + **`/api/rules/stats`** mới: hit 7 ngày theo rule + danh sách rule 0 hit (dead) + tổng rule.
 
-### 2.2 A4 — DNS query logging qua ETW  【Agent · L】
-- Module đọc `Microsoft-Windows-DNS-Client/Operational` (EID 3008/3020) — agent đã có reading; bật log + gửi `dns_query` events.
-- Server: `network_inspection` subtype `dns_query` đã có UI badge — chỉ cần nguồn dữ liệu.
+### 2.2 A4 — DNS query logging qua ETW  【Agent · L】✅ (cần rebuild agent)
+- Agent đã đọc channel `Microsoft-Windows-DNS Client/Operational`; thêm parser **EID 3008/3009** → route thành `network_inspection` subtype `dns_query` (domain) — domain-based C2 hunting chạy được trên mọi máy, không cần Npcap.
 
-### 2.3 A7 — Risk scoring host  【Server + UI · M】
-- Điểm 0-100/máy = f(severity, tần suất, MITRE tactic count, freshness) — chạy 5 phút.
-- API `/api/risk/hosts`; dashboard thêm card "Top Risk Hosts".
+### 2.3 A7 — Risk scoring host  【Server + UI · M】✅
+- `get_risk_scores` (severity-weighted + decay + rule-coverage bonus, 0-100) + `/api/risk/hosts` + card **🔥 Top Risk Hosts** trong Log Coverage.
 
-### 2.4 A6 — Baseline học theo tuần  【Server · M】
-- Nâng NET-FIRST: thay 14 ngày cố định bằng baseline 4 tuần (dst/port/giờ) — máy mới không FP.
-- Lưu baseline mới trong `network_baseline` (thêm cột `weekday`, `hour`).
+### 2.4 A6 — Baseline học theo tuần  【Server · M】✅
+- `get_netflow_seen_windows` (SQLite `%w/%H` / PG `D/HH24`): NET-FIRST/NET-ODD chỉ fire khi (src,dst,weekday,hour) **chưa từng thấy** + máy mới < 48h ở **learning phase** (không alert novelty).
 
-### 2.5 A8 — Kill-chain cross-alert  【Server + UI · M】
-- Gộp alert cùng máy theo cửa sổ 1h → chuỗi tactic (Initial Access → ...); dùng `mitre` field đã có trên alert.
+### 2.5 A8 — Kill-chain cross-alert  【Server + UI · M】✅
+- **Case auto-detector** (server_core, 5 phút): gom alert mở cùng máy trong 1h, ≥ 2 rule riêng → tạo case (severity cao nhất, kèm alert_ids).
 
-### 2.6 A9 — Threat intel enrichment server-side  【Server · S】
-- Khi alert mới (rule liên quan mạng/lệnh), lookup `dst_ip`/`domain`/`hash` qua OTX/abuse.ch (tùy chọn, có rate-limit) → thêm `intel` vào alert `raw_data` + hiển thị badge.
+### 2.6 A9 — Threat intel enrichment server-side  【Server · S】✅
+- `threat_intel_server.py`: local file `GIAMSAT_INTEL_FILE` + OTX (`GIAMSAT_OTX_API_KEY`, rate-limit 1/s); gắn tag vào alert NET-* khi có kết quả — chỉ enrich, không bao giờ chặn emit.
 
----
+## 3) PHASE 3 — "Trải nghiệm SOC / Vận hành" — ✅ DONE 2026-09-01
 
-## 3) PHASE 3 — "Trải nghiệm SOC / Vận hành"
+- **B2 Case management** ✅ — bảng `cases` (SQLite+PG) + `/api/cases` + menu **Cases** (badge số case mở) + status lifecycle + auto-cluster.
+- **B4 Global search (Ctrl+K)** ✅ — `/api/search` + overlay Ctrl+K (máy/alert/event).
+- **B5 Report catch-up + email** ✅ — state file `report_state.json`; daily/weekly tự **catch-up** khi server down đúng lịch.
+- **B6 Notification quiet hours** ✅ — `quiet_hours_enabled/start/end` trong alerting_config: chặn MEDIUM/LOW trong cửa sổ (CRITICAL/HIGH luôn qua).
+- **B10 Onboarding agent UX** ✅ — `/api/agent/onboarding` + nút "＋ Cài Agent" (lệnh cài + cổng).
+- **B11 RBAC analyst role** ✅ — role `analyst` (read + triage, không delete/execute/settings); 6 triage endpoint → `threat_triage`; UI role dropdown.
+- **B12 i18n + compact mode** ✅ — keys đã đủ; thêm nút **⇅ Compact mode** (lưu localStorage).
+- **A10 Agent version/coverage bảng** ✅ — Coverage thêm cột Version + badge "outdated" (lệch `server/version.txt`).
 
-- **B2 Case management** — gom alert liên quan thành case + timeline (L).
-- **B4 Global search (Ctrl+K)** — 1 ô tìm host/alert/event (M).
-- **B5 Report catch-up + email** — khi server down đúng lịch → chạy bù + gửi email (M).
-- **B6 Notification per-user + quiet hours** — admin nhận alert theo group + giờ yên tĩnh (M).
-- **B10 Onboarding agent UX** — link tải EXE + lệnh cài + test kết nối trong UI (S).
-- **B11 RBAC analyst role** — quyền đọc + triage nhưng không xóa/execute (S).
-- **B12 i18n hoàn thiện + compact mode** — key còn thiếu (LOW-5 R7) + layout mật độ cao (S).
-- **A10 Agent version/coverage bảng** — version spread + push update theo group (M).
 
 ---
 

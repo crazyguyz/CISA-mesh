@@ -546,6 +546,15 @@ class PostgresDatabase:
                 hit_count INTEGER DEFAULT 1,
                 UNIQUE(dst_ip, country_code)
             )""",
+            # v5.0.4 (Phase2 B2): case management
+            "cases": """CREATE TABLE IF NOT EXISTS cases (
+                id SERIAL PRIMARY KEY,
+                machine_id TEXT, hostname TEXT DEFAULT '', title TEXT DEFAULT '',
+                description TEXT DEFAULT '', severity TEXT DEFAULT 'MEDIUM',
+                alert_ids JSONB DEFAULT '[]', status TEXT DEFAULT 'open',
+                created_by TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
         }
 
         indexes = [
@@ -2828,6 +2837,95 @@ class PostgresDatabase:
             pass
         return out
 
+    # =========================================================================
+    # v5.0.4 (Phase2 A7/B2 + Phase3 B4): risk scoring, case management, search
+    # =========================================================================
+    _SEV_WEIGHT = {"CRITICAL": 40, "HIGH": 20, "MEDIUM": 10, "LOW": 3}
+
+    def get_risk_scores(self, since_hours=168):
+        import time as _t
+        scores = {}
+        try:
+            rows = self._execute(
+                "SELECT machine_id, hostname, severity, rule_id, received_at FROM threat_alerts "
+                "WHERE received_at >= NOW() - (%s || ' hours')::INTERVAL "
+                "AND status NOT IN ('resolved','false_positive')",
+                (str(since_hours),), fetchall=True) or []
+            now = _t.time()
+            for r in rows:
+                mid = r.get("machine_id")
+                ent = scores.setdefault(mid, {"hostname": r.get("hostname") or mid, "score": 0, "alerts": 0, "rules": set()})
+                ent["alerts"] += 1
+                ent["rules"].add(r.get("rule_id") or "?")
+                age_h = 0
+                try:
+                    age_h = (now - (r.get("received_at") or now).timestamp()) / 3600
+                except Exception:
+                    age_h = 0
+                decay = max(0.3, 1 - age_h / (since_hours + 24))
+                ent["score"] += self._SEV_WEIGHT.get(r.get("severity") or "LOW", 5) * decay
+            for mid, ent in scores.items():
+                if len(ent["rules"]) >= 3:
+                    ent["score"] += 10
+                ent["score"] = min(100, int(ent["score"]))
+                ent["rule_count"] = len(ent["rules"])
+                ent.pop("rules", None)
+        except Exception:
+            pass
+        return scores
+
+    def create_case(self, machine_id, hostname, title, description, severity, alert_ids, created_by=""):
+        import json as _j
+        try:
+            self._execute(
+                "INSERT INTO cases (machine_id,hostname,title,description,severity,alert_ids,status,created_by) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'open',%s) RETURNING id",
+                (machine_id, hostname or machine_id, title[:200], description[:2000], severity,
+                 _j.dumps(alert_ids), created_by))
+        except Exception:
+            pass
+
+    def list_cases(self, limit=100, status=None):
+        try:
+            q = "SELECT * FROM cases WHERE 1=1"
+            p = []
+            if status:
+                q += " AND status=%s"
+                p.append(status)
+            q += " ORDER BY id DESC LIMIT %s"
+            p.append(int(limit))
+            return self._execute(q, tuple(p), fetchall=True) or []
+        except Exception:
+            return []
+
+    def set_case_status(self, case_id, status):
+        try:
+            self._execute("UPDATE cases SET status=%s, updated_at=NOW() WHERE id=%s", (status, case_id))
+        except Exception:
+            pass
+
+    def search_all(self, q, limit=25):
+        out = {"machines": [], "alerts": [], "events": []}
+        if not q:
+            return out
+        like = f"%{q}%"
+        try:
+            out["machines"] = self._execute(
+                "SELECT machine_id, hostname, ip_address, is_online FROM machines "
+                "WHERE hostname ILIKE %s OR machine_id ILIKE %s OR ip_address ILIKE %s LIMIT %s",
+                (like, like, like, int(limit)), fetchall=True) or []
+            out["alerts"] = self._execute(
+                "SELECT id, machine_id, hostname, rule_id, severity, description, timestamp FROM threat_alerts "
+                "WHERE rule_id ILIKE %s OR description ILIKE %s OR hostname ILIKE %s "
+                "ORDER BY id DESC LIMIT %s", (like, like, like, int(limit)), fetchall=True) or []
+            out["events"] = self._execute(
+                "SELECT id, machine_id, hostname, subtype, event_id, description, time FROM events "
+                "WHERE description ILIKE %s OR hostname ILIKE %s OR subtype ILIKE %s "
+                "ORDER BY id DESC LIMIT %s", (like, like, like, int(limit)), fetchall=True) or []
+        except Exception:
+            pass
+        return out
+
     def set_vuln_status(self, alert_id, status):
         if not self._connected:
             return
@@ -2913,6 +3011,19 @@ class PostgresDatabase:
         try:
             return self._execute(
                 "SELECT DISTINCT src_ip, dst_ip FROM netflow_flows WHERE first < %s",
+                (float(before_ts),), fetchall=True) or []
+        except Exception:
+            return []
+
+    def get_netflow_seen_windows(self, before_ts):
+        """v5.0.4 (Phase2 A6): weekly baseline - (src,dst,weekday,hour) seen before."""
+        if not self._connected:
+            return []
+        try:
+            return self._execute(
+                "SELECT DISTINCT src_ip, dst_ip, "
+                "to_char(to_timestamp(first), 'D') AS w, to_char(to_timestamp(first), 'HH24') AS h "
+                "FROM netflow_flows WHERE first < %s",
                 (float(before_ts),), fetchall=True) or []
         except Exception:
             return []

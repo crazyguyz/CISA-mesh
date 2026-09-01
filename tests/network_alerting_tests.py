@@ -76,7 +76,7 @@ def main():
     dm.DB_PATH = path
     db = dm.DatabaseManager()
     try:
-        db.conn.execute("INSERT INTO machines (machine_id,hostname,ip_address) VALUES ('M1','PC1','192.168.1.10')")
+        db.conn.execute("INSERT INTO machines (machine_id,hostname,ip_address,first_seen) VALUES ('M1','PC1','192.168.1.10',datetime('now','-10 days'))")
         now = time.time()
         dst = "52.0.0.1"   # a perfectly normal-looking AWS IP
         # regular beacon: 6 flows, 30s apart, inside the scan window, no history

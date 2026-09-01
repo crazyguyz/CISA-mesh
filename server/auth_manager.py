@@ -34,6 +34,9 @@ except ImportError:
 
 USER_ROLES = {"admin": ["api", "ui", "command", "delete", "settings"],
               "operator": ["api", "ui", "command"],
+              # v5.0.4 (Phase3 B11): analyst = read + triage (threat/vuln status,
+              # assign/comment, case status) but NOT delete / execute / settings
+              "analyst": ["api", "ui", "threat_triage"],
               "viewer": ["api", "ui"]}
 
 # Default admin password hash (pre-computed for backward compat)
