@@ -432,6 +432,9 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_events_machine ON events(machine_id)",
                 "CREATE INDEX IF NOT EXISTS idx_events_time ON events(received_at DESC)",
                 "CREATE INDEX IF NOT EXISTS idx_events_type ON events(subtype)",
+                # v5.0.4 R9 (perf): composite (machine_id, received_at) covers the
+                # per-machine event-volume and event-list queries (PG had it already)
+                "CREATE INDEX IF NOT EXISTS idx_events_machine_time ON events(machine_id, received_at DESC)",
                 # fim_events
                 "CREATE INDEX IF NOT EXISTS idx_fim_machine ON fim_events(machine_id)",
                 "CREATE INDEX IF NOT EXISTS idx_fim_time ON fim_events(received_at DESC)",
@@ -442,6 +445,8 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_threats_machine ON threat_alerts(machine_id)",
                 "CREATE INDEX IF NOT EXISTS idx_threats_severity ON threat_alerts(severity)",
                 "CREATE INDEX IF NOT EXISTS idx_threats_time ON threat_alerts(id DESC)",
+                # v5.0.4 R9 (perf): composite for grouped/risk/volume scans on PG
+                "CREATE INDEX IF NOT EXISTS idx_threats_machine_time ON threat_alerts(machine_id, received_at DESC)",
                 # vuln_alerts
                 "CREATE INDEX IF NOT EXISTS idx_vulns_machine ON vuln_alerts(machine_id)",
                 "CREATE INDEX IF NOT EXISTS idx_vulns_severity ON vuln_alerts(severity)",
