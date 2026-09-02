@@ -110,7 +110,7 @@ def register(app, core):
         username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
-        if status not in ("new", "in_progress", "resolved", "false_positive"):
+        if status not in ("new", "in_progress", "investigating", "contained", "resolved", "false_positive"):
             return jsonify({"success": False, "error": "Invalid status"}), 400
         try:
             core.db.set_vuln_status(alert_id, status)
@@ -137,7 +137,7 @@ def register(app, core):
         username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
-        if status not in ("new", "in_progress", "resolved", "false_positive"):
+        if status not in ("new", "in_progress", "investigating", "contained", "resolved", "false_positive"):
             return jsonify({"success": False, "error": "Invalid status"}), 400
         try:
             core.db.set_inspection_status(alert_id, status)
@@ -166,7 +166,7 @@ def register(app, core):
         username, err, code = check_auth("threat_triage")
         if err: return err, code
         status = (request.json or {}).get("status", "new")
-        if status not in ("new", "in_progress", "resolved", "false_positive"):
+        if status not in ("new", "in_progress", "investigating", "contained", "resolved", "false_positive"):
             return jsonify({"success": False, "error": "Invalid status"}), 400
         try:
             core.db.set_yara_status(alert_id, status)

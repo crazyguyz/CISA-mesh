@@ -31,7 +31,7 @@ def register(app, core):
         v168 = core.db.get_event_volume(hours=168)
         # v5.0.4 (Phase3 A10): server agent version for outdated detection
         try:
-            _vpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), "version.txt")
+            _vpath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "version.txt")
             server_ver = open(_vpath, "r", encoding="utf-8").read().strip() if os.path.exists(_vpath) else ""
         except Exception:
             server_ver = ""

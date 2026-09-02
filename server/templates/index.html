@@ -618,6 +618,13 @@ body.compact-mode .btn{font-size:11px !important;}
                             <div class="col-md-4"><label class="text-muted" style="font-size:11px;">Cooldown (giây)</label><input class="search-box" id="alertCooldown" type="number" value="86400" style="width:100%;"></div>
                             <div class="col-md-4"><label class="text-muted" style="font-size:11px;" data-i18n="email.retry">Retry (giây)</label><input class="search-box" id="alertRetry" type="number" value="300" style="width:100%;"></div>
                         </div>
+                        <div class="row g-2 mb-3 align-items-center">
+                            <div class="col-md-4"><label class="text-muted" style="font-size:11px;" data-i18n="email.quietTitle">Giờ yên tĩnh (không gửi cảnh báo — vẫn ghi DB)</label></div>
+                            <div class="col-md-2"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="qhEnabled"><label class="form-check-label" style="font-size:12px;" for="qhEnabled" data-i18n="email.quietOn">Bật</label></div></div>
+                            <div class="col-md-3"><label class="text-muted" style="font-size:11px;" data-i18n="email.quietStart">Bắt đầu (HH:MM)</label><input class="search-box" id="qhStart" type="time" value="22:00" style="width:100%;"></div>
+                            <div class="col-md-3"><label class="text-muted" style="font-size:11px;" data-i18n="email.quietEnd">Kết thúc (HH:MM)</label><input class="search-box" id="qhEnd" type="time" value="06:00" style="width:100%;"></div>
+                        </div>
+
                         <div class="row g-2 mb-3">
                             <div class="col-md-3"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tgEnabled"><label class="form-check-label" style="font-size:12px;" for="tgEnabled">🤖 Telegram</label></div></div>
                             <div class="col-md-3"><input class="search-box" id="tgBotToken" placeholder="Bot Token" style="width:100%;"></div>

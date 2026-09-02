@@ -1320,6 +1320,30 @@ class DatabaseManager:
             pass
         return out
 
+    def get_unresolved_threats_since(self, hours=1):
+        """v5.0.4 R9: backend-aware recent unresolved alerts (case auto-detector)."""
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT id, machine_id, hostname, rule_id, severity, description FROM threat_alerts "
+                    "WHERE status NOT IN ('resolved','false_positive') "
+                    "AND received_at >= datetime('now', ?)", (f"-{hours} hours",)).fetchall()
+                return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+    def get_rule_hit_stats(self, days=7):
+        """v5.0.4 R9: per-rule hit counts (dead-rule report)."""
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT rule_id, COUNT(*) AS hits, COUNT(DISTINCT machine_id) AS machines "
+                    "FROM threat_alerts WHERE received_at >= datetime('now', ?) "
+                    "GROUP BY rule_id ORDER BY hits DESC", (f"-{days} days",)).fetchall()
+                return [{"rule_id": r["rule_id"], "hits": r["hits"], "machines": r["machines"]} for r in rows]
+        except Exception:
+            return []
+
     def insert_vuln_alert(self, data):
         """v2.1.1: UPSERT dedup - same machine + cve + software updates timestamp instead of duplicate."""
         with self.lock:

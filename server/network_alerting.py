@@ -226,21 +226,25 @@ class NetworkAlertEngine(threading.Thread):
         # v5.0.4 (Phase2 A6): weekly baseline - a pair is NOT novel if it was seen
         # at the same weekday+hour in a past week (learned baseline), and brand-new
         # machines (< 48h) are in the learning phase (no novelty alerts).
+        # Cached 5 min (R9): the DISTINCT history query is too heavy for every 60s scan.
         try:
-            if hasattr(self.db, "get_netflow_seen_windows"):
-                _wk_rows = self.db.get_netflow_seen_windows(win_start) or []
-            else:
-                _wk_rows = []
-            _wk = set()
-            for r in _wk_rows:
-                try:
-                    _wk.add((r[0], r[1], str(r[2]), str(r[3])))
-                except Exception:
-                    _wk.add((r.get("src_ip"), r.get("dst_ip"), str(r.get("w")), str(r.get("h"))))
+            if time.time() - self._seen_ts > 300:
+                if hasattr(self.db, "get_netflow_seen_windows"):
+                    _wk_rows = self.db.get_netflow_seen_windows(win_start) or []
+                else:
+                    _wk_rows = []
+                self._seen = set()
+                for r in _wk_rows:
+                    try:
+                        self._seen.add((r[0], r[1], str(r[2]), str(r[3])))
+                    except Exception:
+                        self._seen.add((r.get("src_ip"), r.get("dst_ip"), str(r.get("w")), str(r.get("h"))))
+                self._seen_ts = time.time()
+            _wk = self._seen
         except Exception:
             _wk = set()
         _now_dt = datetime.now()
-        _today_w = str(_now_dt.isoweekday() % 7)  # Sunday=0 (matches SQLite %w / PG D)
+        _today_w = str(_now_dt.isoweekday() % 7)  # Sunday=0 (SQLite %w; PG D normalized to 0-6)
         _today_h = str(_now_dt.hour)
         hour = _now_dt.hour
         now_ts = time.time()

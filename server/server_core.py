@@ -461,10 +461,8 @@ class ServerCore:
                 try:
                     if not hasattr(self.db, "list_cases"):
                         continue
-                    rows = self.db.conn.execute(
-                        "SELECT id, machine_id, hostname, rule_id, severity, description "
-                        "FROM threat_alerts WHERE status NOT IN ('resolved','false_positive') "
-                        "AND received_at >= datetime('now','-1 hours')").fetchall()
+                    # v5.0.4 R9: backend-aware query (PG datetime() failed silently)
+                    rows = self.db.get_unresolved_threats_since(hours=1) if hasattr(self.db, "get_unresolved_threats_since") else []
                     from collections import defaultdict
                     clusters = defaultdict(list)
                     for r in rows:

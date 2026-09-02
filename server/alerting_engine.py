@@ -208,8 +208,18 @@ class AlertingEngine:
         try:
             if self.config.get("quiet_hours_enabled") and event_sev < 2:
                 _h = time.localtime().tm_hour
-                _s = int(self.config.get("quiet_hours_start", 0) or 0)
-                _e = int(self.config.get("quiet_hours_end", 0) or 0)
+
+                def _qh(v):
+                    if v is None:
+                        return 0
+                    s = str(v).strip()
+                    try:
+                        return int(s.split(":")[0]) if ":" in s else int(s)
+                    except Exception:
+                        return 0
+
+                _s = _qh(self.config.get("quiet_hours_start", 0))
+                _e = _qh(self.config.get("quiet_hours_end", 0))
                 if _s <= _e and _s <= _h < _e:
                     return False
                 if _s > _e and (_h >= _s or _h < _e):  # overnight window

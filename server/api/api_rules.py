@@ -40,10 +40,7 @@ def register(app, core):
         _, err, code = check_auth("api")
         if err: return err, code
         try:
-            rows = core.db.conn.execute(
-                "SELECT rule_id, COUNT(*) AS hits, COUNT(DISTINCT machine_id) AS machines "
-                "FROM threat_alerts WHERE received_at >= datetime('now', '-7 days') "
-                "GROUP BY rule_id ORDER BY hits DESC").fetchall()
+            rows = core.db.get_rule_hit_stats(days=7) if hasattr(core.db, "get_rule_hit_stats") else []
             hits = {r["rule_id"]: {"hits": r["hits"], "machines": r["machines"]} for r in rows}
             # sigma + built-in rule ids (rough set from the rules YAML + CROSS rules)
             rule_ids = set()

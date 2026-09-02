@@ -2741,25 +2741,42 @@ function showFimBaselineDetail(fId) {
 // ===== v2.1.0: RULES MANAGEMENT =====
 function loadRules(){
     const el = document.getElementById('rulesList');
+    // v5.0.4 (Phase2 A5): dead-rule summary (7d) at the top of the list
+    let statsLine = '';
+    fetch('/api/rules/stats').then(r => r.json()).then(sd => {
+        if (sd && sd.zero_hit_count !== undefined) {
+            statsLine = '<div class="p-2" style="font-size:11px;color:#8892a4;border-bottom:1px solid #1e2a3a;">📊 7 ngày: <span class="text-success">' + Object.keys(sd.hits || {}).length + '</span> rule có hit · <span class="text-danger">' + sd.zero_hit_count + '</span>/' + (sd.total_rules||0) + ' rule <b>0 hit</b> (dead?) — chạy <code style="font-size:10px;">tools/rule_replay.py</code> để xem chi tiết.</div>';
+        }
+        fetch('/api/rules').then(r => r.json()).then(data => {
+            const rules = data.rules || [];
+            if (!rules.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noRules') + '</div>'; return; }
+            window._cachedRules = rules;
+            el.innerHTML = statsLine + rules.map((r, i) => {
+                return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + escapeHtml(r.id) + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + escapeHtml(r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(r.name||'?') + '</strong><br><small class="text-muted">' + escapeHtml(r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">'+t('ui.conditions') + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + escapeHtml(r.mitre||'?') + ' | Tactic: ' + escapeHtml(r.tactic||'?') + (r.logic ? ' | Logic: ' + escapeHtml(r.logic) : '') + (r.rule_type ? ' | Type: ' + escapeHtml(r.rule_type) : '') + '</small></div></div>';
+            }).join('');
+            el.querySelectorAll('[data-rule-index]').forEach(div => {
+                div.addEventListener('click', function() {
+                    const idx = parseInt(this.getAttribute('data-rule-index'));
+                    if (window._cachedRules && window._cachedRules[idx]) {
+                        showDetailModal('📋 Rule ' + escapeHtml(window._cachedRules[idx].id),
+                            '<pre style="color:#d0e8d8;font-size:11px;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">' + 
+                            JSON.stringify(window._cachedRules[idx], null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + 
+                            '</pre>');
+                    }
+                });
+            });
+        }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrShort')+' rules</div>'; });
+    }).catch(() => { loadRulesSimple(); });
+}
+function loadRulesSimple(){
+    const el = document.getElementById('rulesList');
     fetch('/api/rules').then(r => r.json()).then(data => {
         const rules = data.rules || [];
         if (!rules.length) { el.innerHTML = '<div class="text-center text-muted py-3">' + t('dash.noRules') + '</div>'; return; }
         window._cachedRules = rules;
         el.innerHTML = rules.map((r, i) => {
-            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + escapeHtml(r.id) + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + escapeHtml(r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(r.name||'?') + '</strong><br><small class="text-muted">' + escapeHtml(r.description||'') + '</small><div style="margin-top:3px;"><small style="color:#5a6a7a;">'+t('ui.conditions') + (r.conditions ? r.conditions.length : 0) + ' | MITRE: ' + escapeHtml(r.mitre||'?') + ' | Tactic: ' + escapeHtml(r.tactic||'?') + (r.logic ? ' | Logic: ' + escapeHtml(r.logic) : '') + (r.rule_type ? ' | Type: ' + escapeHtml(r.rule_type) : '') + '</small></div></div>';
+            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:6px;margin-bottom:6px;padding:8px 12px;cursor:pointer;" data-rule-index="' + i + '"><strong style="color:#ffcc66;">' + escapeHtml(r.id) + '</strong> <span class="badge ' + (r.severity==='CRITICAL'?'bg-danger':r.severity==='HIGH'?'bg-warning text-dark':'bg-info') + '">' + escapeHtml(r.severity||'?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(r.name||'?') + '</strong><br><small class="text-muted">' + escapeHtml(r.description||'') + '</small></div>';
         }).join('');
-        // Add delegated click handler
-        el.querySelectorAll('[data-rule-index]').forEach(div => {
-            div.addEventListener('click', function() {
-                const idx = parseInt(this.getAttribute('data-rule-index'));
-                if (window._cachedRules && window._cachedRules[idx]) {
-                    showDetailModal('📋 Rule ' + escapeHtml(window._cachedRules[idx].id),
-                        '<pre style="color:#d0e8d8;font-size:11px;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">' + 
-                        JSON.stringify(window._cachedRules[idx], null, 2).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + 
-                        '</pre>');
-                }
-            });
-        });
     }).catch(() => { el.innerHTML = '<div class="text-center text-muted py-3">'+t('ui.loadErrShort')+' rules</div>'; });
 }
 
@@ -3394,6 +3411,11 @@ function loadAlertingConfig() {
         setC('slEnabled', sl.enabled); setV('slWebhook', sl.webhook_url); setV('slChannel', sl.channel);
         var wh = cfg.webhook || {};
         setC('whEnabled', wh.enabled); setV('whUrl', wh.url);
+        var qh = cfg.quiet_hours || {};
+        if (typeof cfg.quiet_hours_enabled !== 'undefined') qh = { enabled: cfg.quiet_hours_enabled, start: cfg.quiet_hours_start, end: cfg.quiet_hours_end };
+        setC('qhEnabled', qh.enabled);
+        if (qh.start) setV('qhStart', qh.start);
+        if (qh.end) setV('qhEnd', qh.end);
     }).catch(function() {});
 }
 function saveAlertingConfig() {
@@ -3409,6 +3431,10 @@ function saveAlertingConfig() {
         slack: { enabled: _alChk('slEnabled'), webhook_url: _alVal('slWebhook'), channel: _alVal('slChannel') },
         webhook: { enabled: _alChk('whEnabled'), url: _alVal('whUrl') }
     };
+    var qhE = _alChk('qhEnabled');
+    body.quiet_hours_enabled = qhE;
+    body.quiet_hours_start = qhE ? (_alVal('qhStart') || '22:00') : null;
+    body.quiet_hours_end = qhE ? (_alVal('qhEnd') || '06:00') : null;
     var st = document.getElementById('alertingSaveStatus');
     if (st) st.textContent = t('ui.saving');
     fetch('/api/alerting/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -5259,7 +5285,7 @@ function loadCoverage() {
                 return f === 'no_logs' ? '<span class="badge bg-danger" title="Online nhưng 0 event (log bị tắt?)">🚫 Không log</span>' :
                        f === 'log_drop' ? '<span class="badge bg-warning text-dark" title="Volume 24h < 50% trung bình 7 ngày">📉 Log sụt</span>' :
                        f === 'no_sysmon' ? '<span class="badge bg-secondary" title="Chưa phát hiện Sysmon">Sysmon?</span>' :
-                       f === 'no_auditpol' ? '<span class="badge bg-secondary" title="Chưa bật auditpol">Auditpol?</span>' : '';
+                       f === 'no_auditpol' ? '<span class="badge bg-secondary" title="Chưa bật auditpol">Auditpol?</span>' : f === 'outdated' ? '<span class="badge bg-warning text-dark" title="Agent version lệch server">⚠ Old ver</span>' : '';
             };
             el.innerHTML = riskCard + tableWrap(['Máy', 'Version', 'Trạng thái', 'Events 24h', 'TB 7 ngày', 'Độ sụt', 'Cảnh báo'], machines.map(m => {
                 const st = m.online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-secondary">Offline</span>';
@@ -5365,4 +5391,10 @@ function showOnboarding() {
             '<p>TCP: <b>' + d.tcp_port + '</b> | Web: <b>' + d.web_port + '</b>' + (d.enrollment_secret ? ' | Enroll secret: co' : '') + '</p>' +
             '<p style="color:#8892a4;font-size:11px;">Agent tu dong gui heartbeat, hien thi trong danh sach may sau vai giay.</p></div>');
     }).catch(function(){ showToast("Loi ket noi"); });
+}
+
+// v5.0.4 R9: programmatic view switch (used by Ctrl+K search results)
+function showView(view) {
+    var link = document.querySelector('.nav-link[data-view="' + view + '"]');
+    if (link) link.click();
 }

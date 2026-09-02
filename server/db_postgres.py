@@ -2926,6 +2926,26 @@ class PostgresDatabase:
             pass
         return out
 
+    def get_unresolved_threats_since(self, hours=1):
+        try:
+            return self._execute(
+                "SELECT id, machine_id, hostname, rule_id, severity, description FROM threat_alerts "
+                "WHERE status NOT IN ('resolved','false_positive') "
+                "AND received_at >= NOW() - (%s || ' hours')::INTERVAL",
+                (str(hours),), fetchall=True) or []
+        except Exception:
+            return []
+
+    def get_rule_hit_stats(self, days=7):
+        try:
+            return self._execute(
+                "SELECT rule_id, COUNT(*) AS hits, COUNT(DISTINCT machine_id) AS machines "
+                "FROM threat_alerts WHERE received_at >= NOW() - (%s || ' days')::INTERVAL "
+                "GROUP BY rule_id ORDER BY hits DESC",
+                (str(days),), fetchall=True) or []
+        except Exception:
+            return []
+
     def set_vuln_status(self, alert_id, status):
         if not self._connected:
             return
@@ -3016,13 +3036,15 @@ class PostgresDatabase:
             return []
 
     def get_netflow_seen_windows(self, before_ts):
-        """v5.0.4 (Phase2 A6): weekly baseline - (src,dst,weekday,hour) seen before."""
+        """v5.0.4 (Phase2 A6): weekly baseline - (src,dst,weekday,hour) seen before.
+        weekday normalized to Sunday=0 (PG to_char 'D' is Sunday=1 -> minus 1)."""
         if not self._connected:
             return []
         try:
             return self._execute(
                 "SELECT DISTINCT src_ip, dst_ip, "
-                "to_char(to_timestamp(first), 'D') AS w, to_char(to_timestamp(first), 'HH24') AS h "
+                "((to_char(to_timestamp(first), 'D'))::int - 1)::text AS w, "
+                "to_char(to_timestamp(first), 'HH24') AS h "
                 "FROM netflow_flows WHERE first < %s",
                 (float(before_ts),), fetchall=True) or []
         except Exception:
