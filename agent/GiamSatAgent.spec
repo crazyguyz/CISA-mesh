@@ -15,7 +15,21 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('agent_version.txt', '.'), ('Sysmon64.exe', '.'), ('sysmon_config.xml', '.')] + _tcl_datas,
+    datas=[('agent_version.txt', '.'), ('Sysmon64.exe', '.'), ('sysmon_config.xml', '.'),
+           # v5.0.4 (agent review): bundle the runtime DATA files every module reads
+           # via dirname(__file__). Without them a packaged agent silently runs with
+           # fallbacks only: correlation_rules.yaml has 2074 rules (fallback ~20),
+           # event_decoders.yaml drives the HIGH-3 field enrichment, field_aliases.yaml
+           # resolves ~1000 SIGMA field_contains rules, sca_*.yaml = whole SCA engine.
+           ('rules/correlation_rules.yaml', 'rules'),
+           ('rules/event_decoders.yaml', 'rules'),
+           ('field_aliases.yaml', '.'),
+           ('sca_policy.yaml', '.'),
+           ('sca_pci_dss_policy.yaml', '.'),
+           ('sca_gdpr_policy.yaml', '.'),
+           ('sca_hipaa_policy.yaml', '.'),
+           ('sca_iso27001_policy.yaml', '.'),
+           ('vlan_config.json', '.')] + _tcl_datas,
     hiddenimports=['win32file'],
     hookspath=[],
     hooksconfig={},

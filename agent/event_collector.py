@@ -77,7 +77,7 @@ ALWAYS_COLLECT_IDS = {
     '1006', '1007', '1008', '1009',  # v4.13 (P2): DHCP server (address granted/renewed/denied)
     '1100', '1103', '1104', '1105', '1108',  # v4.13 (P2): DHCP client events
     '2003', '2004', '2005', '2006', '2009', '2033',  # Firewall
-    '3008', '3020',  # DNS
+    '3008', '3009', '3020',  # DNS Client: 3008 failed / 3009 timeout (DGA-C2 signals), 3020 server-contact
     '1000', '1001', '1002', '5140', '5145',  # SMB
 }
 
@@ -201,7 +201,9 @@ EVENT_STRINGINSERTS_MAP = {
         'task_name': 1,
         'user_context': 0,
     },
-    '3008': {  # v5.0.4 (Phase2 A4): DNS Client - query completed (domain-based C2)
+    '3008': {  # v5.0.4 (Phase2 A4): DNS Client - query FAILED (NXDOMAIN / server
+        # response error). Successful resolutions are EID 3006 (excluded for
+        # volume); failures + timeouts are the DGA / C2-domain signal.
         'dns_query': 0,
         'query_type': 1,
         'dns_results': 3,
@@ -296,6 +298,33 @@ EVENT_STRINGINSERTS_MAP = {
 }
 
 
+_DNS_CHANNEL = "Microsoft-Windows-DNS Client/Operational"
+
+
+def _enable_dns_client_channel():
+    """v5.0.4 (agent review): enable the DNS Client Operational log channel.
+
+    The channel EXISTS but is DISABLED by default on Windows 7+ - OpenEventLog
+    succeeds yet no 3008/3009 events are ever recorded. Enabling it makes the
+    A4 domain-based C2/DGA dns_query records work on fresh hosts. Needs admin
+    (the agent service runs as SYSTEM); failure is silent (no-op)."""
+    try:
+        if os.name != "nt":
+            return False
+        import subprocess
+        r = subprocess.run(["wevtutil", "sl", _DNS_CHANNEL, "/e:true"],
+                           capture_output=True, timeout=10)
+        if r.returncode == 0:
+            try:
+                print("[*] Event Collector: enabled DNS Client/Operational channel (EID 3008/3009)")
+            except Exception:
+                pass
+            return True
+    except Exception:
+        pass
+    return False
+
+
 class EnhancedEventCollector(threading.Thread):
     def __init__(self, callback, collect_sysmon=True, agent_pid=None, skip_processes=()):
         super().__init__(daemon=True)
@@ -305,6 +334,10 @@ class EnhancedEventCollector(threading.Thread):
         self.log_configs = {}
         self._active_logs = []
         self._use_realtime = False
+        # v5.0.4 (agent review): Microsoft-Windows-DNS Client/Operational is
+        # DISABLED by default - OpenEventLog succeeds but no 3008/3009 events are
+        # ever written. Try to enable it once (admin/SYSTEM only, fail silent).
+        self._dns_channel_enable_attempted = False
         # v4.6.5: reduce self-inflicted 4688 volume - drop the agent's OWN routine
         # child processes (netstat poll, powershell/conhost from scans) and any
         # configured process (e.g. postgres.exe when the server runs on SQLite).
@@ -332,6 +365,12 @@ class EnhancedEventCollector(threading.Thread):
                 win32evtlog.CloseEventLog(hand)
                 self._active_logs.append(log_name)
                 self.log_configs[log_name] = config
+                # v5.0.4 (agent review): DNS Client/Operational is disabled by
+                # default on Windows; without an explicit enable the 3008/3009
+                # dns_query records (A4) never arrive on fresh hosts.
+                if log_name == _DNS_CHANNEL and not self._dns_channel_enable_attempted:
+                    self._dns_channel_enable_attempted = True
+                    _enable_dns_client_channel()
             except Exception:
                 if not skip_missing:
                     pass  # Log will be silently skipped
