@@ -555,6 +555,21 @@ class PostgresDatabase:
                 created_by TEXT DEFAULT '', created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.4 (Phase3 improvements): user-defined watchlist + syslog device mapping
+            "watchlist": """CREATE TABLE IF NOT EXISTS watchlist (
+                id SERIAL PRIMARY KEY,
+                indicator TEXT UNIQUE, type TEXT DEFAULT 'ip',
+                label TEXT DEFAULT '', severity TEXT DEFAULT 'HIGH',
+                enabled INTEGER DEFAULT 1, source TEXT DEFAULT 'manual',
+                created_by TEXT DEFAULT '', note TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
+            "syslog_sources": """CREATE TABLE IF NOT EXISTS syslog_sources (
+                source_ip TEXT PRIMARY KEY, hostname TEXT DEFAULT '',
+                device_type TEXT DEFAULT '', machine_id TEXT DEFAULT '',
+                label TEXT DEFAULT '', first_seen TIMESTAMPTZ DEFAULT NOW(),
+                last_seen TIMESTAMPTZ DEFAULT NOW()
+            )""",
         }
 
         indexes = [
@@ -562,6 +577,9 @@ class PostgresDatabase:
             "CREATE INDEX IF NOT EXISTS idx_events_time ON events(received_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_events_type ON events(subtype)",
             "CREATE INDEX IF NOT EXISTS idx_events_machine_time ON events(machine_id, received_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_watchlist_type ON watchlist(type)",
+            "CREATE INDEX IF NOT EXISTS idx_watchlist_enabled ON watchlist(enabled)",
+            "CREATE INDEX IF NOT EXISTS idx_syslog_sources_machine ON syslog_sources(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_fim_machine ON fim_events(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_fim_time ON fim_events(received_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_network_machine ON network_traffic(machine_id)",
@@ -2848,6 +2866,141 @@ class PostgresDatabase:
         except Exception:
             pass
         return n
+
+    # =========================================================================
+    # v5.0.4 (Phase3 improvements): user-defined watchlist + syslog asset mapping
+    # =========================================================================
+    def list_watchlist(self, enabled=None):
+        try:
+            q = "SELECT * FROM watchlist"
+            if enabled is not None:
+                q += " WHERE enabled=1" if enabled else " WHERE enabled=0"
+            q += " ORDER BY id DESC"
+            return self._execute(q, fetchall=True) or []
+        except Exception:
+            return []
+
+    def add_watchlist(self, indicator, type="ip", label="", severity="HIGH",
+                      source="manual", created_by="", note=""):
+        indicator = (indicator or "").strip().lower()[:512]
+        if not indicator:
+            return None, False
+        type = (type or "ip").strip().lower()
+        if type not in ("ip", "domain", "hash", "url"):
+            type = "ip"
+        if str(severity).upper() not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            severity = "HIGH"
+        try:
+            self._execute(
+                "INSERT INTO watchlist (indicator,type,label,severity,enabled,source,created_by,note) "
+                "VALUES (%s,%s,%s,%s,1,%s,%s,%s) "
+                "ON CONFLICT(indicator) DO UPDATE SET label=EXCLUDED.label, "
+                "severity=EXCLUDED.severity, note=EXCLUDED.note",
+                (indicator, type, label[:200], severity.upper(), source[:32], created_by[:64], note[:500]))
+            r = self._execute("SELECT id FROM watchlist WHERE indicator=%s", (indicator,), fetchone=True)
+            return (r or {}).get("id"), True
+        except Exception:
+            return None, False
+
+    def delete_watchlist(self, wl_id):
+        try:
+            self._execute("DELETE FROM watchlist WHERE id=%s", (int(wl_id),))
+            return True
+        except Exception:
+            return False
+
+    def toggle_watchlist(self, wl_id, enabled):
+        try:
+            self._execute("UPDATE watchlist SET enabled=%s WHERE id=%s", (1 if enabled else 0, int(wl_id)))
+            return True
+        except Exception:
+            return False
+
+    def get_watchlist_items(self):
+        try:
+            rows = self._execute(
+                "SELECT indicator, type, severity FROM watchlist WHERE enabled=1", fetchall=True) or []
+            return [(r["indicator"], r["type"], r["severity"]) for r in rows]
+        except Exception:
+            return []
+
+    def upsert_syslog_source(self, source_ip, hostname="", device_type=""):
+        try:
+            self._execute(
+                "INSERT INTO syslog_sources (source_ip,hostname,device_type) VALUES (%s,%s,%s) "
+                "ON CONFLICT(source_ip) DO UPDATE SET hostname=EXCLUDED.hostname, "
+                "device_type=CASE WHEN EXCLUDED.device_type!='' THEN EXCLUDED.device_type ELSE syslog_sources.device_type END, "
+                "last_seen=NOW()",
+                (str(source_ip), (hostname or "")[:128], (device_type or "")[:64]))
+            return True
+        except Exception:
+            return False
+
+    def list_syslog_sources(self):
+        try:
+            return self._execute("SELECT * FROM syslog_sources ORDER BY last_seen DESC", fetchall=True) or []
+        except Exception:
+            return []
+
+    def set_syslog_source_asset(self, source_ip, machine_id="", label=""):
+        try:
+            self._execute("UPDATE syslog_sources SET machine_id=%s, label=%s WHERE source_ip=%s",
+                          ((machine_id or "")[:64], (label or "")[:200], str(source_ip)))
+            return True
+        except Exception:
+            return False
+
+    def delete_syslog_source(self, source_ip):
+        try:
+            self._execute("DELETE FROM syslog_sources WHERE source_ip=%s", (str(source_ip),))
+            return True
+        except Exception:
+            return False
+
+    def get_machine_by_ip(self, ip):
+        if not ip:
+            return None
+        try:
+            r = self._execute(
+                "SELECT machine_id, hostname, ip_address FROM machines WHERE ip_address=%s LIMIT 1",
+                (str(ip),), fetchone=True)
+            return r or None
+        except Exception:
+            return None
+
+    def fetch_watch_scan_rows(self, since_sec=45, limit=600):
+        out = []
+        try:
+            _p = (int(since_sec), int(limit))
+            for tbl, cols in (("events", "id,machine_id,hostname,subtype,event_id,description,raw_data"),
+                              ("network_inspection", "id,machine_id,hostname,subtype,domain,dst_ip,src_ip,dst_port,protocol,raw_data"),
+                              ("sysmon_events", "id,machine_id,hostname,process_name,process_path,command_line,description,dst_ip,file_path,file_name,dns_query,severity")):
+                try:
+                    rows = self._execute(
+                        "SELECT " + cols + " FROM " + tbl +
+                        " WHERE received_at >= NOW() - (%s || ' seconds')::INTERVAL ORDER BY id DESC LIMIT %s",
+                        _p, fetchall=True) or []
+                except Exception:
+                    continue
+                for d in rows:
+                    _d = dict(d)
+                    _d["kind"] = tbl
+                    out.append(_d)
+        except Exception:
+            pass
+        return out
+
+    def get_firewall_alerts_about_ip(self, ip, hours=6):
+        if not ip:
+            return []
+        try:
+            return self._execute(
+                "SELECT id, rule_id, rule_name, severity, description, timestamp "
+                "FROM threat_alerts WHERE rule_id LIKE 'FW-%' AND description ILIKE %s "
+                "AND received_at >= NOW() - (%s || ' hours')::INTERVAL ORDER BY id DESC LIMIT 100",
+                (f"%{ip}%", str(hours)), fetchall=True) or []
+        except Exception:
+            return []
 
     def get_event_volume(self, hours=24, machine_id=None):
         if not self._connected:

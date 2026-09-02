@@ -212,6 +212,26 @@ class ServerCore:
             message_callback=on_message
         )
 
+        # v5.0.4 (Phase3 improvement #1): secure syslog over TCP/TLS (:6514)
+        self.syslog_tcp_server = None
+        try:
+            from syslog_tcp_server import SyslogTCPServer
+            self.syslog_tcp_server = SyslogTCPServer(
+                host="0.0.0.0", db_manager=self.db, message_callback=on_message)
+            print(f"[*] Syslog TCP server ready (:{self.syslog_tcp_server.port}, "
+                  f"TLS={bool(__import__('os').environ.get('GIAMSAT_SYSLOG_TLS_CERT', ''))})")
+        except Exception as e:
+            print(f"[!] Syslog TCP init failed: {e}")
+
+        # v5.0.4 (Phase3 improvement #3): user-defined watchlist matcher (IOC-WATCH-001)
+        self.watchlist_matcher = None
+        try:
+            from watchlist_matcher import WatchlistMatcher
+            self.watchlist_matcher = WatchlistMatcher(db_manager=self.db, alerting=self.alerting)
+            print("[*] Watchlist matcher ready (IOC-WATCH-001)")
+        except Exception as e:
+            print(f"[!] Watchlist matcher init failed: {e}")
+
         # v4.13 (P2): NetFlow collector (v5/v9 from edge switches) - C2/exfil detection
         self.netflow = None
         try:
@@ -285,6 +305,16 @@ class ServerCore:
     def start(self):
         self.tcp_server.start()
         self.syslog_server.start()
+        if self.syslog_tcp_server:
+            try:
+                self.syslog_tcp_server.start()
+            except Exception as e:
+                print(f"[!] Syslog TCP server start failed: {e}")
+        if self.watchlist_matcher:
+            try:
+                self.watchlist_matcher.start()
+            except Exception as e:
+                print(f"[!] Watchlist matcher start failed: {e}")
         if self.netflow:
             try:
                 self.netflow.start()
@@ -843,6 +873,16 @@ class ServerCore:
         self._retention_running = False
         self.tcp_server.stop()
         self.syslog_server.stop()
+        if self.syslog_tcp_server:
+            try:
+                self.syslog_tcp_server.stop()
+            except Exception:
+                pass
+        if self.watchlist_matcher:
+            try:
+                self.watchlist_matcher.stop()
+            except Exception:
+                pass
         if self.netflow:
             try:
                 self.netflow.stop()

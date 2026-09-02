@@ -85,6 +85,19 @@ class SyslogServer(threading.Thread):
             ("NW-IFACE-001", "Network Interface Flap",
              r"link down|line protocol.*down|interface.*(down|reset)|link up|status changed", "LOW"),
         ]
+        # v5.0.4 (Phase3 improvement #1): DrayTek Vigor profile - the generic
+        # patterns above match but cannot capture the ATTACKER IP that DrayTek
+        # embeds in its own syntax ("login fail - user: x from: 1.2.3.4"). These
+        # run only when the sender identifies as DrayTek/Vigor, so we can enrich
+        # with the source IP for FW-block <-> agent-event correlation.
+        self._draytek_patterns = [
+            ("NW-LOGIN-002", "DrayTek Login Failure",
+             r"(?:login|authentication)\s*(?:fail(?:ure|ed)?|incorrect|invalid).*?(?:from|at|ip\s*[:=])\s*(?P<ip>\d+\.\d+\.\d+\.\d+)", "MEDIUM"),
+            ("NW-LOGIN-002", "DrayTek Login Failure",
+             r"login fail.*?(?P<ip>\d+\.\d+\.\d+\.\d+)", "MEDIUM"),
+            ("NW-LOGIN-002", "DrayTek Login Failure",
+             r"(?P<ip>\d+\.\d+\.\d+\.\d+).{0,80}(?:too many|blocked|blacklist|lock\s*out)", "HIGH"),
+        ]
 
     def run(self):
         """Start UDP syslog server."""
@@ -282,6 +295,12 @@ class SyslogServer(threading.Thread):
                         "raw": raw
                     })
 
+                # v5.0.4 (Phase3 improvement #1): device source -> asset mapping
+                self._note_source(source_ip, hostname)
+
+                # v5.0.4 (Phase3 improvement #1): DrayTek Vigor-specific profile
+                self._parse_draytek(source_ip, hostname, message, timestamp_str)
+
                 # v2.5.0: Firewall Deep Parse - detect blocked traffic and scans
                 self._parse_firewall_log(source_ip, hostname, message, timestamp_str)
 
@@ -304,6 +323,74 @@ class SyslogServer(threading.Thread):
 
         except Exception as e:
             print(f"[-] Syslog parse error: {e}")
+
+    def _note_source(self, source_ip, hostname):
+        """v5.0.4 (Phase3 improvement #1): auto-learn syslog device sources and
+        keep them in syslog_sources so an operator can map each device IP to an
+        asset (agent machine_id / label) - device logs then correlate with agent
+        events on the mapped host."""
+        if not source_ip or not self.db or not hasattr(self.db, "upsert_syslog_source"):
+            return
+        try:
+            dev = self._guess_device_type(str(hostname or ""))
+            self.db.upsert_syslog_source(str(source_ip), str(hostname or ""), dev)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _guess_device_type(hostname):
+        h = hostname.lower()
+        if any(k in h for k in ("draytek", "vigor")):
+            return "draytek"
+        if any(k in h for k in ("fortinet", "fortigate", "forti")):
+            return "fortinet"
+        if "cisco" in h or h.startswith(("asa", "ios", "cat", "sw", "router")):
+            return "cisco"
+        if "palo" in h:
+            return "paloalto"
+        if any(k in h for k in ("sophos", "sonicwall", "watchguard", "opnsense", "pfsense", "pfsense")):
+            return "firewall"
+        if any(k in h for k in ("ap-", "wlan", "ubiquiti", "ruckus", "aruba")):
+            return "ap"
+        if any(k in h for k in ("printer", "ricoh", "hp ", "brother", "epson")):
+            return "printer"
+        return ""
+
+    def _parse_draytek(self, source_ip, hostname, message, timestamp_str):
+        """v5.0.4 (Phase3 improvement #1): DrayTek Vigor profile - extract the
+        attacker IP and surface a distinct login-failure/brute-force alert that
+        the generic NW-LOGIN-001 cannot enrich. Adds NW-LOGIN-002 (Medium/High)."""
+        if not message or not self.db:
+            return
+        low = str(message).lower()
+        if "draytek" not in low and "vigor" not in low:
+            return
+        ts = self._normalize_ts(timestamp_str)
+        for rule_id, rule_name, pattern, severity in self._draytek_patterns:
+            m = re.search(pattern, message, re.IGNORECASE)
+            if not m:
+                continue
+            try:
+                ip = m.groupdict().get("ip") or m.group(1) or ""
+            except Exception:
+                ip = ""
+            if not ip:
+                continue
+            try:
+                self.db.insert_threat_alert({
+                    "machine_id": f"NW:{hostname}",
+                    "hostname": f"{hostname} ({source_ip})",
+                    "rule_id": rule_id,
+                    "rule_name": rule_name,
+                    "severity": severity,
+                    "description": (f"[{rule_name}] DrayTek source IP {ip} -> {message[:200]} "
+                                    f"(mapped to host {hostname}). Correlate with agent events on {ip}."),
+                    "timestamp": ts,
+                    "source_ip": ip,
+                })
+            except Exception:
+                pass
+            break  # one profile alert per message
 
     def _parse_device_alert(self, source_ip, hostname, message, timestamp_str):
         """v4.11 (CN1): detect login failures, config changes and interface flaps

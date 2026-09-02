@@ -480,6 +480,29 @@ class DatabaseManager:
                 except sqlite3.OperationalError:
                     pass  # Index already exists or table not ready
 
+            # v5.0.4 (Phase3 improvements): watchlist + syslog source->asset mapping
+            try:
+                c.execute("""CREATE TABLE IF NOT EXISTS watchlist (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    indicator TEXT UNIQUE, type TEXT DEFAULT 'ip',
+                    label TEXT DEFAULT '', severity TEXT DEFAULT 'HIGH',
+                    enabled INTEGER DEFAULT 1, source TEXT DEFAULT 'manual',
+                    created_by TEXT DEFAULT '', note TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_type ON watchlist(type)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_enabled ON watchlist(enabled)")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                c.execute("""CREATE TABLE IF NOT EXISTS syslog_sources (
+                    source_ip TEXT PRIMARY KEY, hostname TEXT DEFAULT '',
+                    device_type TEXT DEFAULT '', machine_id TEXT DEFAULT '',
+                    label TEXT DEFAULT '', first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_syslog_sources_machine ON syslog_sources(machine_id)")
+            except sqlite3.OperationalError:
+                pass
+
             self.conn.commit()
 
     def machine_offline(self, machine_id):
@@ -1249,6 +1272,176 @@ class DatabaseManager:
         except Exception:
             pass
         return n
+
+    # =========================================================================
+    # v5.0.4 (Phase3 improvements): user-defined watchlist + syslog asset mapping
+    # =========================================================================
+    def list_watchlist(self, enabled=None):
+        try:
+            with self.lock:
+                q = "SELECT * FROM watchlist"
+                if enabled is not None:
+                    q += " WHERE enabled=1" if enabled else " WHERE enabled=0"
+                q += " ORDER BY id DESC"
+                return [dict(r) for r in self.conn.execute(q).fetchall()]
+        except Exception:
+            return []
+
+    def add_watchlist(self, indicator, type="ip", label="", severity="HIGH",
+                      source="manual", created_by="", note=""):
+        """Insert or update (unique indicator). Returns (id, created_new)."""
+        indicator = (indicator or "").strip().lower()[:512]
+        if not indicator:
+            return None, False
+        type = (type or "ip").strip().lower()
+        if type not in ("ip", "domain", "hash", "url"):
+            type = "ip"
+        if str(severity).upper() not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            severity = "HIGH"
+        try:
+            with self.lock:
+                cur = self.conn.execute(
+                    "INSERT OR IGNORE INTO watchlist (indicator,type,label,severity,enabled,source,created_by,note) "
+                    "VALUES (?,?,?,?,1,?,?,?)",
+                    (indicator, type, label[:200], severity.upper(), source[:32], created_by[:64], note[:500]))
+                self.conn.commit()
+                if cur.rowcount == 1:
+                    return cur.lastrowid, True
+                self.conn.execute(
+                    "UPDATE watchlist SET label=?, severity=?, note=? WHERE indicator=?",
+                    (label[:200], severity.upper(), note[:500], indicator))
+                self.conn.commit()
+                r = self.conn.execute("SELECT id FROM watchlist WHERE indicator=?", (indicator,)).fetchone()
+                return (r[0] if r else None), False
+        except Exception:
+            return None, False
+
+    def delete_watchlist(self, wl_id):
+        try:
+            with self.lock:
+                self.conn.execute("DELETE FROM watchlist WHERE id=?", (int(wl_id),))
+                self.conn.commit()
+                return True
+        except Exception:
+            return False
+
+    def toggle_watchlist(self, wl_id, enabled):
+        try:
+            with self.lock:
+                self.conn.execute("UPDATE watchlist SET enabled=? WHERE id=?",
+                                  (1 if enabled else 0, int(wl_id)))
+                self.conn.commit()
+                return True
+        except Exception:
+            return False
+
+    def get_watchlist_items(self):
+        """Enabled watch items -> [(indicator, type, severity), ...] for the matcher."""
+        try:
+            with self.lock:
+                return [(r[0], r[1], r[2]) for r in self.conn.execute(
+                    "SELECT indicator, type, severity FROM watchlist WHERE enabled=1").fetchall()]
+        except Exception:
+            return []
+
+    def upsert_syslog_source(self, source_ip, hostname="", device_type=""):
+        """Auto-learned source rows keep first_seen; hostname/device_type refresh."""
+        try:
+            with self.lock:
+                self.conn.execute(
+                    "INSERT INTO syslog_sources (source_ip,hostname,device_type) VALUES (?,?,?) "
+                    "ON CONFLICT(source_ip) DO UPDATE SET hostname=excluded.hostname, "
+                    "device_type=CASE WHEN excluded.device_type!='' THEN excluded.device_type ELSE syslog_sources.device_type END, "
+                    "last_seen=CURRENT_TIMESTAMP",
+                    (str(source_ip), (hostname or "")[:128], (device_type or "")[:64]))
+                self.conn.commit()
+                return True
+        except Exception:
+            return False
+
+    def list_syslog_sources(self):
+        try:
+            with self.lock:
+                return [dict(r) for r in self.conn.execute(
+                    "SELECT * FROM syslog_sources ORDER BY last_seen DESC").fetchall()]
+        except Exception:
+            return []
+
+    def set_syslog_source_asset(self, source_ip, machine_id="", label=""):
+        try:
+            with self.lock:
+                self.conn.execute(
+                    "UPDATE syslog_sources SET machine_id=?, label=? WHERE source_ip=?",
+                    ((machine_id or "")[:64], (label or "")[:200], str(source_ip)))
+                self.conn.commit()
+                return True
+        except Exception:
+            return False
+
+    def delete_syslog_source(self, source_ip):
+        try:
+            with self.lock:
+                self.conn.execute("DELETE FROM syslog_sources WHERE source_ip=?", (str(source_ip),))
+                self.conn.commit()
+                return True
+        except Exception:
+            return False
+
+    def get_machine_by_ip(self, ip):
+        """Best-effort asset lookup for an IP (used by syslog->asset mapping +
+        firewall-block <-> agent correlation)."""
+        if not ip:
+            return None
+        try:
+            with self.lock:
+                r = self.conn.execute(
+                    "SELECT machine_id, hostname, ip_address FROM machines WHERE ip_address=? LIMIT 1",
+                    (str(ip),)).fetchone()
+                return dict(r) if r else None
+        except Exception:
+            return None
+
+    def fetch_watch_scan_rows(self, since_sec=45, limit=600):
+        """Recent rows across events / network_inspection / sysmon_events for the
+        watchlist matcher (runs every ~30s over the last window)."""
+        out = []
+        try:
+            import time as _tm
+            # received_at is stored UTC (CURRENT_TIMESTAMP) - compare against a UTC cut
+            cut = _tm.strftime("%Y-%m-%d %H:%M:%S", _tm.gmtime(_tm.time() - since_sec))
+            with self.lock:
+                for tbl, cols in (("events", "id,machine_id,hostname,subtype,event_id,description,raw_data"),
+                                  ("network_inspection", "id,machine_id,hostname,subtype,domain,dst_ip,src_ip,dst_port,protocol,raw_data"),
+                                  ("sysmon_events", "id,machine_id,hostname,process_name,process_path,command_line,description,dst_ip,file_path,file_name,dns_query,severity")):
+                    try:
+                        rows = self.conn.execute(
+                            f"SELECT {cols} FROM {tbl} WHERE received_at >= ? ORDER BY id DESC LIMIT ?",
+                            (cut, int(limit))).fetchall()
+                    except Exception:
+                        continue
+                    for r in rows:
+                        d = dict(r)
+                        d["kind"] = tbl
+                        out.append(d)
+        except Exception:
+            pass
+        return out
+
+    def get_firewall_alerts_about_ip(self, ip, hours=6):
+        """v5.0.4 (Phase3 improvement #1): firewall deep-parse alerts (FW-*) that
+        mention an internal IP - feeds syslog-firewall <-> agent-event correlation."""
+        if not ip:
+            return []
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT id, rule_id, rule_name, severity, description, timestamp "
+                    "FROM threat_alerts WHERE rule_id LIKE 'FW-%' AND description LIKE ? "
+                    "AND received_at >= datetime('now', ?) ORDER BY id DESC LIMIT 100",
+                    (f"%{ip}%", f"-{hours} hours")).fetchall()
+                return [dict(r) for r in rows]
+        except Exception:
+            return []
 
     def get_event_volume(self, hours=24, machine_id=None):
         """v5.0.4 (Phase1 A2): event count per machine in the last N hours (events +

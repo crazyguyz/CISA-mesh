@@ -179,6 +179,50 @@ def register_routes(app, core):
         
         return jsonify(result)
 
+    @app.route("/api/mitre/export/navigator")
+    def api_mitre_export_navigator():
+        """v5.0.4 (Phase3 improvement #2): attack-navigator layer of the detection
+        coverage - every technique the rule library tags is shown; live-hit ones
+        are scored by severity, untouched ones are grey 'blind' coverage gaps."""
+        _, err, code = check_auth("api")
+        if err: return err, code
+        try:
+            since_hours = max(1, min(int(request.args.get("since_hours", 168)), 720))
+        except (TypeError, ValueError):
+            since_hours = 168
+        sev_order = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+        active = {}
+        try:
+            rows = core.db.get_threat_alerts(limit=5000, since_hours=since_hours) or []
+            import re as _re
+            for r in rows:
+                if r.get("status") in ("resolved", "false_positive"):
+                    continue
+                raw = r.get("raw_data")
+                if isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except Exception:
+                        raw = {}
+                if not isinstance(raw, dict):
+                    raw = {}
+                tid = str(raw.get("mitre_technique_id") or raw.get("technique_id") or "").strip()
+                if not _re.match(r"^(T\d{4}(\.\d{3})?|S\d{4}|G\d{4})$", tid):
+                    continue
+                ent = active.setdefault(tid, {"count": 0, "max_severity": "LOW"})
+                ent["count"] += 1
+                sev = str(r.get("severity") or "LOW").upper()
+                if sev_order.get(ent["max_severity"], 0) < sev_order.get(sev, 0):
+                    ent["max_severity"] = sev
+        except Exception:
+            pass
+        try:
+            from mitre_navigator import build_navigator
+            layer = build_navigator(active, since_label=f"{since_hours}h")
+        except Exception as e:
+            return jsonify({"error": str(e)[:200]}), 500
+        return jsonify(layer)
+
     @app.route("/api/mitre/technique/<technique_id>")
     def api_mitre_technique(technique_id):
         """Return all alerts for a specific MITRE technique (backend-agnostic)."""

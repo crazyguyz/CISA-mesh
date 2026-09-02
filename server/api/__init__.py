@@ -34,6 +34,8 @@ from . import api_custom_dashboard
 from . import api_alert_approval
 from . import api_assets
 from . import api_netflow
+from . import api_watchlist
+from . import api_syslog
 
 def register_all_routes(app, core):
     """Register all API route modules on the Flask app."""
@@ -69,3 +71,5 @@ def register_all_routes(app, core):
     api_alert_approval.register(app, core)
     api_assets.init_assets_api(app, core.db)
     api_netflow.register(app, core)
+    api_watchlist.register(app, core)
+    api_syslog.register(app, core)
