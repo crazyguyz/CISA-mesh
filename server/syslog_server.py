@@ -72,6 +72,10 @@ class SyslogServer(threading.Thread):
         except (TypeError, ValueError):
             _max_workers = 8
         self._parse_slots = threading.BoundedSemaphore(max(2, _max_workers))
+        # v5.0.4 (re-review): per-source throttle for syslog_sources upsert - every
+        # message doing an INSERT..ON CONFLICT would multiply DB writes (up to the
+        # 200pps cap). Once per 60s per source is enough for asset mapping.
+        self._note_ts = {}
 
         # v4.11 (CN1): generic network-device detection (routers, switches, APs,
         # printers - DrayTek Vigor, TP-Link, Ricoh/HP) on top of the firewall
@@ -298,15 +302,19 @@ class SyslogServer(threading.Thread):
                 # v5.0.4 (Phase3 improvement #1): device source -> asset mapping
                 self._note_source(source_ip, hostname)
 
-                # v5.0.4 (Phase3 improvement #1): DrayTek Vigor-specific profile
-                self._parse_draytek(source_ip, hostname, message, timestamp_str)
+                # v5.0.4 (Phase3 improvement #1): DrayTek Vigor profile runs FIRST
+                # (it captures the attacker IP). If it fired we skip the generic
+                # device alert for this message so one event does not create two
+                # login-failure rows.
+                _draytek_fired = self._parse_draytek(source_ip, hostname, message, timestamp_str)
 
                 # v2.5.0: Firewall Deep Parse - detect blocked traffic and scans
                 self._parse_firewall_log(source_ip, hostname, message, timestamp_str)
 
                 # v4.11 (CN1): generic device detection - login fail / config
                 # change / interface flap from routers, switches, APs, printers
-                self._parse_device_alert(source_ip, hostname, message, timestamp_str)
+                if not _draytek_fired:
+                    self._parse_device_alert(source_ip, hostname, message, timestamp_str)
 
                 print(f"[S] Syslog from {hostname} ({source_ip}): {severity_name}/{facility_name}")
 
@@ -328,10 +336,16 @@ class SyslogServer(threading.Thread):
         """v5.0.4 (Phase3 improvement #1): auto-learn syslog device sources and
         keep them in syslog_sources so an operator can map each device IP to an
         asset (agent machine_id / label) - device logs then correlate with agent
-        events on the mapped host."""
+        events on the mapped host. Throttled to once per 60s per source."""
         if not source_ip or not self.db or not hasattr(self.db, "upsert_syslog_source"):
             return
         try:
+            _now = time.time()
+            if _now - self._note_ts.get(source_ip, 0) < 60:
+                return
+            self._note_ts[source_ip] = _now
+            if len(self._note_ts) > 1000:
+                self._note_ts = {k: v for k, v in self._note_ts.items() if _now - v < 3600}
             dev = self._guess_device_type(str(hostname or ""))
             self.db.upsert_syslog_source(str(source_ip), str(hostname or ""), dev)
         except Exception:
@@ -359,13 +373,16 @@ class SyslogServer(threading.Thread):
     def _parse_draytek(self, source_ip, hostname, message, timestamp_str):
         """v5.0.4 (Phase3 improvement #1): DrayTek Vigor profile - extract the
         attacker IP and surface a distinct login-failure/brute-force alert that
-        the generic NW-LOGIN-001 cannot enrich. Adds NW-LOGIN-002 (Medium/High)."""
+        the generic NW-LOGIN-001 cannot enrich. Adds NW-LOGIN-002 (Medium/High).
+        Returns True when an alert was raised (caller then skips the generic
+        device alert so one message never creates two login rows)."""
         if not message or not self.db:
-            return
+            return False
         low = str(message).lower()
         if "draytek" not in low and "vigor" not in low:
-            return
+            return False
         ts = self._normalize_ts(timestamp_str)
+        fired = False
         for rule_id, rule_name, pattern, severity in self._draytek_patterns:
             m = re.search(pattern, message, re.IGNORECASE)
             if not m:
@@ -388,9 +405,11 @@ class SyslogServer(threading.Thread):
                     "timestamp": ts,
                     "source_ip": ip,
                 })
+                fired = True
             except Exception:
                 pass
             break  # one profile alert per message
+        return fired
 
     def _parse_device_alert(self, source_ip, hostname, message, timestamp_str):
         """v4.11 (CN1): detect login failures, config changes and interface flaps

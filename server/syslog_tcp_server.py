@@ -24,6 +24,7 @@ class SyslogTCPServer(threading.Thread):
             self.port = int(port or os.environ.get("GIAMSAT_SYSLOG_TCP_PORT", "6514"))
         except (TypeError, ValueError):
             self.port = 6514
+        self.disabled = self.port < 1  # GIAMSAT_SYSLOG_TCP_PORT=0 turns the listener off
         self.db = db_manager
         self.message_callback = message_callback
         self.running = True
@@ -47,6 +48,9 @@ class SyslogTCPServer(threading.Thread):
         return ctx
 
     def run(self):
+        if self.disabled:
+            print("[*] Syslog TCP disabled (GIAMSAT_SYSLOG_TCP_PORT < 1)")
+            return
         if self._parser is None:
             print("[!] Syslog TCP disabled (parser unavailable)")
             return

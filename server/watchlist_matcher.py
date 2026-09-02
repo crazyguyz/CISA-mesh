@@ -152,12 +152,21 @@ class WatchlistMatcher(threading.Thread):
             lines.append(f"[{kind}#{rid}] {host} ({h.get('subtype') or h.get('event_id') or ''})")
         desc = (f"[Watchlist] {item_type.upper()} '{ind}' ({sev}) appeared on: "
                 + "; ".join(lines))
-        machine_id = ",".join(sorted(machines))[:200] or "WATCHLIST"
+        # v5.0.4 (re-review): machine_id is keyed PER IOC (synthetic device-style id
+        # like FW:/NW: alerts). Using the real machine id here made insert_threat_
+        # alert's 10-min dedup key (machine_id + rule_id) collapse TWO DIFFERENT
+        # indicators that hit the same host inside one window into a single row
+        # (the first IOC's alert was silently overwritten). A unique id per IOC
+        # keeps every indicator's alert; the affected hosts stay readable in the
+        # hostname field and description.
+        _safe_ind = re.sub(r"[^A-Za-z0-9_.-]", "_", ind)[:48]
+        machine_id = f"IOC-WATCH:{_safe_ind}"
+        host_lbl = "; ".join(sorted(machines))[:200] if machines else "unknown host"
         try:
             from datetime import datetime
             self.db.insert_threat_alert({
                 "machine_id": machine_id,
-                "hostname": (hits[0].get("hostname") or "unknown")[:255],
+                "hostname": (host_lbl + " | " + (hits[0].get("hostname") or ""))[:255],
                 "rule_id": "IOC-WATCH-001",
                 "rule_name": f"Watchlist hit: {item_type}",
                 "severity": sev.upper(),
@@ -172,7 +181,7 @@ class WatchlistMatcher(threading.Thread):
                         "rule_id": "IOC-WATCH-001",
                         "rule_name": f"Watchlist hit: {item_type}",
                         "machine_id": machine_id,
-                        "hostname": (hits[0].get("hostname") or "unknown")[:255],
+                        "hostname": host_lbl,
                         "description": desc[:2000],
                         "mitre": "T1583.001",
                         "tactic": "Resource Development",
