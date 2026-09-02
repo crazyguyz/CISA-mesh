@@ -77,6 +77,8 @@ def register(app, core):
                 "NW-ANOMALY-004", "NW-ANOMALY-005",
                 "IOC-RETRO-001", "IOC-RETRO-002",
                 "SRV-PATH-001", "SRV-SCAN-001", "SRV-SCAN-002", "SRV-SQLI-001", "SRV-XSS-001",
+                # v5.0.4 (Phase3 improvements): watchlist matcher + DrayTek profile
+                "IOC-WATCH-001", "NW-LOGIN-002",
             }
             zero_hit = sorted(rule_ids - set(hits.keys()))
             return jsonify({"hits": hits, "zero_hit_count": len(zero_hit),
