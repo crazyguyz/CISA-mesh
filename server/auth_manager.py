@@ -32,8 +32,9 @@ try:
 except ImportError:
     _HAS_FERNET = False
 
-USER_ROLES = {"admin": ["api", "ui", "command", "delete", "settings"],
-              "operator": ["api", "ui", "command"],
+USER_ROLES = {"admin": ["api", "ui", "command", "delete", "settings", "threat_triage"],
+              # v5.0.4 (R9 HIGH-1): operator triages the SOC queue too (no delete/settings)
+              "operator": ["api", "ui", "command", "threat_triage"],
               # v5.0.4 (Phase3 B11): analyst = read + triage (threat/vuln status,
               # assign/comment, case status) but NOT delete / execute / settings
               "analyst": ["api", "ui", "threat_triage"],

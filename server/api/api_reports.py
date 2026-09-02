@@ -35,9 +35,14 @@ def register(app, core):
         target = os.path.abspath(os.path.join(base, filename))
         if not target.startswith(base + os.sep) or not os.path.isfile(target):
             return jsonify({"error": "Report not found"}), 404
-        return send_file(target, mimetype="text/html; charset=utf-8",
+        # v5.0.4 R9 (MEDIUM-1): force download-only + nosniff so an injected HTML
+        # report can never render scripts in the browser.
+        resp = send_file(target, mimetype="text/html; charset=utf-8",
                          as_attachment=True,
                          download_name=os.path.basename(target))
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Content-Disposition"] = "attachment"
+        return resp
 
     @app.route("/api/reports/machine-config-export", methods=["POST"])
     def api_machine_config_export():

@@ -95,7 +95,12 @@ class NetworkAlertEngine(threading.Thread):
                         fs_ts = 0.0
                         try:
                             from datetime import datetime as _dt
-                            fs_ts = _dt.strptime(str(fs)[:19], "%Y-%m-%d %H:%M:%S").timestamp()
+                            # v5.0.4 R9: first_seen is stored UTC ('YYYY-MM-DD
+                            # HH:MM:SS' = CURRENT_TIMESTAMP). .timestamp() would
+                            # treat it as LOCAL time, skewing the <48h learning
+                            # window by the server TZ offset. Parse as UTC.
+                            import calendar as _cal
+                            fs_ts = _cal.timegm(_dt.strptime(str(fs)[:19], "%Y-%m-%d %H:%M:%S").timetuple())
                         except Exception:
                             fs_ts = 0.0
                         self._ip_cache[ip] = (m.get("machine_id", ""),
@@ -243,9 +248,13 @@ class NetworkAlertEngine(threading.Thread):
             _wk = self._seen
         except Exception:
             _wk = set()
-        _now_dt = datetime.now()
+        # v5.0.4 R9 (HIGH-2): weekday + hour must be evaluated in the SAME timezone
+        # the baseline was stored in. The DB stores UTC epochs and get_netflow_seen_
+        # windows normalizes to UTC weekday/hour -> use UTC now, and zero-pad the
+        # hour (%H -> '09') to match the DB text keys ('09'), not str(hour)='9'.
+        _now_dt = datetime.now(timezone.utc)
         _today_w = str(_now_dt.isoweekday() % 7)  # Sunday=0 (SQLite %w; PG D normalized to 0-6)
-        _today_h = str(_now_dt.hour)
+        _today_h = _now_dt.strftime("%H")
         hour = _now_dt.hour
         now_ts = time.time()
         for (src, dst, dport, proto), times in groups.items():

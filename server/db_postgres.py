@@ -577,6 +577,8 @@ class PostgresDatabase:
             "CREATE INDEX IF NOT EXISTS idx_vulns_time ON vuln_alerts(id DESC)",
             "CREATE INDEX IF NOT EXISTS idx_netflow_dst ON netflow_flows(dst_ip)",
             "CREATE INDEX IF NOT EXISTS idx_netflow_time ON netflow_flows(received_at DESC)",
+            # v5.0.4 R9: the weekly-baseline query filters on first -> needs its own index
+            "CREATE INDEX IF NOT EXISTS idx_netflow_first ON netflow_flows(first)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_dedup ON events(dedup_key) WHERE dedup_key IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_yara_machine ON yara_alerts(machine_id)",
             "CREATE INDEX IF NOT EXISTS idx_sca_machine ON sca_events(machine_id)",
@@ -2812,12 +2814,40 @@ class PostgresDatabase:
             if status:
                 q += " AND status=%s"
                 p.append(status)
-            q += " GROUP BY rule_id, date_trunc('minute', received_at - INTERVAL '10 minutes')"
+            # v5.0.4 R9 (MEDIUM-7): real 10-min bucket = epoch/600 (see SQLite twin).
+            q += " GROUP BY rule_id, floor(EXTRACT(EPOCH FROM received_at) / 600)"
             q += " HAVING COUNT(DISTINCT machine_id) >= %s ORDER BY last_at DESC LIMIT 200"
             p.append(int(min_machines))
             return self._execute(q, tuple(p), fetchall=True) or []
         except Exception:
             return []
+
+    def get_online_machine_ids(self):
+        try:
+            return [r["machine_id"] for r in (self._execute(
+                "SELECT machine_id FROM machines WHERE is_online=1", fetchall=True) or [])]
+        except Exception:
+            return []
+
+    def requeue_stuck_commands(self, cutoff_ts, exclude_machine_id, online_ids):
+        online = set(online_ids or ())
+        n = 0
+        try:
+            rows = self._execute(
+                "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < %s",
+                (cutoff_ts,), fetchall=True) or []
+            for _r in rows:
+                if _r["machine_id"] == exclude_machine_id:
+                    continue
+                if _r["machine_id"] in online:
+                    continue
+                self._execute(
+                    "UPDATE commands SET status='pending' WHERE exec_id=%s AND status='sent'",
+                    (_r["exec_id"],))
+                n += 1
+        except Exception:
+            pass
+        return n
 
     def get_event_volume(self, hours=24, machine_id=None):
         if not self._connected:
@@ -2832,7 +2862,23 @@ class PostgresDatabase:
                     p.append(machine_id)
                 q += " GROUP BY machine_id"
                 for r in (self._execute(q, tuple(p), fetchall=True) or []):
-                    out.setdefault(r["machine_id"], {"events": 0, "sysmon": 0})[_tbl] = r["n"]
+                    # v5.0.4 R9 (HIGH-3): consumers read key "sysmon" (SQLite maps
+                    # sysmon_events -> sysmon); PG wrote the raw table name and every
+                    # reader saw sysmon=0 -> coverage flagged sysmon-only hosts as
+                    # "no_logs" (FP) and LOGHEALTH-001 stayed blind.
+                    _key = "sysmon" if _tbl == "sysmon_events" else _tbl
+                    out.setdefault(r["machine_id"], {"events": 0, "sysmon": 0})[_key] = r["n"]
+            # v5.0.4 R9 (MEDIUM-9): DNS Client ETW (subtype='dns_query') counts as
+            # activity - see the SQLite twin for rationale. Symmetric windows.
+            _q = ("SELECT machine_id, COUNT(*) AS n FROM network_inspection "
+                  "WHERE subtype='dns_query' AND received_at >= NOW() - (%s || ' hours')::INTERVAL")
+            _p = [str(hours)]
+            if machine_id:
+                _q += " AND machine_id=%s"
+                _p.append(machine_id)
+            _q += " GROUP BY machine_id"
+            for _r in (self._execute(_q, tuple(_p), fetchall=True) or []):
+                out.setdefault(_r["machine_id"], {"events": 0, "sysmon": 0})["events"] += _r["n"]
         except Exception:
             pass
         return out
@@ -2843,15 +2889,15 @@ class PostgresDatabase:
     _SEV_WEIGHT = {"CRITICAL": 40, "HIGH": 20, "MEDIUM": 10, "LOW": 3}
 
     def get_risk_scores(self, since_hours=168):
-        import time as _t
         scores = {}
         try:
             rows = self._execute(
-                "SELECT machine_id, hostname, severity, rule_id, received_at FROM threat_alerts "
-                "WHERE received_at >= NOW() - (%s || ' hours')::INTERVAL "
-                "AND status NOT IN ('resolved','false_positive')",
+                "SELECT machine_id, hostname, severity, rule_id, "
+                "EXTRACT(EPOCH FROM (NOW() - received_at)) / 3600.0 AS age_h "
+                "FROM threat_alerts WHERE received_at >= NOW() - (%s || ' hours')::INTERVAL "
+                "AND status NOT IN ('resolved','false_positive') "
+                "AND machine_id NOT IN (SELECT machine_id FROM machines WHERE is_revoked=1)",
                 (str(since_hours),), fetchall=True) or []
-            now = _t.time()
             for r in rows:
                 mid = r.get("machine_id")
                 ent = scores.setdefault(mid, {"hostname": r.get("hostname") or mid, "score": 0, "alerts": 0, "rules": set()})
@@ -2859,7 +2905,9 @@ class PostgresDatabase:
                 ent["rules"].add(r.get("rule_id") or "?")
                 age_h = 0
                 try:
-                    age_h = (now - (r.get("received_at") or now).timestamp()) / 3600
+                    age_h = float(r.get("age_h") or 0)
+                    if age_h < 0 or age_h > since_hours + 48:
+                        age_h = since_hours  # clock skew guard
                 except Exception:
                     age_h = 0
                 decay = max(0.3, 1 - age_h / (since_hours + 24))
@@ -2877,13 +2925,14 @@ class PostgresDatabase:
     def create_case(self, machine_id, hostname, title, description, severity, alert_ids, created_by=""):
         import json as _j
         try:
-            self._execute(
+            r = self._execute(
                 "INSERT INTO cases (machine_id,hostname,title,description,severity,alert_ids,status,created_by) "
                 "VALUES (%s,%s,%s,%s,%s,%s,'open',%s) RETURNING id",
                 (machine_id, hostname or machine_id, title[:200], description[:2000], severity,
-                 _j.dumps(alert_ids), created_by))
+                 _j.dumps(alert_ids), created_by), fetchone=True)
+            return (r or {}).get("id")
         except Exception:
-            pass
+            return None
 
     def list_cases(self, limit=100, status=None):
         try:
@@ -2897,6 +2946,13 @@ class PostgresDatabase:
             return self._execute(q, tuple(p), fetchall=True) or []
         except Exception:
             return []
+
+    def get_case(self, case_id):
+        try:
+            r = self._execute("SELECT * FROM cases WHERE id=%s", (int(case_id),), fetchone=True)
+            return r or None
+        except Exception:
+            return None
 
     def set_case_status(self, case_id, status):
         try:
@@ -3037,16 +3093,18 @@ class PostgresDatabase:
 
     def get_netflow_seen_windows(self, before_ts):
         """v5.0.4 (Phase2 A6): weekly baseline - (src,dst,weekday,hour) seen before.
-        weekday normalized to Sunday=0 (PG to_char 'D' is Sunday=1 -> minus 1)."""
+        weekday normalized to Sunday=0 (PG to_char 'D' is Sunday=1 -> minus 1).
+        v5.0.4 R9: bounded to the last 8 weeks (see the SQLite twin)."""
         if not self._connected:
             return []
         try:
+            _LB = 8 * 7 * 86400  # 8-week lookback
             return self._execute(
                 "SELECT DISTINCT src_ip, dst_ip, "
                 "((to_char(to_timestamp(first), 'D'))::int - 1)::text AS w, "
                 "to_char(to_timestamp(first), 'HH24') AS h "
-                "FROM netflow_flows WHERE first < %s",
-                (float(before_ts),), fetchall=True) or []
+                "FROM netflow_flows WHERE first < %s AND first >= %s",
+                (float(before_ts), float(before_ts) - _LB), fetchall=True) or []
         except Exception:
             return []
 
@@ -3728,4 +3786,3 @@ class PostgresDatabase:
         except Exception as e:
             print(f"[-] PG sync_user_assets: {e}")
         return created
-

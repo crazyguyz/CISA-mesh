@@ -136,25 +136,19 @@ else:
 
 # v3.9.0: IP address utilities for network traffic classification
 def _is_private_ip(ip):
-    """Check if an IP is RFC 1918 private or loopback."""
-    if ip in ("127.0.0.1", "::1", "0.0.0.0", "::"):
+    """v5.0.4 R9 (MEDIUM-3): RFC 1918/ULA/link-local/loopback for BOTH families
+    via ipaddress (mirrors the server + network_collector). The old dotted-quad
+    parser mislabelled IPv6: GUA public addresses were treated as external OK but
+    ULA/link-local IPv6 were called public; other paths inverted the mistake."""
+    s = (ip or "").strip()
+    if not s:
         return True
-    parts = ip.split(".")
-    if len(parts) != 4:
-        return False
     try:
-        a, b = int(parts[0]), int(parts[1])
+        import ipaddress
+        a = ipaddress.ip_address(s)
+        return a.is_private or a.is_loopback or a.is_link_local
     except ValueError:
-        return False
-    if a == 10:
         return True
-    if a == 172 and 16 <= b <= 31:
-        return True
-    if a == 192 and b == 168:
-        return True
-    if a == 169 and b == 254:
-        return True  # APIPA
-    return False
 
 # v4.6.2 (SEC review P1-1): EID 1 pre-filter keyword list - previously the EID 1
 # filter read a non-existent field (cmd_line instead of command_line) so every
@@ -1758,10 +1752,54 @@ del "%~f0"
                 pass
             self._real_send(hb)
 
+    def _auditpol_measure(self):
+        """v5.0.4 R9 (MEDIUM-5): measure the ACTUAL audit policy instead of trusting
+        the 'script ran once' marker. auditpol /get /category:* lists each category
+        with subcategory lines set to 'Success and Failure' / 'Success' / 'No
+        Auditing'. Result cached 10 min (subprocess per heartbeat is too heavy).
+        Returns 1 when a meaningful majority of subcategories are actually on."""
+        try:
+            if os.name != "nt":
+                return 0
+            if time.time() - getattr(self, "_auditpol_ts", 0) < 600:
+                return getattr(self, "_auditpol_val", 0)
+            import subprocess
+            r = subprocess.run(["auditpol", "/get", "/category:*"],
+                               capture_output=True, timeout=15,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            self._auditpol_ts = time.time()
+            self._auditpol_val = 0
+            _out = (r.stdout or b"").decode("utf-8", "ignore")
+            _yes = 0
+            _no = 0
+            for line in _out.splitlines():
+                _s = line.strip()
+                if "No Auditing" in _s:
+                    _no += 1
+                elif "Success and Failure" in _s:
+                    _yes += 1
+                elif "Success" in _s and "Failure" in _s:
+                    _yes += 1
+            # Full audit = ~50+ subcategories. Require a real deployment: at least
+            # 10 enabled AND a clear majority (>= 2/3 of the reported settings).
+            if _yes >= 10 and (_yes + _no) > 0 and _yes >= (_yes + _no) * 2.0 / 3.0:
+                self._auditpol_val = 1
+            return self._auditpol_val
+        except Exception:
+            try:
+                self._auditpol_ts = time.time()
+                self._auditpol_val = 0
+            except Exception:
+                pass
+            return 0
+
     def _coverage_state(self):
         """v5.0.4 (Phase1 A3b): report log-source coverage for the server A2 dashboard.
-        baseline_hardened/auditpol_enabled = the one-shot hardening marker ran;
-        sysmon_present = Sysmon service is installed and readable."""
+        baseline_hardened = the one-shot hardening marker ran (now only written when
+        hardening actually succeeded - see baseline_hardening.py);
+        auditpol_enabled  = measured live via auditpol (MEDIUM-5 - no longer equal
+        to 'marker exists', so a policy switched OFF later shows up correctly);
+        sysmon_present    = Sysmon service is installed and readable."""
         try:
             marker = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
                                   "GIAM-SAT", "Agent", ".baseline_hardened")
@@ -1775,7 +1813,8 @@ del "%~f0"
                 sysmon = 1 if (getattr(_sc, "sysmon_available", False) or getattr(_sc, "sysmon_ok", False)) else 0
         except Exception:
             pass
-        return {"baseline_hardened": hardened, "sysmon_present": sysmon, "auditpol_enabled": hardened}
+        audit = self._auditpol_measure()
+        return {"baseline_hardened": hardened, "sysmon_present": sysmon, "auditpol_enabled": audit}
 
     # ================ v3.9.8: HTTP POLL LOOP (Independent, 30s interval) ================
     def _http_poll_loop(self):

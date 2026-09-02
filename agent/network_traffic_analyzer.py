@@ -309,19 +309,15 @@ class TrafficAnomalyDetector:
         return entropy
 
     def _is_private(self, ip):
-        """Check if an IP is private (RFC 1918) or loopback."""
+        """v5.0.4 R9 (MEDIUM-3): RFC 1918/ULA/link-local/loopback for BOTH families
+        via ipaddress (mirrors agent_core/network_collector/server)."""
+        s = (ip or "").strip()
+        if not s:
+            return True
         try:
-            parts = ip.split(".")
-            if len(parts) != 4:
-                return True
-            a, b = int(parts[0]), int(parts[1])
-            if a == 10: return True
-            if a == 172 and 16 <= b <= 31: return True
-            if a == 192 and b == 168: return True
-            if a == 127: return True
-            if a == 0: return True
-            if a == 169 and b == 254: return True
-            return False
+            import ipaddress
+            a = ipaddress.ip_address(s)
+            return a.is_private or a.is_loopback or a.is_link_local
         except Exception:
             return True
 

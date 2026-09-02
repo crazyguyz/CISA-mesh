@@ -170,29 +170,37 @@ class NetworkFilter:
 
     @classmethod
     def _is_private_ip(cls, ip):
-        """Check if IP is in private range (RFC 1918 + loopback + link-local)."""
-        if ip in ("127.0.0.1", "::1", "0.0.0.0", "::"):
-            return True
-        parts = ip.split(".")
-        if len(parts) != 4:
+        """v5.0.4 R9 (MEDIUM-3): classify via ipaddress.is_private for BOTH
+        families. The old code returned True for every non-dotted-quad string, so
+        PUBLIC IPv6 (GUA - e.g. C2/exfil over 2606:...) was silently treated as
+        'private' -> never reported as external and pushed into the noise filter.
+        Mirrors the server-side check (network_alerting uses ipaddress too)."""
+        s = (ip or "").strip()
+        if not s:
             return True
         try:
-            octets = [int(p) for p in parts]
+            import ipaddress
+            a = ipaddress.ip_address(s)
+            # IPv6 GUA (2000::/3) is not private -> reported as external.
+            return a.is_private or a.is_loopback or a.is_link_local
         except ValueError:
             return True
-        # 10.0.0.0/8
-        if octets[0] == 10:
+
+    @classmethod
+    def _is_multicast_ip(cls, ip):
+        """v5.0.4 R9 (MEDIUM-3): IPv4 224/239 + IPv6 multicast ff0x::/8 (incl.
+        ff02 link-local NDP/mDNS noise that now reaches us because the sniff
+        filter is 'ip or ip6')."""
+        s = (ip or "").strip()
+        if s.startswith("224.") or s.startswith("239."):
             return True
-        # 172.16.0.0/12
-        if octets[0] == 172 and 16 <= octets[1] <= 31:
+        if s.startswith("ff0"):
             return True
-        # 192.168.0.0/16
-        if octets[0] == 192 and octets[1] == 168:
-            return True
-        # 169.254.0.0/16 (link-local)
-        if octets[0] == 169 and octets[1] == 254:
-            return True
-        return False
+        try:
+            import ipaddress
+            return ipaddress.ip_address(s).is_multicast
+        except Exception:
+            return False
 
     @classmethod
     def should_report(cls, data):
@@ -216,8 +224,8 @@ class NetworkFilter:
         if src_ip in cls.IGNORE_SRC_IPS:
             return False
 
-        # Rule 3: Skip broadcast/multicast destinations
-        if dst_ip.startswith("224.") or dst_ip.startswith("239."):
+        # Rule 3: Skip broadcast/multicast destinations (v5.0.4 R9: incl. IPv6 ff0x::/8)
+        if cls._is_multicast_ip(dst_ip):
             return False
         if dst_ip == "255.255.255.255":
             return False
@@ -255,7 +263,7 @@ class NetworkFilter:
         # Rule 9: UDP handling
         # FIX 3: No longer blanket-reject UDP. Only skip multicast/broadcast UDP.
         if protocol == "UDP":
-            if dst_ip.startswith("224.") or dst_ip.startswith("239."):
+            if cls._is_multicast_ip(dst_ip):
                 return False
             if dst_ip == "255.255.255.255":
                 return False

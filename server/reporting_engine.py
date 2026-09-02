@@ -7,6 +7,7 @@ Generates automated PDF/HTML reports:
 - SCA compliance score
 """
 import os
+import html
 import json
 import threading
 from datetime import datetime, timedelta
@@ -19,6 +20,9 @@ class ReportingEngine:
         self.db = db_manager
         self.report_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reports")
         os.makedirs(self.report_dir, exist_ok=True)
+        # v5.0.4 R9: the weekly/daily schedulers both write report_state.json -
+        # serialize the read-modify-write so a lost update can't double-report.
+        self._state_lock = threading.Lock()
 
     def generate_html_report(self, start_date=None, end_date=None, report_type="daily"):
         """Generate a comprehensive HTML report."""
@@ -47,11 +51,15 @@ class ReportingEngine:
         sca_fail = sum(1 for s in sca if s.get("status") == "FAIL")
         sca_total = len(sca)
 
+        # v5.0.4 R9 (MEDIUM-1): every agent/intel-controlled value is HTML-escaped
+        _esc = lambda v: html.escape(str(v if v is not None else ''), quote=True)
+        
         # Build HTML
         html = f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
     <title>GIAM-SAT Security Report - {report_type.upper()}</title>
     <style>
         body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
@@ -100,7 +108,7 @@ class ReportingEngine:
             html += """<table><tr><th>Time</th><th>Severity</th><th>Rule</th><th>Host</th><th>Description</th></tr>"""
             for t in threats[:50]:
                 sev_class = f"severity-{t.get('severity','LOW')}"
-                html += f"""<tr><td>{t.get('timestamp','')[:16]}</td><td class="{sev_class}">{t.get('severity','')}</td><td>{t.get('rule_name','')}</td><td>{t.get('hostname','')}</td><td>{t.get('description','')[:80]}</td></tr>"""
+                html += f"""<tr><td>{_esc(t.get('timestamp','')[:16])}</td><td class="{_esc(sev_class)}">{_esc(t.get('severity',''))}</td><td>{_esc(t.get('rule_name',''))}</td><td>{_esc(t.get('hostname',''))}</td><td>{_esc(t.get('description','')[:80])}</td></tr>"""
             html += "</table>"
         else:
             html += "<p style='color:#155724;background:#d4edda;padding:10px;border-radius:4px;'>✓ No threats detected in this period</p>"
@@ -111,7 +119,7 @@ class ReportingEngine:
             html += """<table><tr><th>CVE</th><th>Severity</th><th>Software</th><th>Host</th></tr>"""
             for v in vulns[:50]:
                 sev_class = f"severity-{v.get('severity','LOW')}"
-                html += f"""<tr><td>{v.get('cve','')}</td><td class="{sev_class}">{v.get('severity','')}</td><td>{v.get('software','')} {v.get('version','')}</td><td>{v.get('hostname','')}</td></tr>"""
+                html += f"""<tr><td>{_esc(v.get('cve',''))}</td><td class="{_esc(sev_class)}">{_esc(v.get('severity',''))}</td><td>{_esc(v.get('software',''))} {_esc(v.get('version',''))}</td><td>{_esc(v.get('hostname',''))}</td></tr>"""
             html += "</table>"
         else:
             html += "<p style='color:#155724;background:#d4edda;padding:10px;border-radius:4px;'>✓ No vulnerabilities detected</p>"
@@ -127,7 +135,7 @@ class ReportingEngine:
             html += """<table><tr><th>Check ID</th><th>Title</th><th>Status</th><th>Severity</th></tr>"""
             for s in sca[:30]:
                 badge = "badge-pass" if s.get('status') == 'PASS' else ("badge-fail" if s.get('status') == 'FAIL' else "badge-warn")
-                html += f"""<tr><td>{s.get('check_id','')}</td><td>{s.get('title','')}</td><td><span class="badge {badge}">{s.get('status','')}</span></td><td>{s.get('severity','')}</td></tr>"""
+                html += f"""<tr><td>{_esc(s.get('check_id',''))}</td><td>{_esc(s.get('title',''))}</td><td><span class="badge {_esc(badge)}">{_esc(s.get('status',''))}</span></td><td>{_esc(s.get('severity',''))}</td></tr>"""
             html += "</table>"
 
         # YARA
@@ -135,7 +143,7 @@ class ReportingEngine:
         if yara:
             html += """<table><tr><th>Time</th><th>Rule</th><th>File</th><th>Host</th></tr>"""
             for y in yara[:20]:
-                html += f"""<tr><td>{y.get('timestamp','')[:16]}</td><td>{y.get('rule_name','')}</td><td>{y.get('file','')[:60]}</td><td>{y.get('hostname','')}</td></tr>"""
+                html += f"""<tr><td>{_esc(y.get('timestamp','')[:16])}</td><td>{_esc(y.get('rule_name',''))}</td><td>{_esc(y.get('file','')[:60])}</td><td>{_esc(y.get('hostname',''))}</td></tr>"""
             html += "</table>"
         else:
             html += "<p style='color:#155724;background:#d4edda;padding:10px;border-radius:4px;'>✓ No malware detected</p>"
@@ -228,10 +236,11 @@ class ReportingEngine:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "report_state.json")
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            state = self._load_report_state()
-            state[key] = value
-            with open(path, "w", encoding="utf-8") as f:
-                _j.dump(state, f)
+            with self._state_lock:  # v5.0.4 R9: atomic read-modify-write
+                state = self._load_report_state()
+                state[key] = value
+                with open(path, "w", encoding="utf-8") as f:
+                    _j.dump(state, f)
         except Exception:
             pass
 

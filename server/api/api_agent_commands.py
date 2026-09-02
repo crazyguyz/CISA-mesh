@@ -248,25 +248,24 @@ def register(app, core):
         # /api/agent/pending-commands - an endpoint agents NEVER call (they poll
         # THIS heartbeat endpoint). Move the offline-only requeue here so a command
         # marked 'sent' to a machine that died mid-execution actually gets re-delivered.
+        # v5.0.4 R9 (MEDIUM-6): "online" must ALSO include machines that only poll
+        # via HTTP (TCP dropped - the designed-for scenario). Their last_seen is
+        # kept fresh by this very endpoint, so DB is_online=1 covers them. Without
+        # it a long-running command on an HTTP-only machine got requeued mid-run.
         try:
             _cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+            online = None
             try:
                 online = set(core.tcp_server.clients.keys())
             except Exception:
-                online = None  # fail-closed: cannot read online set -> do not requeue
-            if online is not None:
-                _stuck = core.db.conn.execute(
-                    "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
-                    (_cutoff,)).fetchall()
-                for _r in _stuck:
-                    if _r["machine_id"] == machine_id:
-                        continue
-                    if _r["machine_id"] in online:
-                        continue
-                    core.db.conn.execute(
-                        "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
-                        (_r["exec_id"],))
-                core.db.conn.commit()
+                online = None
+            try:
+                _db_on = core.db.get_online_machine_ids() if hasattr(core.db, "get_online_machine_ids") else []
+                online = set(_db_on) if online is None else online | set(_db_on)
+            except Exception:
+                pass  # TCP-only set if DB read failed
+            if online is not None and hasattr(core.db, "requeue_stuck_commands"):
+                core.db.requeue_stuck_commands(_cutoff, machine_id, list(online))
         except Exception:
             pass
 

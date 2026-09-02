@@ -205,8 +205,19 @@ class AlertingEngine:
             return False
         # v5.0.4 (Phase3 B6): quiet hours - suppress MEDIUM/LOW notifications
         # during the configured window (CRITICAL/HIGH always go through).
+        # v5.0.4 R9 (LOW): fail-CLOSED semantics - a bad config value must NOT
+        # silently disable suppression. 'false'/'0'/'no'/'' are parsed as OFF,
+        # any unparseable value is logged and treated as OFF (suppress nothing)
+        # rather than throwing inside try/except and silently suppressing nothing.
         try:
-            if self.config.get("quiet_hours_enabled") and event_sev < 2:
+            _qe = self.config.get("quiet_hours_enabled")
+            if isinstance(_qe, str):
+                _qe = _qe.strip().lower() not in ("", "0", "false", "no", "off")
+            if not _qe:
+                pass  # disabled
+            elif event_sev >= 2:
+                pass  # CRITICAL/HIGH always go through
+            else:
                 _h = time.localtime().tm_hour
 
                 def _qh(v):
@@ -216,6 +227,10 @@ class AlertingEngine:
                     try:
                         return int(s.split(":")[0]) if ":" in s else int(s)
                     except Exception:
+                        try:
+                            print(f"[!] Quiet hours: invalid time '{s}' (expected HH:MM or hour int) - suppression off")
+                        except Exception:
+                            pass
                         return 0
 
                 _s = _qh(self.config.get("quiet_hours_start", 0))

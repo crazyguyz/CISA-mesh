@@ -219,6 +219,8 @@ class DatabaseManager:
                 received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             c.execute("CREATE INDEX IF NOT EXISTS idx_netflow_dst ON netflow_flows(dst_ip)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_netflow_time ON netflow_flows(received_at)")
+            # v5.0.4 R9: the weekly-baseline query filters on first -> needs its own index
+            c.execute("CREATE INDEX IF NOT EXISTS idx_netflow_first ON netflow_flows(first)")
 
             # v2.1.0: Agent Groups for per-group policy management
             c.execute("""CREATE TABLE IF NOT EXISTS agent_groups (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,description TEXT,config_json TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
@@ -1197,11 +1199,51 @@ class DatabaseManager:
             if status:
                 q += " AND status=?"
                 p.append(status)
-            q += " GROUP BY rule_id, strftime('%Y-%m-%d %H:%M', received_at, '-10 minutes')"
+            # v5.0.4 R9 (MEDIUM-7): real 10-min bucket = epoch/600. The old
+            # strftime(...'-10 minutes') only SHIFTED the minute mark (bucket was
+            # effectively 1 minute wide) -> a rule storming for 10 min created ~10
+            # groups. Now one group per rule per 10-min window.
+            q += " GROUP BY rule_id, CAST(strftime('%s', received_at) AS INTEGER) / 600"
             q += " HAVING COUNT(DISTINCT machine_id) >= ? ORDER BY last_at DESC LIMIT 200"
             p.append(int(min_machines))
             c = self.conn.execute(q, p)
             return [dict(row) for row in c.fetchall()]
+
+    def get_online_machine_ids(self):
+        """v5.0.4 R9 (MEDIUM-6): machines marked online in DB (TCP register or
+        HTTP heartbeat keep last_seen fresh; check_heartbeat_timeout flips to 0
+        after ~120s of silence)."""
+        try:
+            with self.lock:
+                return [r[0] for r in self.conn.execute(
+                    "SELECT machine_id FROM machines WHERE is_online=1").fetchall()]
+        except Exception:
+            return []
+
+    def requeue_stuck_commands(self, cutoff_ts, exclude_machine_id, online_ids):
+        """v5.0.4 R9 (MEDIUM-6): re-deliver commands stuck in 'sent' when the
+        target machine is offline (not in TCP clients AND not heartbeating via
+        HTTP). Online = DB is_online=1 (HTTP pollers) + TCP client set."""
+        online = set(online_ids or ())
+        n = 0
+        try:
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT exec_id, machine_id FROM commands WHERE status='sent' AND executed_at < ?",
+                    (cutoff_ts,)).fetchall()
+                for _r in rows:
+                    if _r["machine_id"] == exclude_machine_id:
+                        continue
+                    if _r["machine_id"] in online:
+                        continue
+                    cur = self.conn.execute(
+                        "UPDATE commands SET status='pending' WHERE exec_id=? AND status='sent'",
+                        (_r["exec_id"],))
+                    n += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                self.conn.commit()
+        except Exception:
+            pass
+        return n
 
     def get_event_volume(self, hours=24, machine_id=None):
         """v5.0.4 (Phase1 A2): event count per machine in the last N hours (events +
@@ -1225,6 +1267,20 @@ class DatabaseManager:
                 q += " GROUP BY machine_id"
                 for r in self.conn.execute(q, p).fetchall():
                     out.setdefault(r[0], {"events": 0, "sysmon": 0})["sysmon"] = r[1]
+                # v5.0.4 R9 (MEDIUM-9): DNS Client ETW records (EID 3008/3009) were
+                # re-routed from events -> network_inspection (subtype='dns_query').
+                # Count them as activity so a DNS-only/sysmon-only host is not
+                # flagged 'no_logs'/'log_drop' and LOGHEALTH-001 can still see a
+                # truly-silent host. Symmetric for the 24h and 168h windows.
+                q = ("SELECT machine_id, COUNT(*) n FROM network_inspection "
+                     "WHERE subtype='dns_query' AND received_at >= datetime('now', ?)")
+                p = [f"-{hours} hours"]
+                if machine_id:
+                    q += " AND machine_id=?"
+                    p.append(machine_id)
+                q += " GROUP BY machine_id"
+                for r in self.conn.execute(q, p).fetchall():
+                    out.setdefault(r[0], {"events": 0, "sysmon": 0})["events"] += r[1]
         except Exception:
             pass
         return out
@@ -1236,24 +1292,29 @@ class DatabaseManager:
 
     def get_risk_scores(self, since_hours=168):
         """Per-machine risk 0-100 from open threat_alerts: severity-weighted count +
-        rule coverage, capped, oldest alerts decayed."""
-        import time as _t
+        rule coverage, capped, oldest alerts decayed.
+        v5.0.4 R9: age is computed IN SQL (UTC-consistent on both backends - the
+        old mktime() treated the stored UTC string as local, skewing decay by TZ)
+        and revoked machines are excluded from the Top Risk list."""
         scores = {}
         try:
             with self.lock:
                 rows = self.conn.execute(
-                    "SELECT machine_id, hostname, severity, rule_id, received_at FROM threat_alerts "
-                    "WHERE received_at >= datetime('now', ?) AND status NOT IN ('resolved','false_positive')",
+                    "SELECT machine_id, hostname, severity, rule_id, "
+                    "(CAST(strftime('%s','now') AS INTEGER) - strftime('%s', received_at)) / 3600.0 AS age_h "
+                    "FROM threat_alerts WHERE received_at >= datetime('now', ?) "
+                    "AND status NOT IN ('resolved','false_positive') "
+                    "AND machine_id NOT IN (SELECT machine_id FROM machines WHERE is_revoked=1)",
                     (f"-{since_hours} hours",)).fetchall()
-            now = _t.time()
             for r in rows:
                 mid = r["machine_id"]
                 ent = scores.setdefault(mid, {"hostname": r["hostname"] or mid, "score": 0, "alerts": 0, "rules": set()})
                 ent["alerts"] += 1
                 ent["rules"].add(r["rule_id"] or "?")
-                age_h = 0
                 try:
-                    age_h = (now - _t.mktime(_t.strptime(str(r["received_at"])[:19], "%Y-%m-%d %H:%M:%S"))) / 3600
+                    age_h = float(r["age_h"])
+                    if age_h < 0 or age_h > since_hours + 48:
+                        age_h = since_hours  # clock skew guard
                 except Exception:
                     age_h = 0
                 decay = max(0.3, 1 - age_h / (since_hours + 24))
@@ -1288,6 +1349,12 @@ class DatabaseManager:
             q += " ORDER BY id DESC LIMIT ?"
             p.append(limit)
             return [dict(r) for r in self.conn.execute(q, p).fetchall()]
+
+    def get_case(self, case_id):
+        """v5.0.4 R9: single-case lookup (case detail no longer scans the list)."""
+        with self.lock:
+            r = self.conn.execute("SELECT * FROM cases WHERE id=?", (case_id,)).fetchone()
+            return dict(r) if r else None
 
     def set_case_status(self, case_id, status):
         with self.lock:
@@ -1575,12 +1642,17 @@ class DatabaseManager:
     def get_netflow_seen_windows(self, before_ts):
         """v5.0.4 (Phase2 A6): (src, dst, weekday, hour) combos seen before - the
         weekly baseline for novelty detection (a pair seen before is NOT novel if
-        it was at the same weekday+hour in a past week)."""
+        it was at the same weekday+hour in a past week).
+        v5.0.4 R9: bounded to the last 8 weeks (lookback) - an unbounded DISTINCT
+        full-history scan grows with the netflow table and has no value beyond
+        ~8 weeks of weekly habits."""
+        _LB = 8 * 7 * 86400  # 8-week lookback
         with self.lock:
             c = self.conn.execute(
                 "SELECT DISTINCT src_ip, dst_ip, strftime('%w', first, 'unixepoch') AS w, "
-                "strftime('%H', first, 'unixepoch') AS h FROM netflow_flows WHERE first < ?",
-                (before_ts,))
+                "strftime('%H', first, 'unixepoch') AS h FROM netflow_flows "
+                "WHERE first < ? AND first >= ?",
+                (before_ts, before_ts - _LB))
             return [{"src_ip": r[0], "dst_ip": r[1], "w": r[2], "h": r[3]} for r in c.fetchall()]
 
     # ---- NEW v1.6.0: Retention Policy ----

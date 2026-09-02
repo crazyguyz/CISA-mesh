@@ -12,6 +12,19 @@ from flask import request, jsonify
 from .api_common import check_auth
 
 
+def _alert_ids(v):
+    """v5.0.4 R9 (MEDIUM-2): SQLite stores alert_ids as TEXT '[1,2]' -> json.loads;
+    PG returns a JSONB column pre-parsed as a Python list -> json.loads(list) raises
+    TypeError (silently swallowed to []). Handle both shapes."""
+    if isinstance(v, list):
+        return v
+    try:
+        x = json.loads(v or "[]")
+        return x if isinstance(x, list) else []
+    except Exception:
+        return []
+
+
 def register(app, core):
     @app.route("/api/risk/hosts")
     def api_risk_hosts():
@@ -35,23 +48,49 @@ def register(app, core):
             limit = 100
         rows = core.db.list_cases(limit=limit, status=request.args.get("status")) or []
         for r in rows:
-            try:
-                r["alert_ids"] = json.loads(r.get("alert_ids") or "[]")
-            except Exception:
-                r["alert_ids"] = []
+            r["alert_ids"] = _alert_ids(r.get("alert_ids"))
         return jsonify({"cases": rows})
+
+    @app.route("/api/cases", methods=["POST"])
+    def api_create_case():
+        """v5.0.4 R9 (LOW): manual case creation (the docstring always promised it).
+        analyst/admin can group alerts of a host into a case by hand."""
+        username, err, code = check_auth("threat_triage")
+        if err: return err, code
+        d = request.json or {}
+        machine_id = (d.get("machine_id") or "").strip()[:64]
+        title = (d.get("title") or "").strip()[:200]
+        description = (d.get("description") or "").strip()[:2000]
+        severity = str(d.get("severity") or "MEDIUM").upper()
+        if severity not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
+            severity = "MEDIUM"
+        if not machine_id or not title:
+            return jsonify({"success": False, "error": "machine_id + title required"}), 400
+        try:
+            hostname = (d.get("hostname") or "").strip()[:128] or machine_id
+            alert_ids = [int(x) for x in (d.get("alert_ids") or []) if str(x).isdigit()][:500]
+            case_id = core.db.create_case(machine_id, hostname, title, description,
+                                          severity, alert_ids, created_by=username)
+            core.db.insert_audit_log(username, "case_create", f"Case #{case_id} '{title}'", request.remote_addr)
+            return jsonify({"success": True, "case_id": case_id})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)[:200]}), 500
 
     @app.route("/api/cases/<int:case_id>")
     def api_case_detail(case_id):
         _, err, code = check_auth("api")
         if err: return err, code
-        for c in (core.db.list_cases(limit=1000) or []):
-            if c.get("id") == case_id:
-                try:
-                    c["alert_ids"] = json.loads(c.get("alert_ids") or "[]")
-                except Exception:
-                    c["alert_ids"] = []
-                return jsonify(c)
+        # v5.0.4 R9: direct lookup instead of scanning list_cases(limit=1000) -
+        # a case outside the newest 1000 returned 404 even though it exists.
+        c = core.db.get_case(case_id) if hasattr(core.db, "get_case") else None
+        if not c:
+            for _c in (core.db.list_cases(limit=100000) or []):
+                if _c.get("id") == case_id:
+                    c = _c
+                    break
+        if c:
+            c["alert_ids"] = _alert_ids(c.get("alert_ids"))
+            return jsonify(c)
         return jsonify({"error": "case not found"}), 404
 
     @app.route("/api/cases/<int:case_id>/status", methods=["POST"])

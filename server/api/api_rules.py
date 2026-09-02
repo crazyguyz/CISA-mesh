@@ -59,6 +59,25 @@ def register(app, core):
                     rule_ids.add(r.get("id", ""))
             except Exception:
                 pass
+            # v5.0.4 R9 (HIGH-5): rules that produce alerts WITHOUT living in the
+            # rules YAML would never show as "dead" - the report was blind to the
+            # most important producers (network novelty/beacon, coverage, syslog
+            # FW/NW device rules, agentless scan rules). Add them explicitly.
+            rule_ids |= {
+                # network_alerting.py
+                "NET-BEACON", "NET-FIRST", "NET-ODD",
+                # api/api_health.py
+                "LOGHEALTH-001",
+                # syslog_server.py (FW deep-parse + device patterns)
+                "FW-BLOCK-001", "FW-SCAN-001",
+                "NW-LOGIN-001", "NW-CONFIG-001", "NW-IFACE-001",
+                # server-side anomaly/hunting + agentless scan engines
+                "BL-ADAPTIVE-001", "BL-ANOMALY-002",
+                "NW-ANOMALY-000", "NW-ANOMALY-001", "NW-ANOMALY-002", "NW-ANOMALY-003",
+                "NW-ANOMALY-004", "NW-ANOMALY-005",
+                "IOC-RETRO-001", "IOC-RETRO-002",
+                "SRV-PATH-001", "SRV-SCAN-001", "SRV-SCAN-002", "SRV-SQLI-001", "SRV-XSS-001",
+            }
             zero_hit = sorted(rule_ids - set(hits.keys()))
             return jsonify({"hits": hits, "zero_hit_count": len(zero_hit),
                             "zero_hit_rules": zero_hit[:200], "total_rules": len(rule_ids)})

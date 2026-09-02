@@ -5357,7 +5357,7 @@ function doGlobalSearch() {
         let html = '';
         if (d.machines && d.machines.length) {
             html += '<div style="color:#88ccff;font-size:11px;margin-top:6px;">🖥 MÁY (' + d.machines.length + ')</div>';
-            html += d.machines.map(m => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;"><a href="#" onclick="event.preventDefault();selectMachine(\'' + m.machine_id + '\');closeGlobalSearch()" style="color:#d0d8e0;">' + escapeHtml(m.hostname || m.machine_id) + '</a> <small style="color:#5a6a7a;">' + escapeHtml(m.ip_address || '') + '</small></div>').join('');
+            html += d.machines.map(m => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;"><a href="#" onclick="event.preventDefault();selectMachine(\'' + escJs(m.machine_id) + '\');closeGlobalSearch()" style="color:#d0d8e0;">' + escapeHtml(m.hostname || m.machine_id) + '</a> <small style="color:#5a6a7a;">' + escapeHtml(m.ip_address || '') + '</small></div>').join('');
         }
         if (d.alerts && d.alerts.length) {
             html += '<div style="color:#ff8888;font-size:11px;margin-top:6px;">⚠ ALERTS (' + d.alerts.length + ')</div>';
@@ -5398,3 +5398,10 @@ function showView(view) {
     var link = document.querySelector('.nav-link[data-view="' + view + '"]');
     if (link) link.click();
 }
+// v5.0.4 R9 (LOW): escape a value for embedding inside a JS string literal in an
+// onclick attribute (defense in depth for values that also passed server charset
+// validation - e.g. machine_id - against legacy/imported rows).
+function escJs(s) {
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/<\//g, '<\\/');
+}
+

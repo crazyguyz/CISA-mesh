@@ -338,6 +338,11 @@ class EnhancedEventCollector(threading.Thread):
         # DISABLED by default - OpenEventLog succeeds but no 3008/3009 events are
         # ever written. Try to enable it once (admin/SYSTEM only, fail silent).
         self._dns_channel_enable_attempted = False
+        # v5.0.4 R9 (MEDIUM-9b): per-domain throttle for the DNS Client ETW ->
+        # network_inspection conversion (EID 3008/3009). Without it a host with
+        # flaky DNS generates unbounded network_inspection rows (the DPI path has
+        # its own 300s dedup; this path had none).
+        self._dns_ann_ts = {}
         # v4.6.5: reduce self-inflicted 4688 volume - drop the agent's OWN routine
         # child processes (netstat poll, powershell/conhost from scans) and any
         # configured process (e.g. postgres.exe when the server runs on SQLite).
@@ -557,9 +562,18 @@ class EnhancedEventCollector(threading.Thread):
                 # v5.0.4 (Phase2 A4): DNS Client ETW events (EID 3008/3009) become
                 # network_inspection dns_query records so domain-based C2 hunting
                 # works on every host (no Npcap needed), mirroring the DPI path.
+                # v5.0.4 R9 (MEDIUM-9b): 300s throttle per domain - the DPI path
+                # dedups 300s; this path previously forwarded EVERY failure/timeout.
                 if log_name.startswith("Microsoft-Windows-DNS Client") and str(event_id) in ("3008", "3009"):
                     dq = event_data.get("dns_query") or ""
                     if dq:
+                        _now = time.time()
+                        if _now - self._dns_ann_ts.get(dq, 0) < 300:
+                            continue  # same failing domain seen recently - drop
+                        self._dns_ann_ts[dq] = _now
+                        if len(self._dns_ann_ts) > 2000:
+                            _cut = _now - 3600
+                            self._dns_ann_ts = {k: v for k, v in self._dns_ann_ts.items() if v >= _cut}
                         event_data["type"] = "network_inspection"
                         event_data["subtype"] = "dns_query"
                         event_data["domain"] = dq

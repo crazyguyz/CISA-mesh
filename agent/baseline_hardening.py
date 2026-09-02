@@ -118,11 +118,19 @@ def run_baseline_hardening(marker_dir=None):
     n = enable_windows_audit()
     enable_command_line_logging()
     enable_powershell_logging()
+    # v5.0.4 R9 (MEDIUM-5): the marker used to be written UNCONDITIONALLY, so
+    # 'auditpol_enabled' on the coverage dashboard meant "the script ran once",
+    # never "the audit policy is actually on" (a 0/N result still wrote it).
+    # Only mark when most subcategories really enabled; otherwise leave the marker
+    # out so the next agent/service start retries, and store the achieved count.
     try:
         os.makedirs(marker_dir, exist_ok=True)
-        with open(marker, "w") as f:
-            f.write("1")
+        if n >= max(1, int(len(AUDIT_SUBCATEGORIES) * 0.6)):
+            with open(marker, "w") as f:
+                f.write(str(n))
+            _log(f"Baseline hardening done ({n}/{len(AUDIT_SUBCATEGORIES)} audit subcategories enabled)")
+        else:
+            _log(f"Baseline hardening INCOMPLETE: only {n}/{len(AUDIT_SUBCATEGORIES)} audit subcategories enabled - marker NOT set (will retry on next start)")
     except Exception:
         pass
-    _log(f"Baseline hardening done ({n} audit subcategories enabled)")
     return True

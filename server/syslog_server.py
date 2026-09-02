@@ -36,10 +36,13 @@ class SyslogServer(threading.Thread):
             r'(\S+)?\s*'  # Hostname (optional)
             r'(.*)'  # Message
         )
-        # v5.0.4 (Phase1 A1b): RFC5424 structured format
-        # <PRI>1 TS HOST APP PROCID MSGID STRUCTURED-DATA [MSG]
+        # v5.0.4 (Phase1 A1b): RFC5424 structured format.
+        # Header: <PRI>1 SP TS SP HOST SP APP SP PROCID SP MSGID SP
+        # then STRUCTURED-DATA (one or more [..] elements, possibly with spaces
+        # inside, or '-'), then the MSG. Old pattern used \\S+ for SD -> a real
+        # SD like `[timeQuality tzKnown="true"]` shifted app_name/message.
         self._rfc5424_pattern = re.compile(
-            r'<(\d{1,3})>\s*1\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)',
+            r'<(\d{1,3})>\s*1\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)',
             re.DOTALL)
 
         # v2.0.2 SECURITY: Patterns for DHCP MAC/Hostname redaction
@@ -56,6 +59,19 @@ class SyslogServer(threading.Thread):
         }
         # Track blocked IPs to detect port scans
         self._blocked_ips = {}
+        # v5.0.4 R9 (MEDIUM-8c): _blocked_ips is shared across parser threads -
+        # mutate it only under this lock (count race + KeyError on concurrent
+        # cleanup previously lost messages). Cleanup is throttled to 60s.
+        self._blocked_lock = threading.Lock()
+        self._last_block_cleanup = 0.0
+        # v5.0.4 R9 (MEDIUM-8b): bounded parser workers - the old thread-per-message
+        # let a short UDP burst (up to 200 pps) spawn thousands of concurrent DB
+        # writers (self-DoS). At most N parsers run; a full pool sheds the flood.
+        try:
+            _max_workers = int(os.environ.get("GIAMSAT_SYSLOG_MAX_WORKERS", "8"))
+        except (TypeError, ValueError):
+            _max_workers = 8
+        self._parse_slots = threading.BoundedSemaphore(max(2, _max_workers))
 
         # v4.11 (CN1): generic network-device detection (routers, switches, APs,
         # printers - DrayTek Vigor, TP-Link, Ricoh/HP) on top of the firewall
@@ -113,12 +129,15 @@ class SyslogServer(threading.Thread):
                         _rate[src] = (w, c)
                         if c > _MAX_PPS:
                             continue  # drop the flood silently
-                    t = threading.Thread(
-                        target=self._process_syslog,
-                        args=(data, address),
-                        daemon=True
-                    )
-                    t.start()
+                    # v5.0.4 R9 (MEDIUM-8b): bounded workers - drop when the pool is
+                    # busy instead of spawning a thread per message (self-DoS).
+                    if self._parse_slots.acquire(timeout=0.25):
+                        t = threading.Thread(
+                            target=self._worker,
+                            args=(data, address),
+                            daemon=True
+                        )
+                        t.start()
                 except socket.timeout:
                     continue
                 except Exception as e:
@@ -129,6 +148,58 @@ class SyslogServer(threading.Thread):
 
         except Exception as e:
             print(f"[-] Syslog Server error: {e}")
+
+    def _worker(self, data, address):
+        """v5.0.4 R9 (MEDIUM-8b): bounded pool worker - releases its slot when done."""
+        try:
+            self._process_syslog(data, address)
+        except Exception:
+            pass
+        finally:
+            try:
+                self._parse_slots.release()
+            except Exception:
+                pass
+
+    def _split_sd_msg(self, rest):
+        """v5.0.4 R9 (MEDIUM-8a): split RFC5424 STRUCTURED-DATA from the MSG.
+
+        SD may be '-' (nil) or one or more '[..]' elements whose content can
+        contain spaces (`[timeQuality tzKnown="true"]`). Returns (sd, msg)."""
+        rest = (rest or "")
+        # eat the separator space after MSGID
+        while rest.startswith(" "):
+            rest = rest[1:]
+        if rest.startswith("-"):
+            return "-", rest[1:].lstrip()
+        if rest.startswith("["):
+            chunks, i, n = [], 0, len(rest)
+            while i < n and rest[i] == "[":
+                j = rest.find("]", i)
+                if j == -1:
+                    break
+                chunks.append(rest[i:j + 1])
+                i = j + 1
+                while i < n and rest[i] == " ":  # separator(s) before next element/MSG
+                    i += 1
+            return (" ".join(chunks)) if chunks else "-", rest[i:].strip()
+        # no SD token at all -> treat everything as MSG
+        return "-", rest.strip()
+
+    def _normalize_ts(self, raw_ts):
+        """v5.0.4 R9 (MEDIUM-8): device alerts store a FULL datetime. RFC3164 has
+        no year ('Oct 11 22:14:15') -> sorting/retention broke; RFC5424 is already
+        'YYYY-MM-DDTHH:MM:SS'. Fallback: server receive time."""
+        try:
+            s = str(raw_ts or "").strip()
+            if re.match(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}$", s):
+                dt = datetime.strptime(s, "%b %d %H:%M:%S").replace(year=datetime.now().year)
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            if re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", s):
+                return s[:19].replace("T", " ")
+        except Exception:
+            pass
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _process_syslog(self, data, address):
         """Parse and store syslog message."""
@@ -155,11 +226,14 @@ class SyslogServer(threading.Thread):
                 # ---- v5.0.4 (Phase1 A1b): RFC5424 structured ----
                 m5424 = self._rfc5424_pattern.match(raw)
                 if m5424:
-                    ts_s, hostname, app_name, _proc, _msgid, sd, msg = m5424.groups()
+                    ts_s, hostname, app_name, _proc, _msgid, rest = m5424.groups()
                     facility_name = facility_names.get(priority >> 3, f"facility_{priority >> 3}")
                     severity_name = severity_names.get(priority & 0x07, f"severity_{priority & 0x07}")
-                    message = (msg or "").strip()
                     timestamp_str = ts_s
+                    # v5.0.4 R9 (MEDIUM-8a): split STRUCTURED-DATA (may contain
+                    # spaces inside the [..]) from the MSG properly.
+                    sd, message = self._split_sd_msg(rest)
+                    message = (message or "").strip()
                     if "DHCP" in message.upper():
                         message = self._dhcp_mac_pattern.sub("xx:xx:xx:xx:xx:xx", message)
                         message = self._dhcp_hostname_pattern.sub(r'\1 [REDACTED]', message)
@@ -237,6 +311,9 @@ class SyslogServer(threading.Thread):
         threat alerts (they also reach the daily MEDIUM digest automatically)."""
         if not message:
             return
+        # v5.0.4 R9 (MEDIUM-8): RFC3164 has no year -> normalize so alert sorting
+        # and retention work ("Oct 11 22:14:15" previously sorted wrong).
+        ts = self._normalize_ts(timestamp_str)
         for rule_id, rule_name, pattern, severity in self._device_patterns:
             if re.search(pattern, message, re.IGNORECASE):
                 if self.db:
@@ -248,7 +325,7 @@ class SyslogServer(threading.Thread):
                             "rule_name": rule_name,
                             "severity": severity,
                             "description": f"[{rule_name}] {message[:250]}",
-                            "timestamp": timestamp_str,
+                            "timestamp": ts,
                         })
                     except Exception:
                         pass
@@ -278,46 +355,64 @@ class SyslogServer(threading.Thread):
                 else:
                     continue
 
-                # Track blocked IPs to detect port scans
+                # Track blocked IPs to detect port scans (v5.0.4 R9: all access to
+                # _blocked_ips is under _blocked_lock - it is shared across parser
+                # threads and a concurrent cleanup used to lose messages).
                 now = time.time()
                 key = f"{src_ip}_{dst_ip}"
-                if key not in self._blocked_ips:
-                    self._blocked_ips[key] = {"count": 0, "first_seen": now}
-                self._blocked_ips[key]["count"] += 1
+                ts = self._normalize_ts(timestamp_str)
+                with self._blocked_lock:
+                    ent = self._blocked_ips.get(key)
+                    if ent is None:
+                        ent = {"count": 0, "first_seen": now}
+                        self._blocked_ips[key] = ent
+                    ent["count"] += 1
+                    count = ent["count"]
+                    first_seen = ent["first_seen"]
 
                 # If same src → dst blocked >= 5 times in 60s → port scan
-                if (now - self._blocked_ips[key]["first_seen"]) <= 60 and self._blocked_ips[key]["count"] >= 5:
+                if (now - first_seen) <= 60 and count >= 5:
                     if self.db:
+                        try:
+                            self.db.insert_threat_alert({
+                                "machine_id": f"FW:{hostname}",
+                                "hostname": f"Firewall:{hostname}",
+                                "rule_id": "FW-SCAN-001",
+                                "rule_name": "Firewall Blocked Port Scan",
+                                "severity": "HIGH",
+                                "description": f"Port scan from {src_ip} to {dst_ip} ({count}x blocked by firewall)",
+                                "timestamp": ts,
+                            })
+                        except Exception:
+                            pass
+                    with self._blocked_lock:
+                        self._blocked_ips.pop(key, None)
+
+                # Single block → store as event
+                if self.db:
+                    try:
                         self.db.insert_threat_alert({
                             "machine_id": f"FW:{hostname}",
                             "hostname": f"Firewall:{hostname}",
-                            "rule_id": "FW-SCAN-001",
-                            "rule_name": "Firewall Blocked Port Scan",
-                            "severity": "HIGH",
-                            "description": f"Port scan from {src_ip} to {dst_ip} ({self._blocked_ips[key]['count']}x blocked by firewall)",
-                            "timestamp": timestamp_str,
+                            "rule_id": "FW-BLOCK-001",
+                            "rule_name": f"Firewall Block: {fw_type}",
+                            "severity": "MEDIUM",
+                            "description": f"Traffic blocked: {src_ip} → {dst_ip} [{fw_type}]",
+                            "timestamp": ts,
                         })
-                    del self._blocked_ips[key]
-
-                # Single block → store as event  
-                if self.db:
-                    self.db.insert_threat_alert({
-                        "machine_id": f"FW:{hostname}",
-                        "hostname": f"Firewall:{hostname}",
-                        "rule_id": "FW-BLOCK-001",
-                        "rule_name": f"Firewall Block: {fw_type}",
-                        "severity": "MEDIUM",
-                        "description": f"Traffic blocked: {src_ip} → {dst_ip} [{fw_type}]",
-                        "timestamp": timestamp_str,
-                    })
+                    except Exception:
+                        pass
                 _safe_print(f"[🛡] FIREWALL BLOCK [{fw_type}]: {src_ip} → {dst_ip}")
                 break  # Only match first pattern
 
-        # Periodic cleanup of old entries
+        # Periodic cleanup of old entries (throttled - runs at most once a minute)
         now = time.time()
-        expired = [k for k, v in self._blocked_ips.items() if now - v["first_seen"] > 300]
-        for k in expired:
-            del self._blocked_ips[k]
+        with self._blocked_lock:
+            if now - self._last_block_cleanup > 60:
+                self._last_block_cleanup = now
+                _expired = [k for k, v in list(self._blocked_ips.items()) if now - v["first_seen"] > 300]
+                for k in _expired:
+                    self._blocked_ips.pop(k, None)
 
     def stop(self):
         self.running = False

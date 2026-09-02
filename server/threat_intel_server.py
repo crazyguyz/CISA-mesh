@@ -14,6 +14,9 @@ import time
 
 _last = {}
 _lock = threading.Lock()
+# v5.0.4 R9: local file cache (content + mtime) - check_ip/check_domain fire on
+# the netflow scan path; re-reading + re-parsing the JSON every call was wasteful.
+_cache = {"mtime": 0.0, "ips": {}, "domains": {}}
 
 
 def _load_local():
@@ -21,10 +24,20 @@ def _load_local():
     if not path or not os.path.exists(path):
         return {}, {}
     try:
+        mtime = os.path.getmtime(path)
+        with _lock:
+            if _cache.get("mtime") == mtime and _cache["ips"] is not None:
+                return _cache["ips"], _cache["domains"]
         with open(path, "r", encoding="utf-8") as f:
             import json
             d = json.load(f)
-        return d.get("ips", {}), d.get("domains", {})
+        ips = d.get("ips", {}) or {}
+        domains = d.get("domains", {}) or {}
+        with _lock:
+            _cache["mtime"] = mtime
+            _cache["ips"] = ips
+            _cache["domains"] = domains
+        return ips, domains
     except Exception:
         return {}, {}
 
