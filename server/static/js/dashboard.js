@@ -1072,7 +1072,7 @@ function buildGroupedByMachine(data, type, title) {
         // Expandable detail table
         html += '<div id="grp_' + type + '_' + idx + '" style="display:none;max-height:400px;overflow-y:auto;" onclick="event.stopPropagation();">';
         if (type === 'threats') {
-            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>🧑 Người xử lý</th><th>' + t('tr.status') + '</th><th style="width:46px;">💬</th></tr></thead><tbody>';
+            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>🧑 Người xử lý</th><th>' + t('tr.status') + '</th><th style="width:70px;">🛡️</th><th style="width:40px;">💬</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
                 const _cmt = e.comment ? String(e.comment).trim() : '';
                 html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, '&#39;') + '\' onclick="showThreatDetail(this)" style="cursor:pointer;">' +
@@ -1085,7 +1085,8 @@ function buildGroupedByMachine(data, type, title) {
                     '<td style="white-space:nowrap;">' + (e.assignee ? '<span class="badge bg-success" style="font-size:9px;">👤 '+escapeHtml(e.assignee)+'</span><br>' : '') +
                         '<select style="font-size:9px;max-width:110px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="assignThreatSel(' + e.id + ', this.value)">' + _assigneeOptions(group.items, e.assignee || '') + '</select></td>' +
                     '<td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' +
-                    '<td style="white-space:nowrap;">' + _actionButtons('threats', e) + '<button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();commentThreat(' + e.id + ')" title="Ghi chu dieu tra">💬</button></td></tr>';
+                    _actionButtons('threats', e) +
+                    '<td style="white-space:nowrap;"><button class="btn btn-sm py-0 px-1" style="font-size:10px;" onclick="event.stopPropagation();commentThreat(' + e.id + ')" title="Ghi chu dieu tra">💬</button></td></tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
