@@ -1,5 +1,7 @@
 """
 API Health & Log-Source Coverage (v5.0.4 Phase1 A2).
+The public /api/health endpoint is defined in server_core (unauthenticated, for
+uptime monitors). This module ONLY adds:
 GET /api/health/coverage -> per-machine log-source health:
   - sysmon_present / auditpol_enabled / baseline_hardened (from agent heartbeat)
   - event volume last 24h vs 7-day average + drop% (silent log source = attack signal)
@@ -11,14 +13,6 @@ from .api_common import check_auth
 
 
 def register(app, core):
-    @app.route("/api/health")
-    def api_health():
-        _, err, code = check_auth("api")
-        if err: return err, code
-        info = {"db_backend": getattr(core.db, "backend_type", "unknown"),
-                "db_connected": getattr(core.db, "_connected", True)}
-        return jsonify(info)
-
     @app.route("/api/health/coverage")
     def api_health_coverage():
         _, err, code = check_auth("api")
