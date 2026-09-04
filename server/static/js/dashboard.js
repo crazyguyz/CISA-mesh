@@ -648,6 +648,36 @@ function commentThreat(id) {
         }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
+// v5.0.4: assignee queue - xem "case gán cho từng người, xử lý tới đâu"
+let _threatAssigneeFilter = '';   // '' = tất cả, '__none__' = chưa gán, username = của người đó
+function setThreatAssignee(u) {
+    _threatAssigneeFilter = (u === '' || u === null) ? '' : u;
+    const sel = document.getElementById('threatAssigneeFilter');
+    if (sel) sel.value = _threatAssigneeFilter;
+    loadThreats();
+}
+function _assigneeOptions(rows, sel) {
+    const set = {};
+    (rows || []).forEach(function(r) { if (r.assignee) set[r.assignee] = 1; });
+    const keys = Object.keys(set).sort();
+    let h = '<option value="">— gán cho —</option>';
+    keys.forEach(function(u) { h += '<option value="' + escJs(u) + '"' + (sel === u ? ' selected' : '') + '>' + escapeHtml(u) + '</option>'; });
+    h += '<option value="__none__"' + (sel === '__none__' ? ' selected' : '') + '>Chưa gán</option>';
+    h += '<option value="__other__">… người khác (nhập tay)</option>';
+    return h;
+}
+function assignThreatSel(id, val) {
+    if (!val) return;
+    if (val === '__none__') val = '';
+    if (val === '__other__') { val = prompt('Gán cho ai (username)?'); if (!val) return; }
+    fetch('/api/threats/' + id + '/assign', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({assignee: val})})
+        .then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { showToast('✅ Đã gán' + (val ? ' cho ' + val : '')); loadThreats(); }
+            else showToast('❌ ' + (d.error || ''));
+        }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+}
+
+
 function setThreatStatus(id, status) {
     fetch('/api/threats/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
         .then(function(r) { return r.json(); }).then(function(d) {
@@ -672,10 +702,38 @@ function loadThreats() {
         // items disappear from the dashboard; a toggle reveals them again. Marking an
         // alert handled is NOT a suppression rule - future identical alerts still appear.
         const showHandled = (document.getElementById('threatShowHandled') || {}).checked === true;
-        const toolbar = '<div class="p-2 d-flex justify-content-end align-items-center" style="font-size:11px;color:#8892a4;gap:12px;">' +
-            '<label class="me-2"><input type="checkbox" id="threatGroupByRule" onchange="loadThreats()"> 📊 Nhóm theo rule</label>' +
-            '<label class="me-2"><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>';
-        const rows = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        const rowsAll = showHandled ? data : data.filter(e => e.status !== 'resolved' && e.status !== 'false_positive');
+        // v5.0.4: assignee queue - filter rows + chip counts per assignee (open)
+        const counts = {};
+        let unassigned = 0;
+        rowsAll.forEach(function(r) {
+            if (r.assignee) counts[r.assignee] = (counts[r.assignee] || 0) + 1;
+            else unassigned++;
+        });
+        let rows = rowsAll;
+        if (_threatAssigneeFilter === '__none__') rows = rowsAll.filter(function(e) { return !e.assignee; });
+        else if (_threatAssigneeFilter === '__me__') rows = rowsAll.filter(function(e) { return e.assignee && currentUser && e.assignee === currentUser.username; });
+        else if (_threatAssigneeFilter) rows = rowsAll.filter(function(e) { return e.assignee === _threatAssigneeFilter; });
+        const selOpts = '<select id="threatAssigneeFilter" class="form-select form-select-sm d-inline-block" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;" onchange="setThreatAssignee(this.value)">' +
+            '<option value="">🧑 Tất cả người xử lý</option>' +
+            (currentUser && currentUser.username ? '<option value="__me__"' + (_threatAssigneeFilter === '__me__' ? ' selected' : '') + '>⭐ Của tôi (' + escapeHtml(currentUser.username) + ')</option>' : '') +
+            Object.keys(counts).sort().map(function(u) {
+                return '<option value="' + escJs(u) + '"' + (_threatAssigneeFilter === u ? ' selected' : '') + '>' + escapeHtml(u) + ' (' + counts[u] + ')</option>';
+            }).join('') +
+            '<option value="__none__"' + (_threatAssigneeFilter === '__none__' ? ' selected' : '') + '>Chưa gán (' + unassigned + ')</option></select>';
+        const toolbar = '<div class="p-2 d-flex justify-content-between align-items-center" style="font-size:11px;color:#8892a4;gap:8px;flex-wrap:wrap;">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' + selOpts +
+            '<label><input type="checkbox" id="threatGroupByRule" onchange="loadThreats()"> 📊 Nhóm theo rule</label>' +
+            '<label><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;" id="threatQueueChips">' +
+            '<span style="color:#5a6a7a;">Việc đã gán:</span>' +
+            (Object.keys(counts).sort().map(function(u) {
+                const active = _threatAssigneeFilter === u;
+                return '<button class="btn btn-sm py-0 px-2 ' + (active ? 'btn-success' : 'btn-outline-success') + '" style="font-size:10px;" onclick="setThreatAssignee(\'' + escJs(u) + '\')">' + escapeHtml(u) + ' (' + counts[u] + ')</button>';
+            }).join('') || '<span class="text-muted">chưa có</span>') +
+            (unassigned ? '<button class="btn btn-sm py-0 px-2 btn-outline-warning" style="font-size:10px;" onclick="setThreatAssignee(\'__none__\')">Chưa gán (' + unassigned + ')</button>' : '') +
+            (_threatAssigneeFilter ? '<button class="btn btn-sm py-0 px-2 btn-outline-light" style="font-size:10px;" onclick="setThreatAssignee(\'\')">✕ Xem tất cả</button>' : '') +
+            '</div></div>';
         if (!rows.length) {
             el.innerHTML = toolbar + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('tr.allHandled') + '</div>';
             return;
@@ -1014,9 +1072,20 @@ function buildGroupedByMachine(data, type, title) {
         // Expandable detail table
         html += '<div id="grp_' + type + '_' + idx + '" style="display:none;max-height:400px;overflow-y:auto;" onclick="event.stopPropagation();">';
         if (type === 'threats') {
-            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
+            html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>Rule ID</th><th>Rule Name</th><th>' + t('dash.desc') + '</th><th>🧑 Người xử lý</th><th>' + t('tr.status') + '</th><th style="width:46px;">💬</th></tr></thead><tbody>';
             group.items.sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||'')).forEach(e => {
-                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, "&#39;") + '\' onclick="showThreatDetail(this)" style="cursor:pointer;"><td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td><td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td><td>' + escapeHtml(e.rule_id||'-') + '</td><td>' + escapeHtml(e.rule_name||'-') + (e.assignee ? ' <span class="badge bg-success" style="font-size:9px;">&#128100; '+escapeHtml(e.assignee)+'</span>' : '') + '</td><td style="max-width:300px;">' + escapeHtml((e.description||'-').substring(0,120)) + '</td><td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td><td style="white-space:nowrap;">' + _actionButtons('threats', e) + '<button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();assignThreat(' + e.id + ')" title="Gan cho analyst">&#128100;</button><button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();commentThreat(' + e.id + ')" title="Ghi chu dieu tra">&#128172;</button></td></tr>';
+                const _cmt = e.comment ? String(e.comment).trim() : '';
+                html += '<tr data-threat-row=\'' + JSON.stringify(e).replace(/'/g, '&#39;') + '\' onclick="showThreatDetail(this)" style="cursor:pointer;">' +
+                    '<td style="font-size:10px;white-space:nowrap;">' + (e.timestamp||'').substring(0,19) + '</td>' +
+                    '<td><span class="badge ' + (e.severity==='CRITICAL'?'bg-danger':e.severity==='HIGH'?'bg-warning text-dark':e.severity==='MEDIUM'?'bg-info':'bg-secondary') + '">' + (e.severity||'?') + '</span></td>' +
+                    '<td>' + escapeHtml(e.rule_id||'-') + '</td>' +
+                    '<td>' + escapeHtml(e.rule_name||'-') + '</td>' +
+                    '<td style="max-width:280px;">' + escapeHtml((e.description||'-').substring(0,110)) +
+                        (_cmt ? '<div style="color:#d0b070;font-size:10px;margin-top:2px;border-top:1px dashed #33404e;padding-top:2px;">💬 ' + escapeHtml(_cmt.substring(0,90)) + (_cmt.length>90?'…':'') + '</div>' : '') + '</td>' +
+                    '<td style="white-space:nowrap;">' + (e.assignee ? '<span class="badge bg-success" style="font-size:9px;">👤 '+escapeHtml(e.assignee)+'</span><br>' : '') +
+                        '<select style="font-size:9px;max-width:110px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="assignThreatSel(' + e.id + ', this.value)">' + _assigneeOptions(group.items, e.assignee || '') + '</select></td>' +
+                    '<td><select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="setThreatStatus(' + e.id + ', this.value)">' + statusOptions(e.status) + '</select></td>' +
+                    '<td style="white-space:nowrap;">' + _actionButtons('threats', e) + '<button class="btn btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="event.stopPropagation();commentThreat(' + e.id + ')" title="Ghi chu dieu tra">💬</button></td></tr>';
             });
         } else if (type === 'vulns') {
             html += '<table class="table table-data" style="font-size:11px;margin:0;"><thead><tr><th>Thời gian</th><th>' + t('dash.severity') + '</th><th>CVE</th><th>' + t('dash.software') + '</th><th>' + t('dash.desc') + '</th><th>' + t('tr.status') + '</th><th style="width:50px;">🛡️</th></tr></thead><tbody>';
