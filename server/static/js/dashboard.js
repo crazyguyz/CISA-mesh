@@ -650,6 +650,17 @@ function commentThreat(id) {
 
 // v5.0.4: assignee queue - xem "case gán cho từng người, xử lý tới đâu"
 let _threatAssigneeFilter = '';   // '' = tất cả, '__none__' = chưa gán, username = của người đó
+let _sysUsers = null;             // danh bạ user (username+role) từ /api/users/directory
+let _sysUsersLoaded = false;
+function fetchUserDirectory() {
+    fetch('/api/users/directory').then(function(r) { return r.json(); }).then(function(list) {
+        _sysUsers = Array.isArray(list) ? list : [];
+        _sysUsersLoaded = true;
+        // nếu đang mở Threats thì render lại để dropdown có danh sách user
+        const v = document.getElementById('viewThreats');
+        if (v && v.style.display !== 'none' && typeof loadThreats === 'function') loadThreats();
+    }).catch(function() { _sysUsersLoaded = true; _sysUsers = null; });
+}
 function setThreatAssignee(u) {
     _threatAssigneeFilter = (u === '' || u === null) ? '' : u;
     const sel = document.getElementById('threatAssigneeFilter');
@@ -657,11 +668,21 @@ function setThreatAssignee(u) {
     loadThreats();
 }
 function _assigneeOptions(rows, sel) {
-    const set = {};
-    (rows || []).forEach(function(r) { if (r.assignee) set[r.assignee] = 1; });
-    const keys = Object.keys(set).sort();
+    const seen = {};
+    (rows || []).forEach(function(r) { if (r.assignee) seen[r.assignee] = 1; });
+    const list = [];
+    const names = {};
+    if (_sysUsersLoaded && _sysUsers) {
+        _sysUsers.forEach(function(x) {
+            if (x && x.username && x.role !== 'viewer') { names[x.username] = 1; list.push({ u: x.username, r: x.role }); }
+        });
+    }
+    Object.keys(seen).sort().forEach(function(n) { if (!names[n]) { names[n] = 1; list.push({ u: n, r: '' }); } });
+    list.sort(function(a, b) { return a.u.toLowerCase().localeCompare(b.u.toLowerCase()); });
     let h = '<option value="">— gán cho —</option>';
-    keys.forEach(function(u) { h += '<option value="' + escJs(u) + '"' + (sel === u ? ' selected' : '') + '>' + escapeHtml(u) + '</option>'; });
+    list.forEach(function(x) {
+        h += '<option value="' + escJs(x.u) + '"' + (sel === x.u ? ' selected' : '') + '>' + escapeHtml(x.u) + (x.r ? ' (' + escapeHtml(x.r) + ')' : '') + '</option>';
+    });
     h += '<option value="__none__"' + (sel === '__none__' ? ' selected' : '') + '>Chưa gán</option>';
     h += '<option value="__other__">… người khác (nhập tay)</option>';
     return h;
@@ -5109,6 +5130,7 @@ function initCurrentUser() {
         if (roleEl) roleEl.textContent = t('users.myAccount') + ' · ' + (d.role || 'viewer');
         const nav = document.getElementById('navUsers');
         if (nav) nav.style.display = (d.role === 'admin') ? '' : 'none';
+        fetchUserDirectory();  // v5.0.4: nạp danh bạ user cho dropdown "gán cho"
     }).catch(function() {});
 }
 

@@ -172,6 +172,20 @@ def register(app, core):
         core.db.insert_audit_log(username, "list_users", "", request.remote_addr)
         return jsonify(users)
 
+    @app.route("/api/users/directory")
+    def api_users_directory():
+        """v5.0.4 (UI): safe user directory (username + role only, no secrets) for
+        SOC assignment dropdowns - any authenticated user may see WHO can take
+        work, not manage accounts."""
+        _, err, code = check_auth("api")
+        if err: return err, code
+        try:
+            users = core.auth.get_users()
+        except Exception:
+            users = {}
+        return jsonify([{"username": u, "role": (d.get("role") or "viewer")}
+                        for u, d in users.items()])
+
     @app.route("/api/users", methods=["POST"])
     def api_add_user():
         username, err, code = check_auth("settings")
