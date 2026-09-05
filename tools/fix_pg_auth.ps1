@@ -17,9 +17,10 @@
 # =============================================================================
 
 param(
-    [string]$ServerDir = ""
+    [string]$ServerDir = "",
+    [switch]$RecoverSuperuser
 )
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 if (-not $ServerDir) { $ServerDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot) }
 $envFile = Join-Path $ServerDir ".env"
@@ -43,7 +44,7 @@ if (-not $pgPass) { Write-Host "[FAIL] GIAMSAT_PG_PASSWORD rong trong .env" -For
 Write-Host "ServerDir : $ServerDir"
 Write-Host "PG target : $pgHost`:$pgPort  db=$pgDb  role=$pgUser"
 
-# ---- tim psql.exe ----
+# ---- tim psql.exe + pg_ctl.exe ----
 $psql = Get-Command psql -ErrorAction SilentlyContinue
 if (-not $psql) {
     foreach ($cand in @(
@@ -56,19 +57,84 @@ if (-not $psql) {
 }
 if (-not $psql) { Write-Host "[FAIL] Khong tim thay psql.exe (PostgreSQL chua cai hoac chua vao PATH?)" -ForegroundColor Red; exit 1 }
 $psqlPath = if ($psql -is [string]) { $psql } else { $psql.Source }
+$pgBinDir = Split-Path $psqlPath -Parent
+$pgCtlPath = Join-Path $pgBinDir "pg_ctl.exe"
 Write-Host "psql     : $psqlPath"
 
-# ---- mat khau SUPERUSER (role postgres) ----
-$sec = Read-Host "Mat khau SUPERUSER PostgreSQL (role 'postgres')" -AsSecureString
-$bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
-$suPass = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-[System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+# ---- helper: thong tin service PostgreSQL (de tim data dir khi can) ----
+function Get-PgServiceInfo {
+    $svc = Get-CimInstance Win32_Service | Where-Object { $_.Name -like 'postgresql*' -and $_.State -eq 'Running' } | Select-Object -First 1
+    if (-not $svc) { return $null }
+    $m = [regex]::Match($svc.PathName, '-D\s*"([^"]+)"')
+    if (-not $m.Success) { $m = [regex]::Match($svc.PathName, '-D\s+([^ ]+)') }
+    $data = ''
+    if ($m.Success) { $data = $m.Groups[1].Value.Trim() }
+    return @{ Name = $svc.Name; DataDir = $data; PathName = $svc.PathName }
+}
+function Invoke-PsqlSu([string]$sql, [string]$pw) {
+    $env:PGPASSWORD = $pw
+    & $psqlPath -w -h $pgHost -p $pgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -t -A -c $sql 2>&1
+}
+
+# ---- lay quyen SUPERUSER ----
+$suPass = ''
+$global:_hbaBak = ''
+$global:_pgDataDir = ''
+if (-not $RecoverSuperuser) {
+    $sec = Read-Host "Mat khau SUPERUSER PostgreSQL (role 'postgres')" -AsSecureString
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+    $suPass = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+} else {
+    Write-Host "[*] RecoverSuperuser: khong hoi mat khau, tam mo 'trust' cho loopback trong pg_hba.conf..." -ForegroundColor Yellow
+    Invoke-PsqlSu "SELECT 1" '' | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        $suPass = ''   # da co trust san
+    } else {
+        $info = Get-PgServiceInfo
+        if (-not $info -or -not $info.DataDir) {
+            Write-Host "[FAIL] Khong tim thay data dir PostgreSQL tu service. Chay script voi quyen Administrator." -ForegroundColor Red
+            exit 1
+        }
+        $hba = Join-Path $info.DataDir 'pg_hba.conf'
+        $bak = "$hba.fixbak"
+        if (-not (Test-Path $hba)) { Write-Host "[FAIL] Khong thay pg_hba.conf: $hba" -ForegroundColor Red; exit 1 }
+        Copy-Item $hba $bak -Force
+        $trust = @(
+            "# GIAM-SAT fix_pg_auth - tam thoi (khoi phuc tu dong sau khi dat mat khau)",
+            "host all all 127.0.0.1/32 trust",
+            "host all all ::1/128 trust"
+        )
+        Set-Content $hba ($trust + (Get-Content $hba)) -Encoding ASCII
+        & $pgCtlPath -D $info.DataDir reload 2>&1 | Out-Null
+        Start-Sleep -Seconds 1
+        Invoke-PsqlSu "SELECT 1" '' | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Copy-Item $bak $hba -Force
+            & $pgCtlPath -D $info.DataDir reload 2>&1 | Out-Null
+            Write-Host "[FAIL] Van khong ket noi duoc bang trust (pg_hba co rule 'reject' ben tren? can Admin?)" -ForegroundColor Red
+            exit 1
+        }
+        $global:_hbaBak = $bak
+        $global:_pgDataDir = $info.DataDir
+    }
+}
 
 $env:PGPASSWORD = $suPass
 function Invoke-Psql([string]$sql) {
-    & $psqlPath -h $pgHost -p $pgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -t -A -c $sql 2>&1
+    & $psqlPath -w -h $pgHost -p $pgPort -U postgres -d postgres -v ON_ERROR_STOP=1 -t -A -c $sql 2>&1
 }
 function Quote-Sql([string]$s) { return $s.Replace("'", "''") }
+
+# ---- PHUC HOI pg_hba.conf (neu da tam mo trust) ----
+function Restore-PgHba {
+    if ($global:_hbaBak -and (Test-Path $global:_hbaBak) -and $global:_pgDataDir) {
+        Copy-Item $global:_hbaBak (Join-Path $global:_pgDataDir 'pg_hba.conf') -Force
+        & $pgCtlPath -D $global:_pgDataDir reload 2>&1 | Out-Null
+        Remove-Item $global:_hbaBak -Force -ErrorAction SilentlyContinue
+        Write-Host "  [OK] Da khoi phuc pg_hba.conf (trust chi dung tam thoi)." -ForegroundColor Green
+    }
+}
 
 Write-Host ""
 Write-Host "==> Dang kiem tra role '$pgUser'..."
@@ -95,10 +161,13 @@ if ($dbExists -match '1') {
 }
 if ($LASTEXITCODE -ne 0) { Write-Host "[FAIL] Database step that bai" -ForegroundColor Red; exit 1 }
 
+# Khoi phuc pg_hba.conf (che do RecoverSuperuser da tam mo trust)
+Restore-PgHba
+
 Write-Host ""
 Write-Host "==> Verify bang dung role '$pgUser' (gioi han 8s)..."
 $env:PGPASSWORD = $pgPass
-$ver = & $psqlPath -h $pgHost -p $pgPort -U $pgUser -d $pgDb -t -A -c "select version()" 2>&1
+$ver = & $psqlPath -w -h $pgHost -p $pgPort -U $pgUser -d $pgDb -t -A -c "select version()" 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  [OK] Ket noi thanh cong: $ver" -ForegroundColor Green
 } else {
