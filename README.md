@@ -109,6 +109,12 @@ psql -U postgres -c "CREATE ROLE admin LOGIN SUPERUSER PASSWORD 'Mat_khau_Admin_
 psql -U postgres -c "CREATE DATABASE giamsat OWNER admin;"
 # Sau đó nhớ: PG >=15 mặc định SCRAM-SHA-256 (pg_hba.conf) — đừng đổi thành md5.
 # Rồi đặt .env: GIAMSAT_DB_BACKEND=postgres, GIAMSAT_PG_USER=admin, GIAMSAT_PG_PASSWORD=<mật khẩu trên>.
+
+# ⚠️ Nếu dashboard vẫn báo "PostgreSQL unreachable / SQLite fallback" dù PG service
+# đã chạy: thường là MẬT KHẨU role admin KHÔNG KHỚP với GIAMSAT_PG_PASSWORD trong
+# .env. Chạy tool tự sửa (đồng bộ role/db theo đúng .env rồi verify):
+#   powershell -ExecutionPolicy Bypass -File tools\fix_pg_auth.ps1 -ServerDir D:\test\server
+# Sau đó RESTART server (fallback chỉ thử 1 lần lúc khởi động). Lỗi chi tiết nằm ở logs\server_error.log.
 ```
 
 ### Cấu hình Server
