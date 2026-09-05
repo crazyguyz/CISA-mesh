@@ -37,6 +37,8 @@ git pull
 - ⚠️ `server\version.txt` là **phiên bản agent-build** — server dùng nó để so sánh với phiên bản agent báo lên (`update_available = agent_version != version.txt`). Phải để **khớp với bản GiamSatAgent.exe đang phát hành**, nếu không agent sẽ tải đi tải lại mãi (vòng lặp update). `build-agent.ps1` tự ghi đúng vào cả 2 file mỗi lần build.
 - ⚠️ `server\version.txt` is the **agent-build version** — the server compares it to the version each agent reports (`update_available = agent_version != version.txt`). It MUST match the shipped `GiamSatAgent.exe`, otherwise agents loop forever (update loop). `build-agent.ps1` writes the correct value to both files on every build.
 - 💡 **Agent/Updater chạy ẩn hoàn toàn (v5.0.2+):** cả 2 EXE được build **windowed (`console=False`)** → Task Scheduler khởi động mà **không hiện cửa sổ console đen** nữa (người dùng không thể vô ý đóng khiến agent/updater tắt). `main.py` + `updater.py` tự redirect stdout/stderr khi chạy windowed. Khi build mới, `build-agent.ps1` sẽ báo `console=False (windowed - no console flash)`.
+- 🛡️ **v5.0.4 (fix console sót trên máy cũ):** nếu một máy trạm vẫn chạy bản **GiamSatUpdater.exe cũ được build `console=True`**, cửa sổ console đen sẽ bật lại mỗi lần logon và người dùng hay vô tình tắt (giết chết updater). Từ **agent 4.6.7**, `main.py`/`updater.py` **chủ động gọi `GetConsoleWindow()+ShowWindow(SW_HIDE)` ngay khi khởi động** → dù EXE cũ loại console vẫn bị ẩn sau ~vài chục ms; bản build mới (`console=False`) thì không bao giờ có console. **Sau khi cập nhật agent lên 4.6.7 trên các máy vướng, kiểm tra lại Task Scheduler** (`GiamSatUpdater`, `GiamSatAgent`) để chắc task cũ không còn trỏ vào EXE cũ.
+
 - 🔐 **v5.0.3 (2026-08):** NetFlow DoS hardening (rate-limit/exporter + template cache TTL + batch insert), 2FA rate-limit+lockout & audit username & re-enroll cần mã cũ + admin reset, nonce chống replay lệnh ký, che `ultraview_password` khỏi viewer, rate-limit dict GC + blacklist evict theo hạn, syslog UDP rate-limit, engine server đồng bộ agent (subtype/dst_port/field_equals/field_regex/FIELD_ALIASES), **PSK per-machine** (`GIAMSAT_PER_MACHINE_PSK[_FILE]`) + validate `machine_id` + sanitize hostname ở mọi ngưỡng — triệt tiêu nguồn gốc stored-XSS. Agent version bump → **4.6.6** (phải KHỚP với dist\GiamSatAgent.exe thật — lệch version = vòng lặp update vô hạn) (cần rebuild agent + push qua "Cập nhật Agent").
 - 🗄️ **v5.0.4 (2026-08) — PostgreSQL chính thức:** khôi phục role/DB PG đúng (role `admin` SUPERUSER + DB `giamsat` owner admin), **tool migrate SQLite→PG** `tools/migrate_sqlite_to_pg.py` (36 bảng ~160k rows, verify 0 issues), PG parity (ON CONFLICT predicate, `network_baseline`, `status` filter, materialized views dashboard). Nếu PG không kết nối được server **fallback SQLite có banner đỏ** + `server_error.log` + `/api/health` báo `db_fallback` — không còn âm thầm. Fix lũ 429 (SSE loadStats debounce + rate limit 1800/min), fix TypeError click tab Email/Assets/Agentless, UI hunting campaigns/history + Alerting Channels panel (Telegram/Slack/Webhook) + danh sách 8 SOAR action. Xem `dashboard-guide.md` + `summary.md`.
 
@@ -211,11 +213,18 @@ Muốn thêm dropdown mới (VD "Phòng ban"), chỉ cần thêm một đối t�
 | `GIAMSAT_NET_ALERT_INTERVAL` | Chu kỳ quét NetFlow hành vi (s) — mặc định 60 | Không |
 | `GIAMSAT_NET_ALERT_WINDOW` | Cửa sổ quét beacon/first-seen (s) — mặc định 1800 | Không |
 | `GIAMSAT_NET_BEACON_MIN_FLOWS` | Số flow tối thiểu để gọi là beacon — mặc định 5 | Không |
+| `GIAMSAT_NET_BEACON_MAX_CV` | Jitter tối đa coi là beacon (0.0–1.0) — mặc định 0.35 | Không |
+| `GIAMSAT_NET_BEACON_MIN_SPAN` | Span tối thiểu (s) tính beacon — mặc định 300 | Không |
 | `GIAMSAT_NET_FIRST_SEEN_DAYS` | Số ngày "chưa từng thấy" cho NET-FIRST — mặc định 14 | Không |
+| `GIAMSAT_SYSLOG_TCP_PORT` | Syslog TCP (RFC6587/newline) — mặc định 6514; đặt `0` để tắt | Không |
+| `GIAMSAT_SYSLOG_TLS_CERT` / `..._KEY` | Bật TLS cho syslog TCP (phải set đủ 2 biến) | Không |
+| `GIAMSAT_WEB_TLS_ENABLED` | HTTPS ngay trên cổng web 5000 (self-signed; agent cần `server_tls=true`) | Không |
+| `GIAMSAT_INTEL_FILE` | File IOC local (ips/domains) — Watchlist > "Push vào intel file" ghi file này | Không |
+| `GIAMSAT_OTX_API_KEY` | AlienVault OTX enrichment (threat intel) | Không |
 | `GIAMSAT_AGENT_PACKET_CAPTURE` | **Agent:** `1` = bật DPI scapy (TLS SNI + JA3) — cần Npcap + admin | Không |
 | `GIAMSAT_COLLECT_EXTRA_IDS` | **Agent:** bật thêm EID ồn, VD `"4656,4658,4660,5156,5158"` | Không |
 
-> **Lưu ý:** Có thể thêm API keys bất cứ lúc nào — chỉ cần sửa `.env` và restart server.
+> **Lưu ý:** Danh sách đầy đủ (kèm comment tiếng Việt) nằm trong **`server\.env.example`** — chép thành `.env` rồi chỉnh, hoặc chạy `setup\setup_config.ps1`. Script này **giữ nguyên mọi key phụ** đã có trong `.env`/example (không làm rơi cấu hình) và ghi **UTF-8 không BOM**. Có thể thêm API keys bất cứ lúc nào — chỉ cần sửa `.env` và restart server.
 
 ## 🔐 Bảo mật vận hành (TLS / bắt buộc cho production)
 

@@ -23,6 +23,16 @@ try:
 except Exception:
     pass
 
+# v5.0.4 (console regression fix): actively hide the console window if the running
+# EXE is an older console=True build (same rationale as updater.py).
+try:
+    import ctypes
+    _hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if _hwnd:
+        ctypes.windll.user32.ShowWindow(_hwnd, 0)  # SW_HIDE
+except Exception:
+    pass
+
 # ===== LINE 1: GET VERSION =====
 def _get_version():
     """Read version from agent_version.txt (embedded in EXE via PyInstaller)."""

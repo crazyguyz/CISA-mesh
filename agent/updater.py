@@ -39,6 +39,21 @@ try:
 except Exception:
     pass
 
+# v5.0.4 (console regression fix): hide the console window ACTIVELY at startup.
+# console=False in updater.spec is correct, but a machine that still runs an OLD
+# dist built with console=True would keep flashing a black box at every logon -
+# and users close it not knowing what it is (killing the updater). GetConsoleWindow
+# returns the handle even for a console-subsystem exe, so this hides it either way.
+try:
+    import ctypes
+    _user32 = ctypes.windll.user32
+    _kernel32 = ctypes.windll.kernel32
+    _hwnd = _kernel32.GetConsoleWindow()
+    if _hwnd:
+        _user32.ShowWindow(_hwnd, 0)  # SW_HIDE
+except Exception:
+    pass
+
 try:
     from http_client import base as _web_base, _ssl_ctx as _web_ssl_ctx
     def _web_open(req, timeout=15, config=None):

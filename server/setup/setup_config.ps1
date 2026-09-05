@@ -346,13 +346,27 @@ $keys = @(
     "GIAMSAT_PG_USER", "GIAMSAT_PG_PASSWORD",
     "GIAMSAT_PG_POOL_MIN", "GIAMSAT_PG_POOL_MAX",
     "DEEPSEEK_API_KEY",
-    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+    "OPENAI_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "GIAMSAT_DISABLE_AI",
+    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GIAMSAT_TELEGRAM_SOC_IDS",
     "GIAMSAT_SMTP_HOST", "GIAMSAT_SMTP_PORT",
     "GIAMSAT_SMTP_USER", "GIAMSAT_SMTP_PASS",
     "GIAMSAT_ADMIN_USER", "GIAMSAT_ADMIN_PASSWORD",
     "GIAMSAT_ENROLLMENT_SECRET",
-    "GIAMSAT_AGENT_PSK",
-    "GIAMSAT_COMMAND_KEY"
+    "GIAMSAT_AGENT_PSK", "GIAMSAT_SECRET_KEY", "GIAMSAT_COMMAND_KEY",
+    "GIAMSAT_CLUSTER_SECRET",
+    "GIAMSAT_PER_MACHINE_PSK", "GIAMSAT_PER_MACHINE_PSK_FILE",
+    # v5.0.4 — cổng / TLS / syslog TCP / threat-intel / net behavior
+    "GIAMSAT_WEB_PORT", "GIAMSAT_TCP_PORT", "GIAMSAT_WEB_TLS_ENABLED",
+    "GIAMSAT_SYSLOG_TCP_PORT", "GIAMSAT_SYSLOG_TLS_CERT", "GIAMSAT_SYSLOG_TLS_KEY",
+    "GIAMSAT_SYSLOG_MAX_PPS", "GIAMSAT_SYSLOG_MAX_WORKERS",
+    "GIAMSAT_NETFLOW_PORT", "GIAMSAT_NET_ALERT_INTERVAL", "GIAMSAT_NET_ALERT_WINDOW",
+    "GIAMSAT_NET_BEACON_MIN_FLOWS", "GIAMSAT_NET_BEACON_MAX_CV", "GIAMSAT_NET_BEACON_MIN_SPAN",
+    "GIAMSAT_NET_FIRST_SEEN_DAYS",
+    "GIAMSAT_INTEL_FILE", "GIAMSAT_OTX_API_KEY",
+    "GIAMSAT_SIGMA_AUTO", "GIAMSAT_EVENT_WORKERS", "GIAMSAT_SSE_MAX",
+    "GIAMSAT_API_RATE_LIMIT", "GIAMSAT_GEOIP_ASN_DB", "GIAMSAT_GEOIP_CITY_DB",
+    "GIAMSAT_REDIS_HOST", "GIAMSAT_REDIS_PORT", "GIAMSAT_REDIS_PASSWORD",
+    "GIAMSAT_RABBITMQ_URL", "GIAMSAT_RABBITMQ_EXCHANGE"
 )
 
 foreach ($key in $keys) {
@@ -360,8 +374,18 @@ foreach ($key in $keys) {
         $lines += "$key=$($env[$key])"
     }
 }
+# Giữ NGUYÊN mọi key phụ khác đã có trong .env cũ / .env.example (không bao giờ
+# làm rơi cấu hình khi chạy lại script này).
+foreach ($key in ($env.Keys | Where-Object { $_ -and $keys -notcontains $_ } | Sort-Object)) {
+    if ($env[$key]) {
+        $lines += "$key=$($env[$key])"
+    }
+}
 
-$lines | Out-File -Encoding utf8 $EnvFile
+# UTF-8 KHÔNG có BOM — python-dotenv sẽ đọc đúng key đầu tiên (Out-File -Encoding
+# utf8 trong Windows PowerShell 5.1 ghi BOM làm key đầu tiên bị lỗi).
+$content = ($lines -join [Environment]::NewLine) + [Environment]::NewLine
+[System.IO.File]::WriteAllText($EnvFile, $content, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "  $($T['savedTo'])" -ForegroundColor Green
 Write-Host "      $EnvFile" -ForegroundColor White

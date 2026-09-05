@@ -11,3 +11,18 @@ bcrypt
 python-dotenv
 aiohttp
 watchdog
+
+# Optional integrations — đều được code import an toàn (có try/except guard),
+# nhưng cài sẵn để mọi tính năng chạy ngay sau setup:
+#   - psutil        : system metrics (Panorama server monitor)
+#   - paramiko      : agentless SSH scan (AgentlessMonitor)
+#   - redis         : optional cache / message queue backend
+#   - pika          : RabbitMQ message queue (cluster)
+#   - geoip2        : GeoIP organization lookup (Network/NetFlow)
+#   - maxminddb     : đọc file .mmdb (GeoIP, dbip)
+psutil
+paramiko
+redis
+pika
+geoip2
+maxminddb

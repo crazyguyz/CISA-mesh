@@ -241,7 +241,8 @@ if (Test-Path $reqFile) {
     $packages = @(
         "flask", "pyjwt", "pyyaml", "cryptography", "requests", "urllib3",
         "psycopg2-binary", "waitress", "openpyxl", "bcrypt", "python-dotenv",
-        "aiohttp", "watchdog"
+        "aiohttp", "watchdog",
+        "psutil", "paramiko", "redis", "pika", "geoip2", "maxminddb"
     )
     foreach ($pkg in $packages) {
         Write-Host ("$($T['pkgInstalling'])$pkg...") -ForegroundColor Gray
