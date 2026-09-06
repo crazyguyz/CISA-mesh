@@ -1085,25 +1085,36 @@ class AgentCore:
             import tempfile as _tmp
             import ctypes as _ct
 
-            _ct.windll.user32.MessageBoxW(0,
-                "Yeu cau nhap lai thong tin nguoi su dung may tinh.\n\n"
-                "LUU Y: May tinh se can phai khoi dong lai sau khi nhap thong tin.\n"
-                "Xin hay luu lai tat ca tai lieu dang mo.",
-                "GIAM-SAT Agent - Canh Bao", 0x30 | 0x1)
+            # v5.0.5 FIX (bug "không hiện dialog nhưng máy vẫn restart"):
+            # - Chỉ xử lý khi agent đang nằm ĐÚNG session console tương tác. Nếu không
+            #   (máy khóa / chưa ai đăng nhập / session bị ngắt), KHÔNG thể hiện form
+            #   -> báo server, KHÔNG xóa config, KHÔNG restart.
+            _cur_sid = _ct.c_ulong(0)
+            _ct.windll.kernel32.ProcessIdToSessionId(os.getpid(), _ct.byref(_cur_sid))
+            _console_sid = _ct.windll.kernel32.WTSGetActiveConsoleSessionId()
+            if (not _cur_sid.value or _cur_sid.value == 0xFFFFFFFF
+                    or _cur_sid.value != _console_sid):
+                _msg = (f"May dang khong o phien console tuong tac "
+                        f"(agent session={_cur_sid.value}, console session={_console_sid}). "
+                        f"Khong the hien dialog nhap lai thong tin - may KHONG khoi dong lai.")
+                print(f"[-] {_msg}")
+                resp = {
+                    "type": "response_result",
+                    "machine_id": self.machine_id, "hostname": self.hostname,
+                    "action": "reset_user", "exec_id": exec_id, "status": "error",
+                    "error": _msg[:500],
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                self._real_send(resp)
+                return
 
             saved_machine_id = self.machine_id
             saved_hostname = self.hostname
             print(f"  [*] Preserving machine_id={saved_machine_id} hostname={saved_hostname}")
 
+            # KHÔNG xóa user_info.json/agent_config.json ở đây. Chỉ xóa SAU KHI
+            # người dùng đã xác nhận nhập xong (tránh mất cấu hình + reboot trắng).
             data_dir = self._get_agent_data_dir()
-            for fname in ["user_info.json", "agent_config.json"]:
-                path = os.path.join(data_dir, fname)
-                try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                        print(f"  [✓] Deleted: {path}")
-                except Exception:
-                    pass
 
             ps_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_{os.getpid()}.ps1")
             result_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_result_{os.getpid()}.json")
@@ -1291,6 +1302,15 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                 pass
 
             if user_name:
+                # v5.0.5: xóa cấu hình/user cũ tại ĐÂY (đã có dữ liệu mới), không xóa sớm
+                for fname in ["user_info.json", "agent_config.json"]:
+                    path = os.path.join(data_dir, fname)
+                    try:
+                        if os.path.exists(path):
+                            os.remove(path)
+                            print(f"  [✓] Deleted: {path}")
+                    except Exception:
+                        pass
                 cfg_path = os.path.join(data_dir, "agent_config.json")
                 cfg = {}
                 if os.path.exists(cfg_path):
@@ -1341,24 +1361,38 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
 
                 print(f"[✓] Config saved for user: {user_name}")
 
-            resp = {
-                "type": "response_result",
-                "machine_id": self.machine_id,
-                "hostname": self.hostname,
-                "action": "reset_user",
-                "exec_id": exec_id,
-                "status": "completed",
-                "output": f"User info updated: {user_name}. Restarting computer..."
-                    if user_name else "User canceled or no info entered. Restarting anyway...",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            self._real_send(resp)
-            print(f"[✓] Sent reset_user response to server")
-
-            print(f"[*] Restarting computer in 20 seconds...")
-            _sp.run(["shutdown", "/r", "/t", "20", "/c",
-                     "GIAM-SAT: Khoi dong lai de ap dung thong tin nguoi dung moi."],
-                    timeout=10)
+            if user_name:
+                # v5.0.5: CHỈ restart khi có thông tin mới được nhập & xác nhận.
+                resp = {
+                    "type": "response_result",
+                    "machine_id": self.machine_id,
+                    "hostname": self.hostname,
+                    "action": "reset_user",
+                    "exec_id": exec_id,
+                    "status": "completed",
+                    "output": f"User info updated: {user_name}. Restarting computer in 20s...",
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                self._real_send(resp)
+                print(f"[✓] Sent reset_user response to server")
+                print(f"[*] Restarting computer in 20 seconds...")
+                _sp.run(["shutdown", "/r", "/t", "20", "/c",
+                         "GIAM-SAT: Khoi dong lai de ap dung thong tin nguoi dung moi."],
+                        timeout=10)
+            else:
+                # v5.0.5 FIX: user hủy / dialog không hiện / không nhập được
+                # -> KHÔNG xóa gì thêm, KHÔNG khởi động lại máy.
+                _msg = ("Nguoi dung huy hoac khong nhap duoc thong tin (dialog khong hien / "
+                        "khong co nguoi tuong tac tai may). May KHONG khoi dong lai.")
+                resp = {
+                    "type": "response_result",
+                    "machine_id": self.machine_id, "hostname": self.hostname,
+                    "action": "reset_user", "exec_id": exec_id, "status": "skipped",
+                    "error": _msg[:500],
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                self._real_send(resp)
+                print(f"[✓] reset_user skipped (no input) - NOT restarting")
 
         except Exception as e:
             print(f"[-] Reset user info failed: {e}")
