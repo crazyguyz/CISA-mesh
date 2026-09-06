@@ -1904,8 +1904,11 @@ const HEARTBEAT_RELOAD_COOLDOWN = 10000; // 10 seconds between reloads from hear
 // froze the whole dashboard. Debounce to 10s.
 let _lastStatsReload = 0;
 const STATS_RELOAD_COOLDOWN = 10000;
+let _sseStream = null; // v5.x FIX: chỉ 1 EventSource/tab - đóng cái cũ trước khi tạo cái mới
 function connectSSE() {
+    if (_sseStream) { try { _sseStream.close(); } catch (e) {} _sseStream = null; }
     const evtSource = new EventSource('/api/events/stream');
+    _sseStream = evtSource;
     // v4.10 FIX: the stream sends a JSON ARRAY of events (core.sse_queue slice);
     // the old handler parsed it as a single object so register/heartbeat/
     // response_result handling never fired. Iterate the array properly.
@@ -1961,7 +1964,16 @@ function connectSSE() {
         }
       } catch(err) {}
     };
-    evtSource.onerror = function() { setTimeout(connectSSE, 3000); };
+    // v5.x FIX (log "[!] SSE: connection limit reached (8)" dù chỉ mở 1 tab):
+    // EventSource TỰ retry theo spec (readyState CONNECTING). Nếu ở đây setTimeout
+    // thêm connectSSE() nữa thì mỗi lần mạng chập chờn số luồng nhân đôi tới khi
+    // chạm trần 8 và kẹt vĩnh viễn tới khi đóng tab. Chỉ tạo lại khi stream đã
+    // thực sự CLOSED; khi CONNECTING thì để browser tự retry.
+    evtSource.onerror = function() {
+        if (evtSource.readyState === EventSource.CLOSED && _sseStream === evtSource) {
+            setTimeout(connectSSE, 3000);
+        }
+    };
 }
 
 function reloadActiveView() {
