@@ -223,13 +223,13 @@ def _check_first_boot_today():
 
 
 def _load_config():
-    cfg = {"server_host": "127.0.0.1", "server_port": 6666, "user_name": "", "employee_id": "", "email": "", "psk": "", "command_key": "", "branch": "", "user_extra": {}}
+    cfg = {"server_host": "127.0.0.1", "server_port": 6666, "user_name": "", "employee_id": "", "email": "", "psk": "", "command_key": "", "branch": "", "user_extra": {}, "net_mode": ""}
     try:
         path = _get_config_path()
         if os.path.exists(path):
             with open(path, "r") as f:
                 saved = json.loads(f.read())
-            for k in ["server_host", "server_port", "user_name", "employee_id", "email", "psk", "command_key", "branch", "user_extra"]:
+            for k in ["server_host", "server_port", "user_name", "employee_id", "email", "psk", "command_key", "branch", "user_extra", "net_mode"]:
                 if k in saved:
                     cfg[k] = saved[k]
     except Exception:
@@ -260,7 +260,7 @@ def _generate_machine_id():
     return str(uuid.uuid4())[:8]
 
 
-def _save_config(host, port, user_name="", employee_id="", email="", psk="", command_key="", branch="", user_extra=None):
+def _save_config(host, port, user_name="", employee_id="", email="", psk="", command_key="", branch="", user_extra=None, net_mode=""):
     try:
         path = _get_config_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -278,7 +278,8 @@ def _save_config(host, port, user_name="", employee_id="", email="", psk="", com
         data.update({"server_host": host, "server_port": int(port),
                      "user_name": user_name, "employee_id": employee_id,
                      "email": email, "psk": psk, "command_key": command_key,
-                     "branch": branch, "user_extra": user_extra or {}, "configured": True})
+                     "branch": branch, "user_extra": user_extra or {}, "configured": True,
+                     "net_mode": (net_mode or "").strip().lower()})
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
@@ -320,12 +321,33 @@ def _is_service_running():
         return False
 
 
-def _show_config_dialog(remote=None):
+def _has_interactive_console():
+    """v4.8.0: có người đang ngồi ở màn hình máy này không (session console tương tác)?
+    Dialog chỉ nên bật khi có người thật nhập được; nếu agent chạy session 0/dịch vụ
+    (máy chưa ai đăng nhập) thì bỏ qua dialog thay vì bật cửa sổ vô hình."""
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        sid = ctypes.c_ulong(0)
+        ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(sid))
+        cs = ctypes.windll.kernel32.WTSGetActiveConsoleSessionId()
+        return bool(sid.value and sid.value != 0xFFFFFFFF and sid.value == cs)
+    except Exception:
+        return True
+
+
+def _show_config_dialog(remote=None, preselect_mode=""):
     """Python tkinter config dialog - no PowerShell dependency.
     Works on all Windows machines including those with AppLocker/CLM.
     v5.0.4: khi có remote config (file ip-server từ xa) thì CHỈ hỏi thông tin cá
     nhân - server host/port/psk/command key tự lấy từ remote config/cấu hình cũ."""
     cfg = _load_config()
+    # v4.8.0: net_mode = 'lan' (kết nối trực tiếp) hoặc 'tailscale'.
+    cfg["net_mode"] = (cfg.get("net_mode") or "").strip().lower()
+    if not cfg["net_mode"]:
+        cfg["net_mode"] = preselect_mode or (
+            "tailscale" if (remote and remote.get("auth_command")) else "lan")
     use_remote = bool(remote and remote.get("server_host"))
     if use_remote:
         cfg["server_host"] = str(remote.get("server_host") or cfg["server_host"])
@@ -340,7 +362,8 @@ def _show_config_dialog(remote=None):
     result = {"confirmed": False, "host": cfg["server_host"], "port": cfg["server_port"],
               "user_name": cfg["user_name"], "employee_id": cfg["employee_id"], "email": cfg["email"],
               "psk": cfg.get("psk", ""), "command_key": cfg.get("command_key", ""),
-              "branch": cfg.get("branch", ""), "user_extra": cfg.get("user_extra", {}) or {}}
+              "branch": cfg.get("branch", ""), "user_extra": cfg.get("user_extra", {}) or {},
+              "net_mode": cfg["net_mode"]}
 
     try:
         import os as _os, sys as _sys
@@ -358,7 +381,7 @@ def _show_config_dialog(remote=None):
         from tkinter import ttk
     except ImportError:
         _log("tkinter not available, using defaults")
-        return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {})
+        return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {}), result.get("net_mode", "")
 
     _log("Launching tkinter config dialog...")
 
@@ -382,9 +405,10 @@ def _show_config_dialog(remote=None):
     root.configure(bg=BG)
 
     # Window size and centering
-    W, H = 420, 640
+    W = 420
     ws = root.winfo_screenwidth()
     hs = root.winfo_screenheight()
+    H = min(770, max(640, hs - 80))
     x = (ws - W) // 2
     y = (hs - H) // 2
     root.geometry(f"{W}x{H}+{x}+{y}")
@@ -395,10 +419,10 @@ def _show_config_dialog(remote=None):
     t.place(x=50, y=10)
 
     t2 = tk.Label(root,
-                  text="Cau hinh thong tin nguoi dung (server da duoc cau hinh tu xa)" if use_remote else "Cau hinh ket noi den may chu",
+                  text="Chon cach ket noi roi nhap thong tin (LAN = khong can Tailscale)",
                   font=("Segoe UI", 9),
                   fg=LABEL_FG, bg=BG)
-    t2.place(x=85, y=38)
+    t2.place(x=45, y=38)
 
     def make_label(text, row_y):
         lbl = tk.Label(root, text=text, font=("Segoe UI", 9), fg=LABEL_FG, bg=BG, anchor="w")
@@ -413,27 +437,45 @@ def _show_config_dialog(remote=None):
         e.place(x=30, y=row_y, width=width, height=28)
         return sv
 
-    y_pos = 72
-    if not use_remote:
-        make_label("Dia chi may chu (IP/Hostname):", y_pos)
-        y_pos += 20
-        sv_host = make_entry(y_pos, 340, cfg["server_host"])
-        y_pos += 36
+    # v4.8.0: radio chọn chế độ kết nối LAN (trực tiếp) hoặc qua Tailscale.
+    make_label("Cach ket noi den server:", 66)
+    mode_var = tk.StringVar(value=cfg["net_mode"] or "lan")
 
-        make_label("Cong ket noi:", y_pos)
-        y_pos += 20
-        sv_port = make_entry(y_pos, 80, str(cfg["server_port"]))
-        y_pos += 44
-    else:
-        sv_host = sv_port = None
-        # divider starts ngay duoi tieu de khi khong hoi server
-        y_pos += 4
+    def _mk_radio(text, val, y, hint):
+        rb = tk.Radiobutton(root, text=text, value=val, variable=mode_var,
+                            font=("Segoe UI", 9), fg=LABEL_FG, bg=BG,
+                            selectcolor=ENTRY_BG, activebackground=BG,
+                            activeforeground=ACCENT, anchor="w", justify="left",
+                            highlightthickness=0, bd=0)
+        rb.place(x=30, y=y, width=375, height=20)
+        if hint:
+            hl = tk.Label(root, text=hint, font=("Segoe UI", 7), fg="#648CB4", bg=BG, anchor="w")
+            hl.place(x=52, y=y + 18, width=350)
+            return y + 36
+        return y + 22
+
+    y_pos = _mk_radio("1. Ket noi truc tiep (LAN) - nhap IP + cong cua may chu ben duoi",
+                      "lan", 90, "May tren cung mang LAN/IP cong: khong can Tailscale")
+    y_pos = _mk_radio("2. Qua Tailscale - tu dong cai/ket noi bang lenh dong 1 file authkey-tail.txt",
+                      "tailscale", y_pos, "Agent se tu chay 'tailscale up ...' (lenh dong 1) roi ket noi")
+    y_pos += 2
+
+    # Host/port LUON hien de nhap (prefill: tailscale = ip-server o dong 2 file).
+    make_label("Dia chi may chu (IP/Hostname):", y_pos)
+    y_pos += 20
+    sv_host = make_entry(y_pos, 340, cfg["server_host"])
+    y_pos += 36
+
+    make_label("Cong ket noi:", y_pos)
+    y_pos += 20
+    sv_port = make_entry(y_pos, 80, str(cfg["server_port"]))
+    y_pos += 36
 
     # Section divider
     sep = tk.Label(root, text="THONG TIN NGUOI SU DUNG", font=("Segoe UI", 8),
                    fg="#648CB4", bg=BG)
     sep.place(x=100, y=y_pos)
-    y_pos += 22
+    y_pos += 18
 
     make_label("Nguoi su dung:", y_pos)
     y_pos += 20
@@ -448,7 +490,7 @@ def _show_config_dialog(remote=None):
     make_label("Email:", y_pos)
     y_pos += 20
     sv_email = make_entry(y_pos, 340, cfg["email"])
-    y_pos += 48
+    y_pos += 40
 
     # v4.9: configurable dropdown fields (admin-editable user_fields.json)
     combo_vars = {}
@@ -461,7 +503,7 @@ def _show_config_dialog(remote=None):
                           font=("Consolas", 11))
         cb.place(x=30, y=y_pos, width=340, height=28)
         combo_vars[fld["key"]] = sv
-        y_pos += 48
+        y_pos += 40
 
     # v4.5.5: PSK + Command Key - LUON hien (server can PSK de xac thuc may tram).
     # Chỉ host/port là tự động từ remote config; psk/command_key vẫn do quản trị
@@ -469,26 +511,22 @@ def _show_config_dialog(remote=None):
     make_label("PSK (khoa bao mat - bat buoc trung voi GIAMSAT_AGENT_PSK cua server):", y_pos)
     y_pos += 20
     sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
-    y_pos += 48
+    y_pos += 40
 
     make_label("Command Key (khoa ky lenh - trung voi GIAMSAT_COMMAND_KEY):", y_pos)
     y_pos += 20
     sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
-    y_pos += 48
+    y_pos += 40
 
     def on_ok():
-        if use_remote:
-            host = cfg["server_host"]
+        host = sv_host.get().strip()
+        port_str = sv_port.get().strip()
+        try:
+            port = int(port_str)
+            if port < 1 or port > 65535:
+                port = int(cfg["server_port"] or 6666)
+        except ValueError:
             port = int(cfg["server_port"] or 6666)
-        else:
-            host = sv_host.get().strip()
-            port_str = sv_port.get().strip()
-            try:
-                port = int(port_str)
-                if port < 1 or port > 65535:
-                    port = cfg["server_port"]
-            except ValueError:
-                port = cfg["server_port"]
         result["host"] = host
         result["port"] = port
         result["user_name"] = sv_name.get().strip()
@@ -499,6 +537,7 @@ def _show_config_dialog(remote=None):
         result["branch"] = _ux.get("branch", "")
         result["psk"] = sv_psk.get().strip() if sv_psk else cfg.get("psk", "")
         result["command_key"] = sv_ckey.get().strip() if sv_ckey else cfg.get("command_key", "")
+        result["net_mode"] = (mode_var.get() or "lan").strip().lower()
         result["confirmed"] = True
         root.destroy()
 
@@ -535,13 +574,14 @@ def _show_config_dialog(remote=None):
         command_key = result.get("command_key", "")
         branch = result.get("branch", "")
         user_extra = result.get("user_extra", {}) or {}
-        _save_config(host, port, user_name, employee_id, email, psk, command_key, branch, user_extra)
+        net_mode = (result.get("net_mode") or "lan").strip().lower()
+        _save_config(host, port, user_name, employee_id, email, psk, command_key, branch, user_extra, net_mode)
         _save_runtime_config(host, port)
-        _log(f"Config saved via tkinter: {host}:{port} user={user_name} psk={'set' if psk else 'empty'}")
-        return host, port, user_name, employee_id, email, psk, command_key, branch, user_extra
+        _log(f"Config saved via tkinter: {host}:{port} user={user_name} mode={net_mode} psk={'set' if psk else 'empty'}")
+        return host, port, user_name, employee_id, email, psk, command_key, branch, user_extra, net_mode
 
     _log("Config dialog cancelled, using defaults")
-    return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {})
+    return result["host"], result["port"], result["user_name"], result["employee_id"], result["email"], result.get("psk", ""), result.get("command_key", ""), result.get("branch", ""), result.get("user_extra", {}), (result.get("net_mode") or "lan").strip().lower()
 
 
 def _save_runtime_config(host, port):
@@ -847,70 +887,123 @@ if __name__ == "__main__":
             try: os.remove(ff)
             except: pass
 
-        fb = not fc and _check_first_boot_today()
         cfg = _load_config()
         un = cfg.get("user_name", "").strip()
+        cfg_net = (cfg.get("net_mode") or "").strip().lower()
 
-        # v5.0.4: remote bootstrap - tải file cấu hình cố định (Tailscale + ip-server),
-        # tự cài/kết nối Tailscale, cập nhật server host/port từ file (người dùng không
-        # cần biết/điền thông tin server nữa). Offline dùng bản cache gần nhất.
-        remote = None
         try:
             from remote_bootstrap import fetch_remote_config, ensure_tailscale_up
         except Exception:
             fetch_remote_config = ensure_tailscale_up = None
-        if fetch_remote_config is not None:
+
+        remote = None
+        # v4.8.0: hiện dialog khi máy CHƯA có người dùng (máy mới / copy sang máy khác)
+        # hoặc bị ép (force_config.flag) và CÓ người ngồi ở console. Bỏ giới hạn cũ
+        # "chỉ hỏi 1 lần/ngày" - chính nó khiến máy mới KHÔNG hiện dialog.
+        need_dialog = fc or (un == "" and _has_interactive_console())
+
+        if need_dialog:
+            # Prefill cho dialog: chế độ tailscale dùng lệnh dòng 1 + ip-server dòng 2.
+            if fetch_remote_config is not None:
+                try:
+                    remote = fetch_remote_config()
+                except Exception as e:
+                    _log(f"Remote config prefill fail: {e}")
+            _log("Showing config dialog...")
             try:
-                remote = fetch_remote_config()
-                if remote and remote.get("auth_command"):
+                result = _show_config_dialog(remote, preselect_mode=cfg_net)
+                host, port, user_name, employee_id, email, psk, command_key, branch, user_extra, net_mode = result
+                _log(f"Dialog result: host={host}:{port} user={user_name} mode={net_mode}")
+            except Exception as e:
+                _log(f"Config dialog error ({e}) - dung cau hinh cu, tiep tuc khoi dong")
+                host = cfg["server_host"]; port = cfg["server_port"]
+                user_name = cfg["user_name"]; employee_id = cfg["employee_id"]; email = cfg["email"]
+                psk = cfg.get("psk", ""); command_key = cfg.get("command_key", "")
+                branch = cfg.get("branch", ""); user_extra = cfg.get("user_extra", {}) or {}
+                net_mode = cfg_net or ("tailscale" if (remote and remote.get("auth_command")) else "lan")
+            net_mode = (net_mode or "lan").strip().lower()
+            if net_mode == "tailscale":
+                # v4.8.0: chọn Tailscale -> tự động chạy đúng lệnh dòng 1 (authkey)
+                # để cài/kết nối Tailscale trước khi kết nối server.
+                auth = (remote and remote.get("auth_command")) or ""
+                if auth:
                     try:
-                        _ok_ts, _msg_ts = ensure_tailscale_up(remote["auth_command"])
+                        _ok_ts, _msg_ts = ensure_tailscale_up(auth)
                         _log(f"Tailscale bootstrap: {_msg_ts}")
                     except Exception as e:
                         _log(f"Tailscale bootstrap fail: {e}")
-                if remote and remote.get("server_host"):
-                    cfg["server_host"] = str(remote["server_host"])
+                else:
+                    _log("Tailscale mode but no auth_command in remote file - tailscale up NOT run")
+                # Host để trống thì lấy ip-server dòng 2 trong file
+                if (not host or host in ("", "127.0.0.1", "localhost")) and remote and remote.get("server_host"):
+                    host = str(remote["server_host"])
                     if remote.get("server_port"):
-                        cfg["server_port"] = int(remote["server_port"])
-                    if remote.get("psk"):
-                        cfg["psk"] = str(remote["psk"])
-                    if remote.get("command_key"):
-                        cfg["command_key"] = str(remote["command_key"])
-                    _persist_remote_server(cfg["server_host"], cfg["server_port"],
-                                           cfg.get("psk"), cfg.get("command_key"))
-                    _log(f"Remote config OK: server={cfg['server_host']}:{cfg['server_port']}")
-            except Exception as e:
-                _log(f"Remote config fail: {e}")
+                        port = int(remote["server_port"])
+            else:
+                _log("LAN mode: khong chay Tailscale, dung host/port nguoi dung nhap")
+        else:
+            if cfg_net == "lan":
+                _log("Configured LAN mode - khong fetch remote/tailscale")
+            else:
+                # Legacy / auto-tailscale (hoặc máy headless chưa cấu hình): giữ hành vi cũ
+                if fetch_remote_config is not None:
+                    try:
+                        remote = fetch_remote_config()
+                        if remote and remote.get("auth_command"):
+                            try:
+                                _ok_ts, _msg_ts = ensure_tailscale_up(remote["auth_command"])
+                                _log(f"Tailscale bootstrap: {_msg_ts}")
+                            except Exception as e:
+                                _log(f"Tailscale bootstrap fail: {e}")
+                        if remote and remote.get("server_host"):
+                            cfg["server_host"] = str(remote["server_host"])
+                            if remote.get("server_port"):
+                                cfg["server_port"] = int(remote["server_port"])
+                            if remote.get("psk"):
+                                cfg["psk"] = str(remote["psk"])
+                            if remote.get("command_key"):
+                                cfg["command_key"] = str(remote["command_key"])
+                            _persist_remote_server(cfg["server_host"], cfg["server_port"],
+                                                   cfg.get("psk"), cfg.get("command_key"))
+                            _log(f"Remote config OK: server={cfg['server_host']}:{cfg['server_port']}")
+                    except Exception as e:
+                        _log(f"Remote config fail: {e}")
+            bp = _get_boot_tracker_path()
+            try:
+                with open(bp, "r") as f:
+                    bd = json.loads(f.read())
+            except Exception:
+                bd = {}
+            _log(f"Skip dialog, boot {bd.get('count', 0)}x today, user={un}")
+            host = cfg["server_host"]
+            port = cfg["server_port"]
+            user_name = cfg["user_name"]
+            employee_id = cfg["employee_id"]
+            email = cfg["email"]
+            psk = cfg.get("psk", "")
+            command_key = cfg.get("command_key", "")
+            branch = cfg.get("branch", "")
+            user_extra = cfg.get("user_extra", {}) or {}
+            net_mode = cfg_net
+            if not net_mode and remote and remote.get("auth_command"):
+                net_mode = "tailscale"  # legacy auto-tailscale
+            if not net_mode:
+                net_mode = "lan"
 
-        # v5.0.4: watchdog khôi phục Tailscale - nếu user xóa/app uninstall Tailscale
-        # làm mất kết nối, agent tự cài lại + up + ẩn icon (máy nào đang dùng cơ chế
-        # này sẽ có flag tailscale-enabled.flag từ lần bật trước).
+        # v5.0.4: watchdog phục hồi Tailscale - chỉ dành cho chế độ tailscale
+        # (máy LAN thuần không cần/bị làm phiền bởi watchdog).
         try:
             import threading as _thr
             from remote_bootstrap import watchdog_loop as _ts_watchdog
             from remote_bootstrap import is_enabled as _ts_enabled
-            if (remote and remote.get("auth_command")) or _ts_enabled():
+            if net_mode != "lan" and ((remote and remote.get("auth_command")) or _ts_enabled()):
                 _thr.Thread(target=_ts_watchdog, daemon=True).start()
                 _log("Tailscale watchdog started")
         except Exception as e:
             _log(f"Tailscale watchdog start fail: {e}")
 
-        _log(f"Config: dir={dd} exists={os.path.exists(dd)} force={fc} first_boot={fb} user='{un}' server={cfg['server_host']}:{cfg['server_port']} DIALOG={fc or (fb and not un)}")
-
-        if fc or (fb and not un):
-            _log("Showing config dialog...")
-            result = _show_config_dialog(remote)
-            _log(f"Dialog result: host={result[0]}:{result[1]} user={result[2]}")
-        else:
-            bp = _get_boot_tracker_path()
-            try:
-                with open(bp,"r") as f: bd = json.loads(f.read())
-            except: bd = {}
-            _log(f"Skip dialog, boot {bd.get('count', 0)}x today, user={un}")
-            result = (cfg["server_host"], cfg["server_port"], cfg["user_name"], cfg["employee_id"], cfg["email"], cfg.get("psk", ""), cfg.get("command_key", ""), cfg.get("branch", ""), cfg.get("user_extra", {}) or {})
-
-        host, port, user_name, employee_id, email, psk, command_key, branch, user_extra = result
-        _log(f"Connecting {host}:{port} user={user_name} psk={'set' if psk else 'empty'}")
+        _log(f"Config: dir={dd} exists={os.path.exists(dd)} force={fc} user='{un}' server={host}:{port} mode={net_mode}")
+        _log(f"Connecting {host}:{port} user={user_name} mode={net_mode} psk={'set' if psk else 'empty'}")
 
         _save_runtime_config(host, port)
 

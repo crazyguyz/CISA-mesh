@@ -1302,7 +1302,16 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                 pass
 
             if user_name:
-                # v5.0.5: xóa cấu hình/user cũ tại ĐÂY (đã có dữ liệu mới), không xóa sớm
+                # v5.0.5: chụp config cũ TRƯỚC khi xóa (giữ net_mode/psk/command_key)
+                _old_cfg = {}
+                _old_cfg_path = os.path.join(data_dir, "agent_config.json")
+                try:
+                    if os.path.exists(_old_cfg_path):
+                        with open(_old_cfg_path, "r", encoding="utf-8") as f:
+                            _old_cfg = json.loads(f.read())
+                except Exception:
+                    pass
+                # xóa cấu hình/user cũ tại ĐÂY (đã có dữ liệu mới), không xóa sớm
                 for fname in ["user_info.json", "agent_config.json"]:
                     path = os.path.join(data_dir, fname)
                     try:
@@ -1337,6 +1346,12 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                 self.branch = branch
                 self.user_extra = user_extra or {}
                 cfg["configured"] = True
+                # v4.8.0: giữ nguyên chế độ kết nối LAN/Tailscale + khóa của config cũ
+                cfg["net_mode"] = (cfg.get("net_mode") or _old_cfg.get("net_mode") or "").strip().lower()
+                if not cfg.get("psk"):
+                    cfg["psk"] = _old_cfg.get("psk", "")
+                if not cfg.get("command_key"):
+                    cfg["command_key"] = _old_cfg.get("command_key", "")
                 os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
                 with open(cfg_path, "w") as f:
                     json.dump(cfg, f, indent=2)
