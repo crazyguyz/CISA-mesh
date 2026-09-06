@@ -331,6 +331,12 @@ def _show_config_dialog(remote=None):
         cfg["server_host"] = str(remote.get("server_host") or cfg["server_host"])
         if remote.get("server_port"):
             cfg["server_port"] = int(remote["server_port"])
+    # psk/command_key có thể được cấp phát qua remote config (file host NỘI BỘ) -
+    # nếu có thì dùng làm giá trị mặc định cho dialog (vẫn hiển thị để kiểm tra).
+    if remote and remote.get("psk"):
+        cfg["psk"] = str(remote["psk"])
+    if remote and remote.get("command_key"):
+        cfg["command_key"] = str(remote["command_key"])
     result = {"confirmed": False, "host": cfg["server_host"], "port": cfg["server_port"],
               "user_name": cfg["user_name"], "employee_id": cfg["employee_id"], "email": cfg["email"],
               "psk": cfg.get("psk", ""), "command_key": cfg.get("command_key", ""),
@@ -457,19 +463,18 @@ def _show_config_dialog(remote=None):
         combo_vars[fld["key"]] = sv
         y_pos += 48
 
-    # v4.5.5: PSK + Command Key (ẩn khi dùng remote config - lấy từ cấu hình cũ)
-    if not use_remote:
-        make_label("PSK (khoa bao mat - de trong neu khong dung):", y_pos)
-        y_pos += 20
-        sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
-        y_pos += 48
+    # v4.5.5: PSK + Command Key - LUON hien (server can PSK de xac thuc may tram).
+    # Chỉ host/port là tự động từ remote config; psk/command_key vẫn do quản trị
+    # cấp phát - có thể điền tay hoặc để trống nếu đã được cấp sẵn trong config.
+    make_label("PSK (khoa bao mat - bat buoc trung voi GIAMSAT_AGENT_PSK cua server):", y_pos)
+    y_pos += 20
+    sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
+    y_pos += 48
 
-        make_label("Command Key (khoa ky lenh - de trong neu khong dung):", y_pos)
-        y_pos += 20
-        sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
-        y_pos += 48
-    else:
-        sv_psk = sv_ckey = None
+    make_label("Command Key (khoa ky lenh - trung voi GIAMSAT_COMMAND_KEY):", y_pos)
+    y_pos += 20
+    sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
+    y_pos += 48
 
     def on_ok():
         if use_remote:
@@ -552,8 +557,8 @@ def _save_runtime_config(host, port):
     except: pass
 
 
-def _persist_remote_server(host, port):
-    """v5.0.4: ghi host/port server (từ remote config) vào agent_config.json nếu đã tồn tại."""
+def _persist_remote_server(host, port, psk=None, command_key=None):
+    """v5.0.4: ghi host/port (+ psk/command_key nếu có) vào agent_config.json nếu đã tồn tại."""
     try:
         path = _get_config_path()
         if not os.path.exists(path):
@@ -562,6 +567,10 @@ def _persist_remote_server(host, port):
             data = json.loads(f.read())
         data["server_host"] = str(host)
         data["server_port"] = int(port)
+        if psk:
+            data["psk"] = str(psk)
+        if command_key:
+            data["command_key"] = str(command_key)
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
@@ -863,7 +872,12 @@ if __name__ == "__main__":
                     cfg["server_host"] = str(remote["server_host"])
                     if remote.get("server_port"):
                         cfg["server_port"] = int(remote["server_port"])
-                    _persist_remote_server(cfg["server_host"], cfg["server_port"])
+                    if remote.get("psk"):
+                        cfg["psk"] = str(remote["psk"])
+                    if remote.get("command_key"):
+                        cfg["command_key"] = str(remote["command_key"])
+                    _persist_remote_server(cfg["server_host"], cfg["server_port"],
+                                           cfg.get("psk"), cfg.get("command_key"))
                     _log(f"Remote config OK: server={cfg['server_host']}:{cfg['server_port']}")
             except Exception as e:
                 _log(f"Remote config fail: {e}")

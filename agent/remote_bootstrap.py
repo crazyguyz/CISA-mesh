@@ -70,7 +70,8 @@ def fetch_remote_config(use_cache_fallback=True):
 def parse_remote_text(text):
     """Parse nội dung file (không phụ thuộc CRLF)."""
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
-    out = {"auth_command": "", "server_host": "", "server_port": 0, "raw": text[:2000]}
+    out = {"auth_command": "", "server_host": "", "server_port": 0,
+           "psk": "", "command_key": "", "raw": text[:2000]}
     for i, ln in enumerate(lines):
         if i == 0 and _TS_CMD_RE.match(ln) and not _BAD_CHARS.search(ln):
             out["auth_command"] = ln
@@ -85,6 +86,12 @@ def parse_remote_text(text):
                     out["server_port"] = int(port)
                     continue
             out["server_host"] = val
+            continue
+        # tuỳ chọn (an toàn khi file được host NỘI BỘ): psk / command_key
+        sk = re.match(r"(?i)^\s*(psk|command[_-]?key)\s*[:=]\s*(\S+)\s*$", ln)
+        if sk:
+            key = "command_key" if "key" in sk.group(1).lower() else "psk"
+            out[key] = sk.group(2)
     return out
 
 

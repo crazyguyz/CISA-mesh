@@ -188,8 +188,13 @@ Agent (kể từ bản rebuild 4.6.7) có thể **tự cài Tailscale + tự l�
   2. Nếu máy chưa có Tailscale → **tự cài** (winget, fallback MSI `pkgs.tailscale.com` — cần quyền Admin/SYSTEM) rồi **chạy đúng lệnh ở dòng 1** để kết nối vào tailnet.
   3. Đọc `ip-server:` ở dòng 2 → cập nhật server host/port cho agent.
 - **Muốn đổi authkey / địa chỉ server**: chỉ cần sửa đúng file txt đó (giữ cấu trúc 2 dòng), agent các máy sẽ tự lấy bản mới — không cần rebuild.
-- Dialog lần đầu khi đó **chỉ còn các trường cá nhân** (Người dùng / Mã nhân sự / Email / dropdown tuỳ chọn); server host/port/PSK/Command Key không hiện nữa (PSK/Command Key lấy từ cấu hình cũ đã được quản trị cấp phát trước).
-- ⚠️ Lưu ý: Tailscale phải được cài **cả trên máy chủ** và máy trạm nằm cùng tailnet; server vẫn cần có PSK (`GIAMSAT_AGENT_PSK`) khớp — phần này không nằm trong file txt.
+- Dialog lần đầu khi có remote config: **host/port được tự động hoá** (không hiện), còn **PSK + Command Key vẫn hiển thị để nhập** (server bắt buộc xác thực bằng PSK). Nếu file cấu hình được host **nội bộ** (không public), có thể thêm 2 dòng tuỳ chọn để agent tự điền luôn:
+  ```
+  psk:MatKhauPSK_Trung_Server
+  command_key:CommandKey_Trung_Server
+  ```
+  ⚠️ KHÔNG đưa PSK/command_key vào file nếu file đang public trên Google Drive — ai đọc được file là chiếm được toàn bộ agent.
+- ⚠️ Lưu ý: Tailscale phải được cài **cả trên máy chủ** và máy trạm nằm cùng tailnet; server vẫn cần có PSK (`GIAMSAT_AGENT_PSK`) khớp — nếu không đặt PSK trong file nội bộ thì người cài máy trạm sẽ tự nhập PSK ở dialog (đúng như trước đây).
 
 ### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
 
