@@ -416,6 +416,26 @@ Set-Content -Path $StartScriptPath -Value $startBat -Encoding ASCII
 Write-Host ("$($T['startScript'])$StartScriptPath") -ForegroundColor Green
 
 # =============================================================================
+# 7b. Firewall: cho phep inbound TCP 6666 (may tram ket noi den server)
+#     Port-based -> khong phu thuoc interpreter Python nao dang chay.
+# =============================================================================
+$fwExists = Get-NetFirewallRule -DisplayName "GIAM-SAT TCP 6666 inbound" -ErrorAction SilentlyContinue
+if (-not $fwExists) {
+    try {
+        New-NetFirewallRule -DisplayName "GIAM-SAT TCP 6666 inbound" `
+            -Direction Inbound -Action Allow -Protocol TCP -LocalPort 6666 `
+            -Profile Any -Enabled True | Out-Null
+        Write-Host "  [+] Firewall: allowed inbound TCP 6666 (all profiles)" -ForegroundColor Green
+    } catch {
+        Write-Host "  [!] Firewall rule creation failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  [+] Firewall rule 'GIAM-SAT TCP 6666 inbound' already exists" -ForegroundColor Green
+}
+Write-Host ""
+
+
+# =============================================================================
 # Summary
 # =============================================================================
 Write-Host ""
