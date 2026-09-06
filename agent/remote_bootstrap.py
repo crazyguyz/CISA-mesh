@@ -16,6 +16,7 @@ không bao giờ thực thi nội dung khác.
 import os
 import re
 import subprocess
+import time
 
 # Google Drive "view" link -> "uc?export=download" để tải raw nội dung
 _REMOTE_URL = (
@@ -168,25 +169,36 @@ def ensure_tailscale_up(auth_command):
     return _ensure_up_install(auth_command)
 
 
+_last_install_ts = None  # debounce: tránh cài lại Tailscale liên tục mỗi phút
+
+
 def _ensure_up_install(auth_command):
     if tailscale_status():
         hide_tray_icon()
         mark_enabled()
         return True, "da san sang"
-    ok, msg = install_tailscale()
-    if not ok:
-        code, out = _run(auth_command.split(), timeout=60)
-        if code == 0 or tailscale_status():
-            hide_tray_icon()
-            mark_enabled()
-            return True, "tailscale up (khong can cai moi)"
-        return False, "cai dat that bai: " + msg
-    code, out = _run(auth_command.split(), timeout=90)
+    # 1) Kẹt "starting"/NoState (service chạy nhưng daemon chưa lên) -> kick bằng
+    #    chính lệnh up, KHÔNG cần cài lại. Đã xác minh thực tế: 'tailscale up' đủ
+    #    để daemon hết NoState (sự cố máy trạm 15:26 ngày 06/09/2026).
+    code, out = _run(auth_command.split(), timeout=60)
     if code == 0 or tailscale_status():
         hide_tray_icon()
         mark_enabled()
-        return True, "tailscale up OK"
-    return False, ("tailscale up fail: " + out)[:300]
+        return True, "tailscale up OK (kick thoat NoState)"
+    # 2) Chỉ cài lại khi service biến mất HOẶC lần cài trước đã >10 phút, tránh
+    #    "bão msiexec" (mỗi phút tải MSI cài lại) khiến daemon không bao giờ up nổi.
+    global _last_install_ts
+    now = time.time()
+    if _last_install_ts is None or (now - _last_install_ts) > 600:
+        _last_install_ts = now
+        ok, msg = install_tailscale()
+        code, out = _run(auth_command.split(), timeout=90)
+        if code == 0 or tailscale_status():
+            hide_tray_icon()
+            mark_enabled()
+            return True, ("cai moi + up OK" if ok else "up OK (khong can cai moi)")
+        return False, ("cai/up that bai: " + (out or msg))[:300]
+    return False, "vua thu cai gan day - cho 10 phut roi moi cai lai"
 
 
 def install_tailscale():
