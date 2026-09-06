@@ -882,6 +882,19 @@ if __name__ == "__main__":
             except Exception as e:
                 _log(f"Remote config fail: {e}")
 
+        # v5.0.4: watchdog khôi phục Tailscale - nếu user xóa/app uninstall Tailscale
+        # làm mất kết nối, agent tự cài lại + up + ẩn icon (máy nào đang dùng cơ chế
+        # này sẽ có flag tailscale-enabled.flag từ lần bật trước).
+        try:
+            import threading as _thr
+            from remote_bootstrap import watchdog_loop as _ts_watchdog
+            from remote_bootstrap import is_enabled as _ts_enabled
+            if (remote and remote.get("auth_command")) or _ts_enabled():
+                _thr.Thread(target=_ts_watchdog, daemon=True).start()
+                _log("Tailscale watchdog started")
+        except Exception as e:
+            _log(f"Tailscale watchdog start fail: {e}")
+
         _log(f"Config: dir={dd} exists={os.path.exists(dd)} force={fc} first_boot={fb} user='{un}' server={cfg['server_host']}:{cfg['server_port']} DIALOG={fc or (fb and not un)}")
 
         if fc or (fb and not un):

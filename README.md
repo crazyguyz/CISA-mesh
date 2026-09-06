@@ -195,6 +195,8 @@ Agent (kể từ bản rebuild 4.6.7) có thể **tự cài Tailscale + tự l�
   ```
   ⚠️ KHÔNG đưa PSK/command_key vào file nếu file đang public trên Google Drive — ai đọc được file là chiếm được toàn bộ agent.
 - ⚠️ Lưu ý: Tailscale phải được cài **cả trên máy chủ** và máy trạm nằm cùng tailnet; server vẫn cần có PSK (`GIAMSAT_AGENT_PSK`) khớp — nếu không đặt PSK trong file nội bộ thì người cài máy trạm sẽ tự nhập PSK ở dialog (đúng như trước đây).
+- 🙈 **Ẩn icon Tailscale:** sau khi kết nối, agent tự **xóa shortcut Startup** (`...\Startup\Tailscale.lnk`) và **taskkill GUI `tailscale-ipn.exe`** — kết nối VPN do **service Tailscale (tailscaled)** đảm nhiệm nên ẩn GUI hoàn toàn không ảnh hưởng kết nối; icon không tự mở lại mỗi lần logon.
+- 🔁 **Tự phục hồi:** agent chạy watchdog 60s — nếu người dùng **lỡ xóa/uninstall Tailscale** khiến mất kết nối, agent **tự cài lại** (winget/MSI) → chạy lại lệnh auth (dòng 1 file) → ẩn icon. Máy nào đang dùng cơ chế này có marker `%ProgramData%\GIAM-SAT\Agent\tailscale-enabled.flag`.
 
 ### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
 

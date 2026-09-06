@@ -165,14 +165,100 @@ def ensure_tailscale_up(auth_command):
     if not auth_command:
         return False, "khong co auth_command"
     if tailscale_status():
+        hide_tray_icon()  # đã up - chỉ cần ẩn icon tray
+        mark_enabled()
         return True, "da san sang"
     ok, msg = install_tailscale()
     if not ok:
         code, out = _run(auth_command.split(), timeout=60)
         if code == 0 or tailscale_status():
+            hide_tray_icon()
+            mark_enabled()
             return True, "tailscale up (khong can cai moi)"
         return False, "cai dat that bai: " + msg
     code, out = _run(auth_command.split(), timeout=90)
     if code == 0 or tailscale_status():
+        hide_tray_icon()
+        mark_enabled()
         return True, "tailscale up OK"
     return False, ("tailscale up fail: " + out)[:300]
+
+
+
+# ------------------------------------------------------------------ ẩn icon tray + watchdog phục hồi
+def _flag_path():
+    return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                        "GIAM-SAT", "Agent", "tailscale-enabled.flag")
+
+
+def mark_enabled():
+    """Đánh dấu máy này DÙNG cơ chế Tailscale (để watchdog chỉ hoạt động ở đây)."""
+    try:
+        os.makedirs(os.path.dirname(_flag_path()), exist_ok=True)
+        with open(_flag_path(), "w") as f:
+            f.write("1")
+    except Exception:
+        pass
+
+
+def is_enabled():
+    return os.path.exists(_flag_path())
+
+
+def hide_tray_icon():
+    """Ẩn icon/tray Tailscale (chỉ GUI tailscale-ipn.exe; KHÔNG ảnh hưởng kết nối -
+    VPN chạy bởi service 'Tailscale' (tailscaled)). Xóa shortcut Startup để GUI
+    không tự mở lại mỗi lần logon, rồi taskkill GUI."""
+    removed = False
+    try:
+        # shortcut trong profile của user đang chạy
+        cands = [
+            os.path.join(os.environ.get("APPDATA", ""),
+                         r"Microsoft\Windows\Start Menu\Programs\Startup\Tailscale.lnk"),
+        ]
+        # agent chạy dưới SYSTEM: quét mọi profile user
+        sd = os.environ.get("SystemDrive", "C:")
+        users_root = os.path.join(sd, "Users")
+        if os.path.isdir(users_root):
+            for uname in os.listdir(users_root):
+                up = os.path.join(users_root, uname, "AppData", "Roaming",
+                                  "Microsoft", "Windows", "Start Menu",
+                                  "Programs", "Startup", "Tailscale.lnk")
+                if os.path.isdir(os.path.dirname(up) or "."):
+                    cands.append(up)
+        for p in cands:
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+                    removed = True
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        _run(["taskkill", "/IM", "tailscale-ipn.exe", "/F"], timeout=15)
+    except Exception:
+        pass
+    return removed
+
+
+def watchdog_loop():
+    """v5.0.4: chạy nền (main.py) - nếu user vô tình xóa Tailscale / mất kết nối,
+    tự cài lại + chạy lại lệnh auth rồi ẩn icon. Chỉ chạy khi máy đang dùng cơ chế
+    này (có flag hoặc cache auth command)."""
+    import time as _time
+    while True:
+        _time.sleep(60)
+        try:
+            if not is_enabled():
+                continue
+            if tailscale_status():
+                continue  # kết nối còn sống
+            rc = fetch_remote_config(use_cache_fallback=True)
+            if rc and rc.get("auth_command"):
+                ok, msg = ensure_tailscale_up(rc["auth_command"])
+                if ok:
+                    hide_tray_icon()
+                    mark_enabled()
+        except Exception:
+            pass
