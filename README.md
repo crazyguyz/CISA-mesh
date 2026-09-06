@@ -170,9 +170,26 @@ REM Output: dist\GiamSatAgent.exe, dist\GiamSatUpdater.exe
 
 ```cmd
 REM Sao chép Agent.exe đến máy trạm
-REM Chạy với tham số server IP
+REM Chạy với tham số server IP (hoặc cơ chế tự động bên dưới)
 GiamSatAgent.exe --server 192.168.1.10 --port 6666
 ```
+
+#### 🟢 Tự động kết nối qua Tailscale + server config từ xa (v5.0.4)
+
+Agent (kể từ bản rebuild 4.6.7) có thể **tự cài Tailscale + tự lấy địa chỉ server** từ một **file cấu hình cố định** trên web — người dùng chỉ cần điền **thông tin cá nhân** khi chạy lần đầu, **không cần biết/điền server**:
+
+- File cấu hình (mặc định là link Google Drive đã nhúng trong agent; có thể đổi bằng biến môi trường `GIAMSAT_TAILSCALE_CONF_URL` khi build/deploy):
+  ```
+  tailscale up --authkey=tskey-auth-XXXXXXXXXXXXXXXXXXXX     ← dòng 1: lệnh kết nối Tailscale
+  ip-server:giamsat-server:6666                              ← dòng 2: server host[:port]
+  ```
+- Khi agent khởi động:
+  1. Tự tải file (offline thì dùng bản cache gần nhất trong `%ProgramData%\GIAM-SAT\Agent\tailscale-conf.txt`).
+  2. Nếu máy chưa có Tailscale → **tự cài** (winget, fallback MSI `pkgs.tailscale.com` — cần quyền Admin/SYSTEM) rồi **chạy đúng lệnh ở dòng 1** để kết nối vào tailnet.
+  3. Đọc `ip-server:` ở dòng 2 → cập nhật server host/port cho agent.
+- **Muốn đổi authkey / địa chỉ server**: chỉ cần sửa đúng file txt đó (giữ cấu trúc 2 dòng), agent các máy sẽ tự lấy bản mới — không cần rebuild.
+- Dialog lần đầu khi đó **chỉ còn các trường cá nhân** (Người dùng / Mã nhân sự / Email / dropdown tuỳ chọn); server host/port/PSK/Command Key không hiện nữa (PSK/Command Key lấy từ cấu hình cũ đã được quản trị cấp phát trước).
+- ⚠️ Lưu ý: Tailscale phải được cài **cả trên máy chủ** và máy trạm nằm cùng tailnet; server vẫn cần có PSK (`GIAMSAT_AGENT_PSK`) khớp — phần này không nằm trong file txt.
 
 ### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
 

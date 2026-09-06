@@ -320,10 +320,17 @@ def _is_service_running():
         return False
 
 
-def _show_config_dialog():
+def _show_config_dialog(remote=None):
     """Python tkinter config dialog - no PowerShell dependency.
-    Works on all Windows machines including those with AppLocker/CLM."""
+    Works on all Windows machines including those with AppLocker/CLM.
+    v5.0.4: khi có remote config (file ip-server từ xa) thì CHỈ hỏi thông tin cá
+    nhân - server host/port/psk/command key tự lấy từ remote config/cấu hình cũ."""
     cfg = _load_config()
+    use_remote = bool(remote and remote.get("server_host"))
+    if use_remote:
+        cfg["server_host"] = str(remote.get("server_host") or cfg["server_host"])
+        if remote.get("server_port"):
+            cfg["server_port"] = int(remote["server_port"])
     result = {"confirmed": False, "host": cfg["server_host"], "port": cfg["server_port"],
               "user_name": cfg["user_name"], "employee_id": cfg["employee_id"], "email": cfg["email"],
               "psk": cfg.get("psk", ""), "command_key": cfg.get("command_key", ""),
@@ -381,7 +388,9 @@ def _show_config_dialog():
                  fg=ACCENT, bg=BG)
     t.place(x=50, y=10)
 
-    t2 = tk.Label(root, text="Cau hinh ket noi den may chu", font=("Segoe UI", 9),
+    t2 = tk.Label(root,
+                  text="Cau hinh thong tin nguoi dung (server da duoc cau hinh tu xa)" if use_remote else "Cau hinh ket noi den may chu",
+                  font=("Segoe UI", 9),
                   fg=LABEL_FG, bg=BG)
     t2.place(x=85, y=38)
 
@@ -399,15 +408,20 @@ def _show_config_dialog():
         return sv
 
     y_pos = 72
-    make_label("Dia chi may chu (IP/Hostname):", y_pos)
-    y_pos += 20
-    sv_host = make_entry(y_pos, 340, cfg["server_host"])
-    y_pos += 36
+    if not use_remote:
+        make_label("Dia chi may chu (IP/Hostname):", y_pos)
+        y_pos += 20
+        sv_host = make_entry(y_pos, 340, cfg["server_host"])
+        y_pos += 36
 
-    make_label("Cong ket noi:", y_pos)
-    y_pos += 20
-    sv_port = make_entry(y_pos, 80, str(cfg["server_port"]))
-    y_pos += 44
+        make_label("Cong ket noi:", y_pos)
+        y_pos += 20
+        sv_port = make_entry(y_pos, 80, str(cfg["server_port"]))
+        y_pos += 44
+    else:
+        sv_host = sv_port = None
+        # divider starts ngay duoi tieu de khi khong hoi server
+        y_pos += 4
 
     # Section divider
     sep = tk.Label(root, text="THONG TIN NGUOI SU DUNG", font=("Segoe UI", 8),
@@ -443,27 +457,33 @@ def _show_config_dialog():
         combo_vars[fld["key"]] = sv
         y_pos += 48
 
-    # v4.5.5: PSK field (shared secret, must match server's GIAMSAT_AGENT_PSK)
-    make_label("PSK (khoa bao mat - de trong neu khong dung):", y_pos)
-    y_pos += 20
-    sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
-    y_pos += 48
+    # v4.5.5: PSK + Command Key (ẩn khi dùng remote config - lấy từ cấu hình cũ)
+    if not use_remote:
+        make_label("PSK (khoa bao mat - de trong neu khong dung):", y_pos)
+        y_pos += 20
+        sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
+        y_pos += 48
 
-    # v4.5.5: Command Key field (command signing, must match server GIAMSAT_COMMAND_KEY)
-    make_label("Command Key (khoa ky lenh - de trong neu khong dung):", y_pos)
-    y_pos += 20
-    sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
-    y_pos += 48
+        make_label("Command Key (khoa ky lenh - de trong neu khong dung):", y_pos)
+        y_pos += 20
+        sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
+        y_pos += 48
+    else:
+        sv_psk = sv_ckey = None
 
     def on_ok():
-        host = sv_host.get().strip()
-        port_str = sv_port.get().strip()
-        try:
-            port = int(port_str)
-            if port < 1 or port > 65535:
+        if use_remote:
+            host = cfg["server_host"]
+            port = int(cfg["server_port"] or 6666)
+        else:
+            host = sv_host.get().strip()
+            port_str = sv_port.get().strip()
+            try:
+                port = int(port_str)
+                if port < 1 or port > 65535:
+                    port = cfg["server_port"]
+            except ValueError:
                 port = cfg["server_port"]
-        except ValueError:
-            port = cfg["server_port"]
         result["host"] = host
         result["port"] = port
         result["user_name"] = sv_name.get().strip()
@@ -472,8 +492,8 @@ def _show_config_dialog():
         _ux = {k: v.get().strip() for k, v in combo_vars.items()}
         result["user_extra"] = _ux
         result["branch"] = _ux.get("branch", "")
-        result["psk"] = sv_psk.get().strip()
-        result["command_key"] = sv_ckey.get().strip()
+        result["psk"] = sv_psk.get().strip() if sv_psk else cfg.get("psk", "")
+        result["command_key"] = sv_ckey.get().strip() if sv_ckey else cfg.get("command_key", "")
         result["confirmed"] = True
         root.destroy()
 
@@ -530,6 +550,24 @@ def _save_runtime_config(host, port):
         cfg["server_port"] = port
         with open(p, "w") as f: json.dump(cfg, f, indent=2)
     except: pass
+
+
+def _persist_remote_server(host, port):
+    """v5.0.4: ghi host/port server (từ remote config) vào agent_config.json nếu đã tồn tại."""
+    try:
+        path = _get_config_path()
+        if not os.path.exists(path):
+            return
+        with open(path, "r") as f:
+            data = json.loads(f.read())
+        data["server_host"] = str(host)
+        data["server_port"] = int(port)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        pass
 
 
 def _ensure_sysmon_installed():
@@ -804,11 +842,37 @@ if __name__ == "__main__":
         cfg = _load_config()
         un = cfg.get("user_name", "").strip()
 
+        # v5.0.4: remote bootstrap - tải file cấu hình cố định (Tailscale + ip-server),
+        # tự cài/kết nối Tailscale, cập nhật server host/port từ file (người dùng không
+        # cần biết/điền thông tin server nữa). Offline dùng bản cache gần nhất.
+        remote = None
+        try:
+            from remote_bootstrap import fetch_remote_config, ensure_tailscale_up
+        except Exception:
+            fetch_remote_config = ensure_tailscale_up = None
+        if fetch_remote_config is not None:
+            try:
+                remote = fetch_remote_config()
+                if remote and remote.get("auth_command"):
+                    try:
+                        _ok_ts, _msg_ts = ensure_tailscale_up(remote["auth_command"])
+                        _log(f"Tailscale bootstrap: {_msg_ts}")
+                    except Exception as e:
+                        _log(f"Tailscale bootstrap fail: {e}")
+                if remote and remote.get("server_host"):
+                    cfg["server_host"] = str(remote["server_host"])
+                    if remote.get("server_port"):
+                        cfg["server_port"] = int(remote["server_port"])
+                    _persist_remote_server(cfg["server_host"], cfg["server_port"])
+                    _log(f"Remote config OK: server={cfg['server_host']}:{cfg['server_port']}")
+            except Exception as e:
+                _log(f"Remote config fail: {e}")
+
         _log(f"Config: dir={dd} exists={os.path.exists(dd)} force={fc} first_boot={fb} user='{un}' server={cfg['server_host']}:{cfg['server_port']} DIALOG={fc or (fb and not un)}")
 
         if fc or (fb and not un):
             _log("Showing config dialog...")
-            result = _show_config_dialog()
+            result = _show_config_dialog(remote)
             _log(f"Dialog result: host={result[0]}:{result[1]} user={result[2]}")
         else:
             bp = _get_boot_tracker_path()
