@@ -132,6 +132,63 @@ def tailscale_status():
     return code == 0
 
 
+def start_tailscale_service():
+    """NoState thường do service 'Tailscale' (tailscaled) bị dừng chứ KHÔNG phải do
+    agent kill GUI. Thử khởi động service trước khi quyết định cài lại."""
+    if os.name != "nt":
+        return False
+    try:
+        code, out = _run(["sc", "query", "Tailscale"], timeout=10)
+        if code != 0:
+            return False  # service chưa tồn tại -> cần cài
+        code, _ = _run(["sc", "start", "Tailscale"], timeout=15)
+        if code == 0:
+            _run(["sc", "config", "Tailscale", "start=", "auto"], timeout=10)  # best-effort
+        return code == 0
+    except Exception:
+        return False
+
+
+def ensure_tailscale_up(auth_command):
+    """Đảm bảo Tailscale đã cài + đã up (dùng đúng lệnh trong file)."""
+    if not auth_command:
+        return False, "khong co auth_command"
+    if tailscale_status():
+        hide_tray_icon()  # đã up - chỉ cần ẩn icon tray
+        mark_enabled()
+        return True, "da san sang"
+    # NoState / daemon tắt -> thử bật service trước
+    if start_tailscale_service():
+        import time as _time
+        _time.sleep(2)
+        if tailscale_status():
+            hide_tray_icon()
+            mark_enabled()
+            return True, "da chay lai service Tailscale"
+    return _ensure_up_install(auth_command)
+
+
+def _ensure_up_install(auth_command):
+    if tailscale_status():
+        hide_tray_icon()
+        mark_enabled()
+        return True, "da san sang"
+    ok, msg = install_tailscale()
+    if not ok:
+        code, out = _run(auth_command.split(), timeout=60)
+        if code == 0 or tailscale_status():
+            hide_tray_icon()
+            mark_enabled()
+            return True, "tailscale up (khong can cai moi)"
+        return False, "cai dat that bai: " + msg
+    code, out = _run(auth_command.split(), timeout=90)
+    if code == 0 or tailscale_status():
+        hide_tray_icon()
+        mark_enabled()
+        return True, "tailscale up OK"
+    return False, ("tailscale up fail: " + out)[:300]
+
+
 def install_tailscale():
     """Cài Tailscale (cần quyền admin). winget trước, fallback MSI trực tiếp."""
     if os.name != "nt":
@@ -160,28 +217,6 @@ def install_tailscale():
         return False, str(e)
 
 
-def ensure_tailscale_up(auth_command):
-    """Đảm bảo Tailscale đã cài + đã up (dùng đúng lệnh trong file)."""
-    if not auth_command:
-        return False, "khong co auth_command"
-    if tailscale_status():
-        hide_tray_icon()  # đã up - chỉ cần ẩn icon tray
-        mark_enabled()
-        return True, "da san sang"
-    ok, msg = install_tailscale()
-    if not ok:
-        code, out = _run(auth_command.split(), timeout=60)
-        if code == 0 or tailscale_status():
-            hide_tray_icon()
-            mark_enabled()
-            return True, "tailscale up (khong can cai moi)"
-        return False, "cai dat that bai: " + msg
-    code, out = _run(auth_command.split(), timeout=90)
-    if code == 0 or tailscale_status():
-        hide_tray_icon()
-        mark_enabled()
-        return True, "tailscale up OK"
-    return False, ("tailscale up fail: " + out)[:300]
 
 
 
