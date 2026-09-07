@@ -869,11 +869,24 @@ if __name__ == "__main__":
         except ImportError:
             _log("Service imports skipped")
 
-        # Task Scheduler
+        # Task Scheduler - v4.8.1: nếu có GiamSatUpdater.exe (Updater daemon quản lý &
+        # watchdog restart agent) thì agent KHÔNG tự đăng ký task logon riêng -> tránh
+        # 2 nguồn khởi động cùng lúc (double-launch -> PyInstaller giải nén đè nhau,
+        # gây 'Failed to load Python DLL'). Máy không có updater vẫn tự đăng ký (legacy).
+        _has_updater = False
+        try:
+            _base = os.path.dirname(os.path.abspath(
+                sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)))
+            _has_updater = os.path.exists(os.path.join(_base, "GiamSatUpdater.exe"))
+        except Exception:
+            pass
         try:
             from task_scheduler import ensure_task
-            ensure_task()
-            _log("Task Scheduler OK")
+            if _has_updater:
+                _log("GiamSatUpdater.exe present - khong dang ky AgentStartup (Updater quan ly agent)")
+            else:
+                ensure_task()
+                _log("Task Scheduler OK")
         except Exception as e:
             _log(f"Task Scheduler FAIL: {e}")
 
