@@ -369,7 +369,7 @@ def get_exact_version(binary_path):
     # Method 2: PowerShell FileVersionInfo (Windows)
     if IS_WINDOWS and result["confidence"] == 0:
         try:
-            r = _run_hidden(["powershell", "-NoProfile", "-NonInteractive",
+            r = _run_hidden(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive",
                              f"(Get-Item '{binary_path}').VersionInfo.FileVersion"], timeout=10)
             ver = r.stdout.strip()
             if ver and ver != "" and "error" not in ver.lower():
@@ -469,7 +469,7 @@ def _get_installed_software_windows():
     """Get installed software list on Windows via WMI/registry."""
     software = []
     try:
-        r = _run_hidden(["powershell", "-NoProfile", "-NonInteractive",
+        r = _run_hidden(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive",
             "Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*," +
             "HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*," +
             "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* 2>$null",

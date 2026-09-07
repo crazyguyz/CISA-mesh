@@ -206,8 +206,13 @@ def _cleanup_runtime_mei():
     the in-use test; combined with an age guard (>6h) for extra safety."""
     import glob as _glob
     import time as _time
-    runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                               "GIAM-SAT", "Agent", "runtime")
+    # v4.8.1: ưu tiên dọn runtime trong C:\Tool\GIAM-SAT\runtime (thư mục ĐÃ được
+    # exclusion của bảo mật - chống Defender soi/xoá DLL đang giải nén); fallback
+    # về thư mục cũ ProgramData cho máy đang chạy build cũ.
+    _cand_tool = r"C:\Tool\GIAM-SAT\runtime"
+    _cand_pd = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                            "GIAM-SAT", "Agent", "runtime")
+    runtime_dir = _cand_tool if os.path.isdir(_cand_tool) else _cand_pd
     try:
         if os.path.exists(runtime_dir):
             # v5.0.4: if an agent is STILL running (watchdog respawn / update race),

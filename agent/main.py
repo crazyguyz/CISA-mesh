@@ -747,7 +747,7 @@ def _ensure_it_support_shortcut():
         env["GIAMSAT_EXE"] = exe
         env["GIAMSAT_DIR"] = workdir
         subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-Command", ps],
             capture_output=True, timeout=20, env=env,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
@@ -806,10 +806,14 @@ def _cleanup_old_temp_runtimes():
     temp_dir = os.environ.get("TEMP", os.path.join(os.environ.get("USERPROFILE", "C:\\"), "AppData", "Local", "Temp"))
     _safe_cleanup(temp_dir)
 
-    # 2. Clean custom runtime_tmpdir (C:\ProgramData\GIAM-SAT\Agent\runtime)
-    runtime_dir = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                               "GIAM-SAT", "Agent", "runtime")
-    _safe_cleanup(runtime_dir)
+    # 2. Clean custom runtime_tmpdir(s). v4.8.1: runtime đặt trong thư mục ĐÃ ĐƯỢC
+    #    EXCLUDE của phần mềm bảo mật (C:\Tool\GIAM-SAT\runtime) để Defender không
+    #    soi/xoá file đang giải nén (gây 'Failed to load Python DLL ...python311.dll');
+    #    vẫn quét thư mục cũ (ProgramData) cho máy đang chạy build cũ.
+    for _rd in (r"C:\Tool\GIAM-SAT\runtime",
+                os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
+                             "GIAM-SAT", "Agent", "runtime")):
+        _safe_cleanup(_rd)
 
 # v3.9.7: Cleanup old temp runtimes at startup (before PyInstaller extracts new one)
 if os.name == "nt" and getattr(sys, 'frozen', False):

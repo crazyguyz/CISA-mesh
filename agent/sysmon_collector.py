@@ -271,7 +271,7 @@ while ($true) {{
 ConvertTo-Json -InputObject $all -Depth 5 -Compress
 '''
         try:
-            r = _run_hidden(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script], timeout=30)
+            r = _run_hidden(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NonInteractive", "-Command", ps_script], timeout=30)
             if r.returncode == 0 and r.stdout and r.stdout.strip() != "[]":
                 events = json.loads(r.stdout)
                 if events:
