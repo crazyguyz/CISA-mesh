@@ -3107,6 +3107,33 @@ class PostgresDatabase:
         except Exception:
             return None
 
+    def get_threat_alerts_by_ids(self, ids):
+        """v5.0.4 R9: resolve case alert_ids -> chi tiết threat_alerts (UI Case)."""
+        ids = [i for i in (ids or []) if i is not None]
+        if not ids:
+            return []
+        try:
+            ph = ",".join(["%s"] * len(ids))
+            rows = self._execute(
+                "SELECT id, machine_id, hostname, rule_id, rule_name, severity, "
+                "status, timestamp, received_at, description, raw_data "
+                f"FROM threat_alerts WHERE id IN ({ph}) ORDER BY id DESC",
+                tuple(ids), fetchall=True) or []
+            out = []
+            for d in (rows or []):
+                d = dict(d)
+                raw = d.get("raw_data")
+                if isinstance(raw, (dict, list)):
+                    import json as _json
+                    raw = _json.dumps(raw, ensure_ascii=False)
+                if isinstance(raw, str) and len(raw) > 2000:
+                    raw = raw[:2000]
+                d["raw_data"] = raw
+                out.append(d)
+            return out
+        except Exception:
+            return []
+
     def set_case_status(self, case_id, status):
         try:
             self._execute("UPDATE cases SET status=%s, updated_at=NOW() WHERE id=%s", (status, case_id))

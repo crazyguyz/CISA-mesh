@@ -1554,6 +1554,29 @@ class DatabaseManager:
             r = self.conn.execute("SELECT * FROM cases WHERE id=?", (case_id,)).fetchone()
             return dict(r) if r else None
 
+    def get_threat_alerts_by_ids(self, ids):
+        """v5.0.4 R9: resolve case alert_ids -> chi tiết threat_alerts (để UI Case
+        hiển thị được tất cả cảnh báo tạo nên case)."""
+        ids = [i for i in (ids or []) if i is not None]
+        if not ids:
+            return []
+        try:
+            ph = ",".join("?" * len(ids))
+            with self.lock:
+                rows = self.conn.execute(
+                    "SELECT id, machine_id, hostname, rule_id, rule_name, severity, "
+                    "status, timestamp, received_at, description, raw_data "
+                    f"FROM threat_alerts WHERE id IN ({ph}) ORDER BY id DESC", tuple(ids)).fetchall()
+                out = []
+                for r in rows:
+                    d = dict(r)
+                    if isinstance(d.get("raw_data"), str) and len(d["raw_data"]) > 2000:
+                        d["raw_data"] = d["raw_data"][:2000]
+                    out.append(d)
+                return out
+        except Exception:
+            return []
+
     def set_case_status(self, case_id, status):
         with self.lock:
             self.conn.execute(

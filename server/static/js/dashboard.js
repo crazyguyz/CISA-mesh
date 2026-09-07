@@ -5408,37 +5408,95 @@ function loadCoverage() {
 
 
 // ===== v5.0.4 (Phase2 B2): CASE MANAGEMENT =====
+// v5.0.4 R9: filter tabs theo trạng thái + click case -> modal chi tiết TẤT CẢ
+// các cảnh báo tạo nên case (resolve qua /api/cases/<id> -> alerts) + song ngữ.
 let casesData = [];
+let caseFilter = 'all';
+const CASE_STATUSES = ['open', 'investigating', 'contained', 'closed', 'false_positive'];
+const CASE_ST_LABEL = { open: 'case.open', investigating: 'case.investigating', contained: 'case.contained', closed: 'case.closed', false_positive: 'case.falsePositive' };
+function caseStatusLabel(s) { var k = CASE_ST_LABEL[s]; return (k ? t(k) : s); }
+function caseSevCls(s) { return s === 'CRITICAL' ? 'bg-danger' : s === 'HIGH' ? 'bg-warning text-dark' : s === 'MEDIUM' ? 'bg-info' : 'bg-secondary'; }
+function caseStatusBadge(s) { return s === 'false_positive' ? 'bg-secondary' : s === 'closed' ? 'bg-dark' : s === 'investigating' ? 'bg-primary' : 'bg-success'; }
+function caseCounts() { var o = { all: casesData.length }; CASE_STATUSES.forEach(function (s) { o[s] = 0; }); casesData.forEach(function (c) { var s = c.status || 'open'; if (o[s] !== undefined) o[s]++; }); return o; }
+function filteredCases() { return caseFilter === 'all' ? casesData : casesData.filter(function (c) { return (c.status || 'open') === caseFilter; }); }
+function setCaseFilter(f) { caseFilter = f; renderCaseList(); }
 function loadCases() {
-    const el = document.getElementById('casesList');
+    var el = document.getElementById('casesList');
     if (!el) return;
     el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-hourglass-split"></i> ' + t('ui.loading') + '</div>';
-    fetch('/api/cases').then(r => r.json()).then(d => {
+    fetch('/api/cases').then(function (r) { return r.json(); }).then(function (d) {
         casesData = d.cases || [];
-        const open = casesData.filter(c => c.status !== 'closed').length;
-        const badge = document.getElementById('openCasesBadge');
+        var open = casesData.filter(function (c) { return c.status !== 'closed' && c.status !== 'false_positive'; }).length;
+        var badge = document.getElementById('openCasesBadge');
         if (badge) { badge.textContent = open; badge.style.display = open ? '' : 'none'; }
-        if (!casesData.length) { el.innerHTML = '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> Chưa có case.</div>'; return; }
-        const sevCls = function(s) { return s === 'CRITICAL' ? 'bg-danger' : s === 'HIGH' ? 'bg-warning text-dark' : s === 'MEDIUM' ? 'bg-info' : 'bg-secondary'; };
-        el.innerHTML = '<div class="p-2">' + casesData.map(function(c) {
-            const aids = (c.alert_ids || []).length;
-            return '<div style="background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:6px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">' +
-                '<div style="flex:1;min-width:220px;"><span class="badge ' + sevCls(c.severity) + '">' + escapeHtml(c.severity || '?') + '</span> <strong style="color:#e4e7eb;">' + escapeHtml(c.title || ('Case #' + c.id)) + '</strong> <small style="color:#5a6a7a;">#' + c.id + ' · ' + escapeHtml(c.machine_id) + '</small><br>' +
-                '<small style="color:#8892a4;">' + escapeHtml((c.description || '').substring(0, 110)) + '</small></div>' +
-                '<div style="text-align:right;font-size:11px;white-space:nowrap;">' +
-                (aids ? '<span class="badge bg-dark">' + aids + ' alert</span> ' : '') +
-                '<select style="font-size:9px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onchange="setCaseStatus(' + c.id + ', this.value)">' +
-                ['open','investigating','contained','closed','false_positive'].map(function(s) { return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>'; }).join('') + '</select><br>' +
-                '<small style="color:#8892a4;">' + escapeHtml((c.created_at || '').substring(0,19)) + '</small></div></div>';
-        }).join('') + '</div>';
-    }).catch(function() { el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
+        renderCaseList();
+    }).catch(function () { el.innerHTML = '<div class="text-center text-muted py-3">' + t('ui.loadErrX') + '</div>'; });
 }
-function setCaseStatus(id, status) {
-    fetch('/api/cases/' + id + '/status', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: status})})
-        .then(function(r) { return r.json(); }).then(function(d) { if (d.success) { showToast('✅ Case #' + id + ' -> ' + status); loadCases(); } else showToast('❌ ' + (d.error || '')); })
-        .catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
+function renderCaseList() {
+    var el = document.getElementById('casesList');
+    if (!el) return;
+    var cnt = caseCounts(), rows = filteredCases();
+    function chip(f, label) {
+        var n = f === 'all' ? cnt.all : (cnt[f] || 0);
+        return '<button class="btn btn-sm ' + (caseFilter === f ? 'btn-success' : 'btn-outline-secondary') + '" style="font-size:11px;padding:1px 8px;margin-right:4px;margin-bottom:4px;" onclick="setCaseFilter(\'' + f + '\')">' + escapeHtml(label) + ' <span class="badge bg-dark" style="font-size:9px;">' + n + '</span></button>';
+    }
+    var chips = '<div style="padding:6px 2px 8px;">' + chip('all', t('case.filterAll')) + chip('open', t('case.open')) + chip('investigating', t('case.investigating')) + chip('contained', t('case.contained')) + chip('closed', t('case.closed')) + chip('false_positive', t('case.falsePositive')) + '</div>';
+    if (!casesData.length) { el.innerHTML = chips + '<div class="text-center text-muted py-3"><i class="bi bi-check-circle text-success"></i> ' + t('case.empty') + '</div>'; return; }
+    el.innerHTML = chips + '<div style="padding:0 2px;">' + rows.map(function (c) {
+        var aids = (c.alert_ids || []).length;
+        var opts = CASE_STATUSES.map(function (s) { return '<option value="' + s + '"' + (c.status === s ? ' selected' : '') + '>' + escapeHtml(caseStatusLabel(s)) + '</option>'; }).join('');
+        return '<div onclick="openCaseDetail(' + c.id + ')" style="cursor:pointer;background:#111827;border:1px solid #1e2a3a;border-radius:8px;margin-bottom:6px;padding:10px 12px;" title="' + t('case.clickHint') + '">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">' +
+            '<div style="flex:1;min-width:220px;"><span class="badge ' + caseSevCls(c.severity) + '">' + escapeHtml(c.severity || '?') + '</span> <span class="badge ' + caseStatusBadge(c.status || 'open') + '">' + escapeHtml(caseStatusLabel(c.status || 'open')) + '</span> ' +
+            '<strong style="color:#e4e7eb;">' + escapeHtml(c.title || ('Case #' + c.id)) + '</strong> <small style="color:#5a6a7a;">#' + c.id + ' &middot; ' + escapeHtml(c.machine_id) + '</small><br>' +
+            '<small style="color:#8892a4;">' + escapeHtml((c.description || '').substring(0, 110)) + '</small></div>' +
+            '<div style="text-align:right;font-size:11px;white-space:nowrap;">' +
+            (aids ? '<span class="badge bg-dark">' + t('case.alertsCount', [aids]) + '</span> ' : '') +
+            '<select style="font-size:10px;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);padding:1px 2px;" onclick="event.stopPropagation();" onchange="event.stopPropagation();setCaseStatus(' + c.id + ', this.value)">' + opts + '</select><br>' +
+            '<small style="color:#8892a4;">' + escapeHtml((c.created_at || '').substring(0, 19)) + '</small></div></div>' +
+            '<div style="font-size:10px;color:#00D4AA;text-align:right;margin-top:4px;">' + t('case.clickHint') + ' &rsaquo;</div></div>';
+    }).join('') + '</div>';
 }
 
+function openCaseDetail(id) {
+    fetch('/api/cases/' + id).then(function (r) { return r.json(); }).then(function (c) {
+        if (!c || c.error) { showToast('❌ ' + (c ? c.error : '')); return; }
+        var alerts = c.alerts || [];
+        function sev(s) { return '<span class="badge ' + caseSevCls(s) + '">' + escapeHtml(s || '?') + '</span>'; }
+        var body = '<div style="font-size:12px;line-height:1.6;">' +
+            '<div style="margin-bottom:10px;">' + sev(c.severity) + ' <span class="badge ' + caseStatusBadge(c.status || 'open') + '">' + escapeHtml(caseStatusLabel(c.status || 'open')) + '</span></div>' +
+            '<div><b style="color:#00D4AA;">' + t('dash.machine') + ':</b> ' + escapeHtml(c.hostname || c.machine_id) + ' &middot; <b style="color:#00D4AA;">' + t('case.machineId') + ':</b> ' + escapeHtml(c.machine_id) + '</div>' +
+            (c.description ? '<div style="margin-top:6px;color:#8892a4;">' + escapeHtml(c.description) + '</div>' : '') +
+            (c.created_at ? '<div style="margin-top:6px;color:#5a6a7a;">' + escapeHtml(c.created_at) + '</div>' : '') +
+            '<hr style="border-color:#1e2a3a;">' +
+            '<div style="color:#00D4AA;font-size:11px;font-weight:bold;margin-bottom:6px;">' + t('case.alertsTitle') + ' (' + alerts.length + ')</div>';
+        if (!alerts.length) {
+            body += '<div class="text-muted" style="font-size:11px;">' + t('case.noAlerts') + '</div>';
+        } else {
+            body += alerts.map(function (a) {
+                var time = a.received_at || a.timestamp || '';
+                var raw = (typeof a.raw_data === 'string') ? a.raw_data : (a.raw_data ? JSON.stringify(a.raw_data) : '');
+                return '<div style="background:#0d1520;border:1px solid #1e2a3a;border-radius:6px;padding:8px;margin-bottom:6px;">' +
+                    '<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;">' +
+                    '<span>' + sev(a.severity) + ' <b style="color:#e4e7eb;">' + escapeHtml(a.rule_name || a.rule_id || 'alert') + '</b></span>' +
+                    '<small style="color:#5a6a7a;">#' + escapeHtml(a.id) + (time ? ' &middot; ' + escapeHtml(time) : '') + '</small></div>' +
+                    '<div style="color:#8892a4;font-size:11px;margin-top:4px;">' + escapeHtml((a.description || '').substring(0, 300)) + '</div>' +
+                    (raw ? '<details style="margin-top:6px;"><summary style="color:#648CB4;font-size:11px;cursor:pointer;">raw_data</summary><pre style="background:#0a0f18;color:#a8b6c4;font-size:10px;padding:6px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;">' + escapeHtml(raw) + '</pre></details>' : '') +
+                    '</div>';
+            }).join('');
+        }
+        body += '</div>';
+        showDetailModal(t('case.detail', [id]), body);
+    }).catch(function () { showToast('❌ ' + t('ui.connErrShort')); });
+}
+function setCaseStatus(id, status) {
+    fetch('/api/cases/' + id + '/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: status }) })
+        .then(function (r) { return r.json(); }).then(function (d) {
+            if (d.success) { showToast(t('case.statusDone', [id, caseStatusLabel(status)])); loadCases(); }
+            else showToast('❌ ' + (d.error || ''));
+        })
+        .catch(function () { showToast('❌ ' + t('ui.connErrShort')); });
+}
 
 // ===== v5.0.4 (Phase3 B4): GLOBAL SEARCH (Ctrl+K) =====
 function openGlobalSearch() {

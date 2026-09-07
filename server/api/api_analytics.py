@@ -90,6 +90,16 @@ def register(app, core):
                     break
         if c:
             c["alert_ids"] = _alert_ids(c.get("alert_ids"))
+            # v5.0.4 R9: kèm chi tiết tất cả cảnh báo tạo nên case (UI Case hiển thị
+            # được danh sách alerts khi bấm vào case - không còn chỉ là dòng text).
+            _ids = c.get("alert_ids") or []
+            if hasattr(core.db, "get_threat_alerts_by_ids"):
+                try:
+                    c["alerts"] = core.db.get_threat_alerts_by_ids(_ids) or []
+                except Exception:
+                    c["alerts"] = []
+            else:
+                c["alerts"] = []
             return jsonify(c)
         return jsonify({"error": "case not found"}), 404
 
