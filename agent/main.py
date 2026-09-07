@@ -408,7 +408,7 @@ def _show_config_dialog(remote=None, preselect_mode=""):
     W = 420
     ws = root.winfo_screenwidth()
     hs = root.winfo_screenheight()
-    H = min(770, max(640, hs - 80))
+    H = min(640, max(540, hs - 80))
     x = (ws - W) // 2
     y = (hs - H) // 2
     root.geometry(f"{W}x{H}+{x}+{y}")
@@ -437,60 +437,55 @@ def _show_config_dialog(remote=None, preselect_mode=""):
         e.place(x=30, y=row_y, width=width, height=28)
         return sv
 
-    # v4.8.0: radio chọn chế độ kết nối LAN (trực tiếp) hoặc qua Tailscale.
-    make_label("Cach ket noi den server:", 66)
+    # v4.8.0: radio chọn chế độ kết nối (gọn - không hint dài)
+    make_label("Cach ket noi:", 62)
     mode_var = tk.StringVar(value=cfg["net_mode"] or "lan")
 
-    def _mk_radio(text, val, y, hint):
+    def _mk_radio(text, val, y):
         rb = tk.Radiobutton(root, text=text, value=val, variable=mode_var,
                             font=("Segoe UI", 9), fg=LABEL_FG, bg=BG,
                             selectcolor=ENTRY_BG, activebackground=BG,
                             activeforeground=ACCENT, anchor="w", justify="left",
                             highlightthickness=0, bd=0)
         rb.place(x=30, y=y, width=375, height=20)
-        if hint:
-            hl = tk.Label(root, text=hint, font=("Segoe UI", 7), fg="#648CB4", bg=BG, anchor="w")
-            hl.place(x=52, y=y + 18, width=350)
-            return y + 36
         return y + 22
 
-    y_pos = _mk_radio("1. Ket noi truc tiep (LAN) - nhap IP + cong cua may chu ben duoi",
-                      "lan", 90, "May tren cung mang LAN/IP cong: khong can Tailscale")
-    y_pos = _mk_radio("2. Qua Tailscale - tu dong cai/ket noi bang lenh dong 1 file authkey-tail.txt",
-                      "tailscale", y_pos, "Agent se tu chay 'tailscale up ...' (lenh dong 1) roi ket noi")
-    y_pos += 2
+    y_pos = _mk_radio("1. Ket noi truc tiep (LAN) - nhap IP + cong server ben duoi", "lan", 86)
+    y_pos = _mk_radio("2. Qua Tailscale - tu dong cai/ket noi", "tailscale", y_pos)
+    y_pos += 4
 
-    # Host/port LUON hien de nhap (prefill: tailscale = ip-server o dong 2 file).
-    make_label("Dia chi may chu (IP/Hostname):", y_pos)
+    # Host/port gom 1 dong: host (trai) + port (phai)
+    make_label("Dia chi may chu (IP/Hostname) + Cong:", y_pos)
     y_pos += 20
-    sv_host = make_entry(y_pos, 340, cfg["server_host"])
-    y_pos += 36
-
-    make_label("Cong ket noi:", y_pos)
-    y_pos += 20
-    sv_port = make_entry(y_pos, 80, str(cfg["server_port"]))
+    sv_host = make_entry(y_pos, 250, cfg["server_host"])
+    _sv_port = tk.StringVar(value=str(cfg["server_port"]))
+    _e_port = tk.Entry(root, textvariable=_sv_port, font=("Consolas", 11),
+                       bg=ENTRY_BG, fg=ENTRY_FG, insertbackground=ENTRY_FG,
+                       relief="flat", bd=1, highlightthickness=1,
+                       highlightbackground="#2A3A4A", highlightcolor=ACCENT)
+    _e_port.place(x=290, y=y_pos, width=90, height=28)
     y_pos += 36
 
     # Section divider
     sep = tk.Label(root, text="THONG TIN NGUOI SU DUNG", font=("Segoe UI", 8),
                    fg="#648CB4", bg=BG)
     sep.place(x=100, y=y_pos)
-    y_pos += 18
+    y_pos += 14
 
     make_label("Nguoi su dung:", y_pos)
     y_pos += 20
     sv_name = make_entry(y_pos, 340, cfg["user_name"])
-    y_pos += 36
+    y_pos += 30
 
     make_label("Ma nhan su:", y_pos)
     y_pos += 20
     sv_id = make_entry(y_pos, 340, cfg["employee_id"])
-    y_pos += 36
+    y_pos += 30
 
     make_label("Email:", y_pos)
     y_pos += 20
     sv_email = make_entry(y_pos, 340, cfg["email"])
-    y_pos += 40
+    y_pos += 30
 
     # v4.9: configurable dropdown fields (admin-editable user_fields.json)
     combo_vars = {}
@@ -503,7 +498,7 @@ def _show_config_dialog(remote=None, preselect_mode=""):
                           font=("Consolas", 11))
         cb.place(x=30, y=y_pos, width=340, height=28)
         combo_vars[fld["key"]] = sv
-        y_pos += 40
+        y_pos += 30
 
     # v4.5.5: PSK + Command Key - LUON hien (server can PSK de xac thuc may tram).
     # Chỉ host/port là tự động từ remote config; psk/command_key vẫn do quản trị
@@ -511,16 +506,16 @@ def _show_config_dialog(remote=None, preselect_mode=""):
     make_label("PSK (khoa bao mat - bat buoc trung voi GIAMSAT_AGENT_PSK cua server):", y_pos)
     y_pos += 20
     sv_psk = make_entry(y_pos, 340, cfg.get("psk", ""), show="*")
-    y_pos += 40
+    y_pos += 30
 
     make_label("Command Key (khoa ky lenh - trung voi GIAMSAT_COMMAND_KEY):", y_pos)
     y_pos += 20
     sv_ckey = make_entry(y_pos, 340, cfg.get("command_key", ""), show="*")
-    y_pos += 40
+    y_pos += 30
 
     def on_ok():
         host = sv_host.get().strip()
-        port_str = sv_port.get().strip()
+        port_str = _sv_port.get().strip()
         try:
             port = int(port_str)
             if port < 1 or port > 65535:
