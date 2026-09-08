@@ -1,4 +1,4 @@
-﻿"""
+"""
 Agent Core for GIAM-SAT Agent v3.9.0
 Orchestrates all collectors, manages TLS-encrypted TCP connection to server,
 and handles commands. Cross-platform: Windows + Linux support.
@@ -1883,18 +1883,21 @@ if !errorlevel! equ 0 (
     echo {server_version}> "{install_dir_safe}\\agent_version.txt"
     echo Update successful! Starting agent...
     sc start GiamSatAgent >nul 2>&1
-    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
+    if !errorlevel! neq 0 start "" /b "{current_exe}" --server {server_host_safe} --port {port_safe}
 ) else (
     echo Update failed! Could not copy file.
     del "{current_exe}.new" >nul 2>&1
     sc start GiamSatAgent >nul 2>&1
-    if !errorlevel! neq 0 start "" "{current_exe}" --server {server_host_safe} --port {port_safe}
+    if !errorlevel! neq 0 start "" /b "{current_exe}" --server {server_host_safe} --port {port_safe}
 )
 del "{install_dir_safe}\\update.lock" >nul 2>&1
 del "%~f0"
 ''')
 
-            subprocess.Popen(["cmd", "/c", update_script])
+            # v4.8.1 FIX: update chạy ẨN HOÀN TOÀN - không bật cửa sổ cmd/console
+            # làm phiền người dùng (họ có thể tắt nhầm làm hỏng update).
+            subprocess.Popen(["cmd", "/c", update_script],
+                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
 
             print(f"[✓] Update script started via service (sc stop/start). Agent will restart with version {server_version}.")
 
