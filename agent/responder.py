@@ -30,6 +30,42 @@ CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 QUARANTINE_DIR = os.path.join(os.environ.get("ProgramData", "C:\\ProgramData"), "GiamSat", "Quarantine")
 
 
+SAFE_SHELL_SIMPLE = {"ipconfig", "netstat", "tasklist", "ping", "arp", "tracert",
+                     "pathping", "route", "systeminfo", "whoami", "hostname",
+                     "getmac", "tailscale", "ver"}
+# ký tự cho phép trong lệnh chẩn đoán (chỉ đọc - không có shell metachar)
+_SAFE_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ._:/\\-=@()[]%,+")
+
+
+def _safe_shell(cmd):
+    """v4.8.1: Remote Shell chạy lệnh CHẨN ĐOÁN an toàn bằng native exe (KHÔNG qua
+    PowerShell). Allowlist theo token đầu + lọc ký tự nguy hiểm."""
+    c = (cmd or "").strip()
+    toks = c.split()
+    if not toks:
+        return {"status": "failed", "error": "empty command", "output": ""}
+    if not all(ch in _SAFE_CHARS for ch in c):
+        return {"status": "failed", "error": "Command contains forbidden characters", "output": ""}
+    first = toks[0].lower()
+    allowed = False
+    if first == "sc" and len(toks) >= 2 and toks[1].lower() == "query":
+        allowed = True
+    elif first == "schtasks" and len(toks) >= 2 and toks[1].lower() == "/query":
+        allowed = True
+    elif first == "route" and len(toks) >= 2 and toks[1].lower() == "print":
+        allowed = True
+    elif first == "tailscale" and len(toks) >= 2 and toks[1].lower() in ("status", "ip"):
+        allowed = True
+    elif first in SAFE_SHELL_SIMPLE:
+        allowed = True
+    if not allowed:
+        return {"status": "failed",
+                "error": "Lenh khong nam trong danh sach cho phep (chi doc: ipconfig, netstat, tasklist, ping, arp, tracert, pathping, route print, systeminfo, whoami, hostname, getmac, sc query, schtasks /query, tailscale status/ip)",
+                "output": ""}
+    out, err, rc = _run(toks, timeout=30)
+    return {"status": "completed", "output": ((out or err) or "")[:4000], "error": ""}
+
+
 def _run(cmd, timeout=30, **kwargs):
     """Run a command with timeout."""
     if IS_WINDOWS:
@@ -56,7 +92,7 @@ class Responder:
         command_data format: {"action": "action_type", "command": "...", "exec_id": "uuid", "params": {...}}
         
         Supported actions:
-          - ps: DISABLED (v4.5.5 security - arbitrary PowerShell removed)
+          - ps: allowlist native read-only diagnostics via _safe_shell (v4.8.1, NO PowerShell)
           - firewall_block: Block IP via firewall
           - firewall_unblock: Remove IP block
           - disable_account: Disable a local account
@@ -102,9 +138,9 @@ class Responder:
             elif action == "forensic_snapshot":
                 result.update(self._forensic_snapshot())
             elif action == "ps":
-                # v4.5.5 SECURITY: arbitrary PowerShell execution disabled
-                result["status"] = "failed"
-                result["error"] = "Action 'ps' (arbitrary PowerShell) is disabled for security"
+                # v4.5.5 SECURITY: cấm PowerShell tuỳ ý; chỉ cho phép allowlist lệnh
+                # chẩn đoán native (ipconfig/netstat/tasklist/ping/...) qua _safe_shell.
+                result.update(_safe_shell(cmd))
             elif action == "get_processes":
                 result.update(self._get_processes())
             elif action == "get_services":
