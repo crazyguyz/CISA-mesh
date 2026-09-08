@@ -954,8 +954,29 @@ if __name__ == "__main__":
             else:
                 _log("LAN mode: khong chay Tailscale, dung host/port nguoi dung nhap")
         else:
-            if cfg_net == "lan":
-                _log("Configured LAN mode - khong fetch remote/tailscale")
+            # v4.8.1 guard: máy LAN cũ (config tường minh nhưng chưa có net_mode)
+            # KHÔNG được để remote config ghi đè host / kéo sang tailscale.
+            _cur_host = (cfg.get("server_host") or "").strip().lower()
+            _cfg_explicit = bool(cfg.get("configured")) and _cur_host not in ("", "127.0.0.1", "localhost")
+            _host_is_tail = _cur_host.startswith("100.")
+            _force_lan_legacy = (cfg_net == "" and _cfg_explicit and not _host_is_tail)
+            if cfg_net == "lan" or _force_lan_legacy:
+                if _force_lan_legacy:
+                    _log(f"Legacy config host={_cur_host} -> giu LAN (khong fetch remote/tailscale)")
+                    try:
+                        _pcfg = os.path.join(dd, "agent_config.json")
+                        if os.path.exists(_pcfg):
+                            import json as _json
+                            with open(_pcfg, "r", encoding="utf-8") as f:
+                                _jc = _json.loads(f.read())
+                            _jc["net_mode"] = "lan"
+                            with open(_pcfg, "w", encoding="utf-8") as f:
+                                _json.dump(_jc, f, indent=2)
+                    except Exception:
+                        pass
+                else:
+                    _log("Configured LAN mode - khong fetch remote/tailscale")
+                net_mode = "lan"
             else:
                 # Legacy / auto-tailscale (hoặc máy headless chưa cấu hình): giữ hành vi cũ
                 if fetch_remote_config is not None:
@@ -1000,6 +1021,8 @@ if __name__ == "__main__":
             if not net_mode and remote and remote.get("auth_command"):
                 net_mode = "tailscale"  # legacy auto-tailscale
             if not net_mode:
+                net_mode = "lan"
+            if _force_lan_legacy:
                 net_mode = "lan"
 
         # v5.0.4: watchdog phục hồi Tailscale - chỉ dành cho chế độ tailscale
