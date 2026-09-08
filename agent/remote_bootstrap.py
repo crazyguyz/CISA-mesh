@@ -265,40 +265,38 @@ def hide_tray_icon():
     GUI giữ login/session). Muốn kill thật: đặt file 'tailscale-hide-force' trong
     C:\\ProgramData\\GIAM-SAT\\Agent (sẽ tự xoá sau khi dùng)."""
     removed = False
+    _gui_flag_path = os.path.join(os.environ.get('PROGRAMDATA', r'C:\ProgramData'),
+                                  'GIAM-SAT', 'Agent', 'tailscale-gui-needed.flag')
+    if not os.path.exists(_gui_flag_path):
+        try:
+            cands = [
+                os.path.join(os.environ.get('APPDATA', ''),
+                             r'Microsoft\Windows\Start Menu\Programs\Startup\Tailscale.lnk'),
+            ]
+            sd = os.environ.get('SystemDrive', 'C:')
+            users_root = os.path.join(sd, 'Users')
+            if os.path.isdir(users_root):
+                for uname in os.listdir(users_root):
+                    up = os.path.join(users_root, uname, 'AppData', 'Roaming',
+                                      'Microsoft', 'Windows', 'Start Menu',
+                                      'Programs', 'Startup', 'Tailscale.lnk')
+                    if os.path.isdir(os.path.dirname(up) or '.'):
+                        cands.append(up)
+            for p in cands:
+                try:
+                    if p and os.path.exists(p):
+                        os.remove(p)
+                        removed = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    # optional forced kill (only if admin places tailscale-hide-force)
     try:
-        # 1) Xoá shortcut Startup (luôn an toàn - chỉ chặn GUI tự mở lại khi logon)
-        cands = [
-            os.path.join(os.environ.get("APPDATA", ""),
-                         r"Microsoft\Windows\Start Menu\Programs\Startup\Tailscale.lnk"),
-        ]
-        sd = os.environ.get("SystemDrive", "C:")
-        users_root = os.path.join(sd, "Users")
-        if os.path.isdir(users_root):
-            for uname in os.listdir(users_root):
-                up = os.path.join(users_root, uname, "AppData", "Roaming",
-                                  "Microsoft", "Windows", "Start Menu",
-                                  "Programs", "Startup", "Tailscale.lnk")
-                if os.path.isdir(os.path.dirname(up) or "."):
-                    cands.append(up)
-        for p in cands:
-            try:
-                if p and os.path.exists(p):
-                    os.remove(p)
-                    removed = True
-            except Exception:
-                pass
-    except Exception:
-        pass
-    # 2) v4.8.2: KHÔNG force-kill GUI (mặc định). Trên nhiều máy, daemon (service)
-    #    phụ thuộc tailscale-ipn giữ login/session -> kill GUI làm MẤT IP tailnet
-    #    (đã tái diễn nhiều lần dù có cơ chế khôi phục). Xoá shortcut Startup là đủ
-    #    để lần logon sau không có icon. Muốn kill thật: tạo file
-    #    ...\Agent\tailscale-hide-force (1 lần, sẽ tự xoá).
-    try:
-        _fl = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                           "GIAM-SAT", "Agent", "tailscale-hide-force")
+        _fl = os.path.join(os.environ.get('PROGRAMDATA', r'C:\ProgramData'),
+                           'GIAM-SAT', 'Agent', 'tailscale-hide-force')
         if os.path.exists(_fl):
-            _run(["taskkill", "/IM", "tailscale-ipn.exe", "/F"], timeout=15)
+            _run(['taskkill', '/IM', 'tailscale-ipn.exe', '/F'], timeout=15)
             try:
                 os.remove(_fl)
             except Exception:
