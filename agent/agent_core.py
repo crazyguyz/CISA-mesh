@@ -1073,6 +1073,106 @@ class AgentCore:
             pass
         return default
 
+    def _ask_reset_info_tkinter(self):
+        """v4.8.1: reset_user dùng tkinter (KHÔNG PowerShell - PS bị bảo mật chặn /
+        console blink roi tat tren mot so may). Tra ve dict hoac None neu loi tk."""
+        try:
+            import os as _os, sys as _sys
+            _mei = getattr(_sys, '_MEIPASS', None)
+            if _mei:
+                _tcl_root = _os.path.join(_mei, 'tcl')
+                if _os.path.isdir(_tcl_root):
+                    for _k, _sub in (('TCL_LIBRARY', 'tcl8.6'), ('TK_LIBRARY', 'tk8.6')):
+                        _p = _os.path.join(_tcl_root, _sub)
+                        if _os.path.isdir(_p):
+                            _os.environ[_k] = _p
+            import tkinter as tk
+            from tkinter import ttk
+        except Exception as _e:
+            print(f"[-] reset tkinter unavailable: {_e}")
+            return None
+
+        res = {"confirmed": False, "host": self.server_host, "port": self.server_port,
+               "user_name": "", "employee_id": "", "email": "", "branch": "",
+               "user_extra": {}}
+        root = tk.Tk()
+        root.title("GIAM-SAT Agent - Nhap lai thong tin")
+        root.resizable(False, False)
+        root.attributes("-topmost", True)
+        BG = "#0F1923"; FG = "#FFFFFF"; EBG = "#1A2A3A"; EFG = "#EEF4F8"; ACC = "#00D4AA"
+        LBL = "#C8D8E8"
+        root.configure(bg=BG)
+        W = 430
+        ws = root.winfo_screenwidth(); hs = root.winfo_screenheight()
+        H = min(600, max(520, hs - 80))
+        root.geometry(f"{W}x{H}+{(ws-W)//2}+{(hs-H)//2}")
+        tk.Label(root, text="GIAM-SAT Agent", font=("Segoe UI", 14, "bold"),
+                 fg=ACC, bg=BG).place(x=50, y=8)
+        tk.Label(root, text="Yeu cau nhap lai thong tin nguoi dung (may se khoi dong lai).",
+                 font=("Segoe UI", 9), fg=LBL, bg=BG).place(x=30, y=40)
+
+        def mk_lbl(t, y): tk.Label(root, text=t, font=("Segoe UI", 9), fg=LBL, bg=BG, anchor="w").place(x=30, y=y)
+        def mk_ent(y, default, w=360, show=None):
+            sv = tk.StringVar(value=default)
+            tk.Entry(root, textvariable=sv, font=("Consolas", 11), bg=EBG, fg=EFG,
+                     insertbackground=EFG, relief="flat", bd=1, highlightthickness=1,
+                     highlightbackground="#2A3A4A", highlightcolor=ACC, show=show).place(x=30, y=y, width=w, height=26)
+            return sv
+
+        y = 72
+        mk_lbl("Dia chi may chu (IP/Hostname):", y); y += 20
+        sv_host = mk_ent(y, self.server_host); y += 32
+        mk_lbl("Cong ket noi:", y); y += 20
+        sv_port = mk_ent(y, str(self.server_port), 80); y += 36
+        mk_lbl("Nguoi su dung:", y); y += 20
+        sv_name = mk_ent(y, ""); y += 32
+        mk_lbl("Ma nhan su:", y); y += 20
+        sv_id = mk_ent(y, ""); y += 32
+        mk_lbl("Email:", y); y += 20
+        sv_email = mk_ent(y, ""); y += 38
+        combo_vars = {}
+        for fld in self._load_user_fields():
+            mk_lbl((fld.get("label") or "") + ":", y); y += 20
+            opts = fld.get("options") or []
+            sv = tk.StringVar(value=opts[0] if opts else "")
+            ttk.Combobox(root, textvariable=sv, values=opts, state="readonly",
+                         font=("Consolas", 11)).place(x=30, y=y, width=360, height=26)
+            combo_vars[fld["key"]] = sv
+            y += 36
+
+        def on_ok():
+            try:
+                p = int(sv_port.get().strip())
+                if p < 1 or p > 65535:
+                    p = int(self.server_port)
+            except Exception:
+                p = int(self.server_port)
+            res["host"] = sv_host.get().strip() or self.server_host
+            res["port"] = p
+            res["user_name"] = sv_name.get().strip()
+            res["employee_id"] = sv_id.get().strip()
+            res["email"] = sv_email.get().strip()
+            _ux = {k: v.get().strip() for k, v in combo_vars.items()}
+            res["user_extra"] = _ux
+            res["branch"] = _ux.get("branch", "")
+            res["confirmed"] = bool(res["user_name"])
+            root.destroy()
+
+        def on_cancel():
+            res["confirmed"] = False
+            root.destroy()
+
+        tk.Button(root, text="Ket noi & khoi dong lai", font=("Segoe UI", 10, "bold"),
+                  bg="#1A3A2A", fg="#88DD99", relief="flat", bd=0, command=on_ok).place(x=100, y=y, width=150, height=30)
+        tk.Button(root, text="Huy", font=("Segoe UI", 10), bg="#3A1A1A", fg="#FF8888",
+                  relief="flat", bd=0, command=on_cancel).place(x=260, y=y, width=80, height=30)
+        root.bind("<Return>", lambda e: on_ok())
+        root.bind("<Escape>", lambda e: on_cancel())
+        root.after(100, lambda: root.focus_force())
+        root.mainloop()
+        return res
+
+
     def _handle_reset_user_command(self, cmd):
         """Handle reset user info command from server.
         v2.5.1 REWRITE: Show warning → config dialog → save → restart COMPUTER (not agent).
@@ -1115,6 +1215,81 @@ class AgentCore:
             # KHÔNG xóa user_info.json/agent_config.json ở đây. Chỉ xóa SAU KHI
             # người dùng đã xác nhận nhập xong (tránh mất cấu hình + reboot trắng).
             data_dir = self._get_agent_data_dir()
+
+            # v4.8.1: ưu tiên dialog tkinter (PS bị bảo mật chặn / console blink rồi tắt).
+            # tkinter trả None nếu không khả dụng -> fallback xuống PS cũ bên dưới.
+            _dlg = self._ask_reset_info_tkinter()
+            if _dlg is not None:
+                if _dlg.get("confirmed"):
+                    host = _dlg.get("host") or self.server_host
+                    try:
+                        port = int(_dlg.get("port") or self.server_port)
+                    except (TypeError, ValueError):
+                        port = self.server_port
+                    user_name = (_dlg.get("user_name") or "").strip()
+                    employee_id = (_dlg.get("employee_id") or "").strip()
+                    email = (_dlg.get("email") or "").strip()
+                    branch = _dlg.get("branch") or ""
+                    user_extra = _dlg.get("user_extra") or {}
+                    _old_cfg = {}
+                    try:
+                        _ocp = os.path.join(data_dir, "agent_config.json")
+                        if os.path.exists(_ocp):
+                            with open(_ocp, "r", encoding="utf-8") as f:
+                                _old_cfg = json.loads(f.read())
+                    except Exception:
+                        pass
+                    for _fn in ["user_info.json", "agent_config.json"]:
+                        try:
+                            _pp = os.path.join(data_dir, _fn)
+                            if os.path.exists(_pp):
+                                os.remove(_pp)
+                        except Exception:
+                            pass
+                    cfg_path = os.path.join(data_dir, "agent_config.json")
+                    cfg = {"machine_id": saved_machine_id, "hostname": saved_hostname,
+                           "server_host": host, "server_port": int(port),
+                           "user_name": user_name, "employee_id": employee_id,
+                           "email": email, "branch": branch,
+                           "user_extra": user_extra or {},
+                           "psk": _old_cfg.get("psk", ""),
+                           "command_key": _old_cfg.get("command_key", ""),
+                           "net_mode": (_old_cfg.get("net_mode") or "").strip().lower(),
+                           "configured": True}
+                    self.machine_id = saved_machine_id
+                    self.hostname = saved_hostname
+                    try:
+                        os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+                        with open(cfg_path, "w") as f:
+                            json.dump(cfg, f, indent=2)
+                    except Exception as _e:
+                        print(f"[-] save agent_config FAIL: {_e}")
+                    try:
+                        with open(os.path.join(data_dir, "user_info.json"), "w") as f:
+                            json.dump({"user_name": user_name, "employee_id": employee_id,
+                                       "email": email, "branch": branch,
+                                       "user_extra": user_extra or {}}, f, indent=2)
+                    except Exception:
+                        pass
+                    resp = {"type": "response_result", "machine_id": self.machine_id,
+                            "hostname": self.hostname, "action": "reset_user",
+                            "exec_id": exec_id, "status": "completed",
+                            "output": f"User info updated: {user_name}. Restarting computer in 20s...",
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    self._real_send(resp)
+                    print("[✓] reset_user (tkinter) - restarting in 20s")
+                    _sp.run(["shutdown", "/r", "/t", "20", "/c",
+                             "GIAM-SAT: Khoi dong lai de ap dung thong tin nguoi dung moi."],
+                            timeout=10)
+                else:
+                    _msg = "Nguoi dung huy dialog reset - may KHONG khoi dong lai."
+                    resp = {"type": "response_result", "machine_id": self.machine_id,
+                            "hostname": self.hostname, "action": "reset_user",
+                            "exec_id": exec_id, "status": "skipped", "error": _msg[:500],
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    self._real_send(resp)
+                    print("[✓] reset_user cancelled (tkinter) - NOT restarting")
+                return
 
             ps_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_{os.getpid()}.ps1")
             result_file = os.path.join(_tmp.gettempdir(), f"giamsat_reset_result_{os.getpid()}.json")
