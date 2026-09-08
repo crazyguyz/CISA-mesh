@@ -259,12 +259,11 @@ def is_enabled():
 
 
 def hide_tray_icon():
-    """Ẩn icon/tray Tailscale một cách AN TOÀN.
-    Bình thường VPN chạy bởi service 'Tailscale' (tailscaled) nên kill GUI
-    (tailscale-ipn.exe) vô hại. NHƯNG một số máy kết nối lại phụ thuộc GUI
-    (service hỏng / per-user): kill GUI làm MẤT IP tailnet.
-    -> Kiểm tra IP trước/sau khi kill; nếu mất IP thì khởi động lại GUI và ghi flag
-    'tailscale-gui-needed' để các lần sau KHÔNG kill nữa (chỉ bỏ shortcut startup)."""
+    """Ẩn icon/tray Tailscale một cách AN TOÀN (v4.8.2):
+    Chỉ xoá shortcut Startup (chặn GUI tự mở lại khi logon). KHÔNG force-kill
+    tailscale-ipn.exe vì nhiều máy bị MẤT IP tailnet khi kill GUI (daemon phụ thuộc
+    GUI giữ login/session). Muốn kill thật: đặt file 'tailscale-hide-force' trong
+    C:\\ProgramData\\GIAM-SAT\\Agent (sẽ tự xoá sau khi dùng)."""
     removed = False
     try:
         # 1) Xoá shortcut Startup (luôn an toàn - chỉ chặn GUI tự mở lại khi logon)
@@ -290,32 +289,18 @@ def hide_tray_icon():
                 pass
     except Exception:
         pass
-    # 2) Kill GUI chỉ khi chắc chắn không làm mất kết nối
+    # 2) v4.8.2: KHÔNG force-kill GUI (mặc định). Trên nhiều máy, daemon (service)
+    #    phụ thuộc tailscale-ipn giữ login/session -> kill GUI làm MẤT IP tailnet
+    #    (đã tái diễn nhiều lần dù có cơ chế khôi phục). Xoá shortcut Startup là đủ
+    #    để lần logon sau không có icon. Muốn kill thật: tạo file
+    #    ...\Agent\tailscale-hide-force (1 lần, sẽ tự xoá).
     try:
         _fl = os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
-                           "GIAM-SAT", "Agent", "tailscale-gui-needed.flag")
+                           "GIAM-SAT", "Agent", "tailscale-hide-force")
         if os.path.exists(_fl):
-            return removed  # máy này phụ thuộc GUI - không kill
-        _out = _run(["tasklist", "/FI", "IMAGENAME eq tailscale-ipn.exe", "/NH"], timeout=10)[1]
-        if "tailscale-ipn.exe" not in (_out or ""):
-            return removed  # GUI chưa chạy - không có gì để kill
-        _had_ip = tailscale_has_ip()
-        _run(["taskkill", "/IM", "tailscale-ipn.exe", "/F"], timeout=15)
-        time.sleep(3)
-        if _had_ip and not tailscale_has_ip():
-            # Kill GUI làm mất IP -> GUI chính là nguồn giữ kết nối: khôi phục + đánh dấu
+            _run(["taskkill", "/IM", "tailscale-ipn.exe", "/F"], timeout=15)
             try:
-                _ipn = os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"),
-                                    "Tailscale", "tailscale-ipn.exe")
-                if os.path.exists(_ipn):
-                    subprocess.Popen([_ipn], creationflags=subprocess.CREATE_NO_WINDOW
-                                     if os.name == "nt" else 0)
-            except Exception:
-                pass
-            try:
-                os.makedirs(os.path.dirname(_fl), exist_ok=True)
-                with open(_fl, "w") as f:
-                    f.write("1")
+                os.remove(_fl)
             except Exception:
                 pass
     except Exception:
