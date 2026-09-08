@@ -1693,6 +1693,16 @@ $data | ConvertTo-Json | Out-File -FilePath "''' + result_file.replace('\\', '\\
                     print(f"[-] Auto-update check failed: {e}")
 
     def _check_for_update(self):
+        # v5.0.x: nếu có GiamSatUpdater.exe bên cạnh -> để UPDATER lo cập nhật (1 nguồn).
+        # Trước đây agent + updater CÙNG kiểm tra/apply mỗi 15 phút -> race, cửa sổ
+        # "update script" + lỗi 'Failed to load Python DLL'.
+        try:
+            _base_dir = os.path.dirname(os.path.abspath(
+                sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__)))
+            if os.path.exists(os.path.join(_base_dir, "GiamSatUpdater.exe")):
+                return
+        except Exception:
+            pass
         try:
             import urllib.request as urlreq
             server_host = self.server_host

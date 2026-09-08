@@ -78,6 +78,10 @@ SERVICE_NAME = "GiamSatAgent"
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 5999
 
+# v5.0.x: thời điểm updater đang TỰ cập nhật agent (intentional stop/start) -> watchdog
+# không can thiệp & không cảnh báo Telegram (cảnh báo chỉ khi agent chết bất thường).
+_UPDATE_WINDOW_TS = 0.0
+
 
 # ===================================================================
 # HELPERS
@@ -179,6 +183,8 @@ def _log(msg):
 
 def kill_agent():
     """Kill agent by any means necessary."""
+    global _UPDATE_WINDOW_TS
+    _UPDATE_WINDOW_TS = time.time() + 120  # intentional stop (update apply) - v5.0.x
     # 1. Try service stop
     try:
         subprocess.run(["sc", "stop", SERVICE_NAME], capture_output=True, timeout=15,
@@ -252,6 +258,8 @@ def _cleanup_runtime_mei():
 
 def start_agent():
     """Start agent via service or direct launch."""
+    global _UPDATE_WINDOW_TS
+    _UPDATE_WINDOW_TS = 0.0  # update đã hoàn tất -> watchdog hoạt động bình thường trở lại
     # v3.9.7: Clean old _MEI* runtimes before launching to prevent disk bloat
     _cleanup_runtime_mei()
     
@@ -856,6 +864,15 @@ def _agent_watchdog():
     while True:
         time.sleep(15)
         try:
+            global _UPDATE_WINDOW_TS
+            if time.time() < _UPDATE_WINDOW_TS:
+                continue  # updater đang tự update (kill/start) - không can thiệp
+            # Không can thiệp khi agent-side update (.bat) đang chạy (có update.lock)
+            try:
+                if os.path.exists(os.path.join(INSTALL_DIR, "update.lock")):
+                    continue
+            except Exception:
+                pass
             agent_alive = False
             if _HAS_PSUTIL:
                 agent_alive = any(
@@ -881,9 +898,16 @@ def _agent_watchdog():
                     continue
                 last_restart = now
                 start_agent()
-                # Try to send Telegram alert
+                # Try to send Telegram alert (chỉ khi chết bất thường - không phải update)
                 try:
-                    _send_telegram_alert("⚠️ GIAM-SAT Agent bị kill — đã tự động restart.")
+                    import socket as _sock
+                    _hn = _sock.gethostname()
+                except Exception:
+                    _hn = os.environ.get("COMPUTERNAME", "?")
+                try:
+                    _send_telegram_alert(
+                        f"⚠️ GIAM-SAT Agent ({_hn}): agent bị kill/treo ngoài quá trình update "
+                        f"— đã tự động restart (PID cũ mất).")
                 except Exception:
                     pass
         except Exception as e:

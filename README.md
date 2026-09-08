@@ -3,6 +3,32 @@
 > **GIAM-SAT** (GIAM SÁT) là hệ thống giám sát an ninh mạng mã nguồn mở, kiến trúc **Agent-Server**, hỗ trợ giám sát Windows/Linux endpoint, phân tích threat theo MITRE ATT&CK, quản lý tài sản CNTT, và cảnh báo thời gian thực qua Telegram/Email.
 
 ---
+## 🖥️ Cài / cập nhật Agent trên MÁY TRẠM (Workstation) — 1 lệnh
+
+> Mỗi máy trạm chỉ cần làm **1 lần khi cài / khi có bản agent mới**. Sau đó agent tự
+> cập nhật qua server (Updater).
+
+**VI:** Copy **3 file** từ máy build vào **cùng 1 thư mục** trên máy trạm
+(ví dụ `C:\Tool` — thư mục ĐÃ được bỏ qua quét bởi bảo mật/Defender):
+```text
+GiamSatAgent.exe      ← bản agent mới (file từ thư mục dist của máy build)
+GiamSatUpdater.exe    ← bản updater mới
+deploy_agent.ps1      ← script cài đặt chung (tools\deploy_agent.ps1)
+```
+Rồi chạy **1 lệnh** (PowerShell, sẽ tự nâng quyền Admin nếu cần):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Tool\deploy_agent.ps1
+```
+Script tự làm: copy exe vào `C:\Tool` → tạo `C:\Tool\GIAM-SAT` (runtime) → thêm exclusion
+Defender (`C:\Tool`, `C:\ProgramData\GIAM-SAT`) → xoá task cũ → đăng ký 1 task
+`GiamSatUpdater` (ONLOGON, HIGHEST) → chạy Updater (Updater tự chạy Agent).
+
+**EN:** Copy these **3 files into one folder** on the workstation, then run the single
+command above. The script auto-elevates, copies the EXEs, adds Defender exclusions and
+registers the one `GiamSatUpdater` startup task.
+
+---
+
 
 ## 🔄 Cập nhật phiên bản từ GitHub (không cần tải lại ZIP) — Update from GitHub (no ZIP re-download)
 
