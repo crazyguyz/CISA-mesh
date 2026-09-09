@@ -76,6 +76,41 @@ Set-Content -Path "$SERVER_DIR\version.txt" -Value $Version -Encoding ASCII
 Write-OK "agent_version.txt -> $Version"
 Write-OK "server/version.txt -> $Version"
 
+# STEP 2.5: Tailscale authkey - doc tu server/.env, nhung vao agent khi build
+Write-STEP "STEP 2.5: Tailscale authkey -> nhung vao agent..."
+$tsKey = ""; $tsExp = ""
+$tsEnvFile = Join-Path $SERVER_DIR ".env"
+if (Test-Path $tsEnvFile) {
+    Get-Content $tsEnvFile | ForEach-Object {
+        if ($_ -match '^GIAMSAT_TAILSCALE_AUTHKEY=(.*)$') { $tsKey = $Matches[1].Trim() }
+        elseif ($_ -match '^GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY=(.*)$') { $tsExp = $Matches[1].Trim() }
+    }
+}
+$tsFile = Join-Path $AGENT_DIR "tailscale_auth.txt"
+if ($tsKey -like "tskey-auth-*") {
+    Set-Content -Path $tsFile -Value ("GIAMSAT_TAILSCALE_AUTHKEY=" + $tsKey + "`nGIAMSAT_TAILSCALE_AUTHKEY_EXPIRY=" + $tsExp) -Encoding ASCII -NoNewline
+    Write-OK "Da nhung authkey Tailscale vao agent (agent/tailscale_auth.txt)"
+    if ($tsExp) {
+        try {
+            $tsD = [datetime]::ParseExact($tsExp, "yyyy-MM-dd", $null)
+            $tsDays = [math]::Floor(($tsD - (Get-Date).Date).TotalDays)
+            if ($tsDays -lt 0) {
+                Write-FAIL "AUTHKEY DA HET HAN ($tsExp)! Build nay se nhung key chet - can tao authkey moi truoc khi build."
+            } elseif ($tsDays -le 14) {
+                Write-Host "[WARN] AUTHKEY SAP HET HAN: con $tsDays ngay ($tsExp). Khuyen nghi cap authkey moi roi build lai." -ForegroundColor Yellow
+            } else {
+                Write-OK "Authkey het han: $tsExp (con $tsDays ngay)"
+            }
+        } catch { Write-INFO "Ngay het han khong parse duoc: '$tsExp' - bo qua canh bao" }
+    } else {
+        Write-INFO "Chua co GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY trong server/.env - khong co canh bao het han"
+    }
+} else {
+    if (Test-Path $tsFile) { Remove-Item $tsFile -Force -ErrorAction SilentlyContinue }
+    Write-INFO "Chua cau hinh GIAMSAT_TAILSCALE_AUTHKEY trong server/.env - agent se KHONG co authkey mac dinh."
+    Write-INFO "Cau hinh: chay server\setup\setup_config.ps1 (muc 8) hoac Dashboard > Cap nhat Agent > Authkey Tailscale."
+}
+
 # STEP 3: Clear cache
 Write-STEP "STEP 3: Clearing build cache..."
 if (Test-Path $BUILD_DIR) { Remove-Item -Path $BUILD_DIR -Recurse -Force -ErrorAction SilentlyContinue; Write-OK "Removed: $BUILD_DIR" }

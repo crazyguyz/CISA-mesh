@@ -904,9 +904,10 @@ if __name__ == "__main__":
         cfg_net = (cfg.get("net_mode") or "").strip().lower()
 
         try:
-            from remote_bootstrap import fetch_remote_config, ensure_tailscale_up
+            from remote_bootstrap import (fetch_remote_config, ensure_tailscale_up,
+                                          builtin_auth_command)
         except Exception:
-            fetch_remote_config = ensure_tailscale_up = None
+            fetch_remote_config = ensure_tailscale_up = builtin_auth_command = None
 
         remote = None
         # v4.8.0: hiện dialog khi máy CHƯA có người dùng (máy mới / copy sang máy khác)
@@ -937,7 +938,9 @@ if __name__ == "__main__":
             if net_mode == "tailscale":
                 # v4.8.0: chọn Tailscale -> tự động chạy đúng lệnh dòng 1 (authkey)
                 # để cài/kết nối Tailscale trước khi kết nối server.
-                auth = (remote and remote.get("auth_command")) or ""
+                # v5.0.5: nếu file remote không còn authkey (chỉ ip-server) thì dùng
+                # authkey ĐƯỢC NHÚNG vào exe khi build (setup_config/.env -> build).
+                auth = (remote and remote.get("auth_command")) or (builtin_auth_command() if builtin_auth_command else "") or ""
                 if auth:
                     try:
                         _ok_ts, _msg_ts = ensure_tailscale_up(auth)
@@ -982,9 +985,10 @@ if __name__ == "__main__":
                 if fetch_remote_config is not None:
                     try:
                         remote = fetch_remote_config()
-                        if remote and remote.get("auth_command"):
+                        _auth_cmd = (remote and remote.get("auth_command")) or (builtin_auth_command() if builtin_auth_command else "") or ""
+                        if _auth_cmd:
                             try:
-                                _ok_ts, _msg_ts = ensure_tailscale_up(remote["auth_command"])
+                                _ok_ts, _msg_ts = ensure_tailscale_up(_auth_cmd)
                                 _log(f"Tailscale bootstrap: {_msg_ts}")
                             except Exception as e:
                                 _log(f"Tailscale bootstrap fail: {e}")
@@ -1018,8 +1022,9 @@ if __name__ == "__main__":
             branch = cfg.get("branch", "")
             user_extra = cfg.get("user_extra", {}) or {}
             net_mode = cfg_net
-            if not net_mode and remote and remote.get("auth_command"):
-                net_mode = "tailscale"  # legacy auto-tailscale
+            if not net_mode and ((remote and remote.get("auth_command"))
+                                 or (builtin_auth_command() if builtin_auth_command else "")):
+                net_mode = "tailscale"  # legacy auto-tailscale (remote hoac authkey nhung)
             if not net_mode:
                 net_mode = "lan"
             if _force_lan_legacy:
@@ -1031,7 +1036,8 @@ if __name__ == "__main__":
             import threading as _thr
             from remote_bootstrap import watchdog_loop as _ts_watchdog
             from remote_bootstrap import is_enabled as _ts_enabled
-            if net_mode != "lan" and ((remote and remote.get("auth_command")) or _ts_enabled()):
+            if net_mode != "lan" and (((remote and remote.get("auth_command")) or _ts_enabled())
+                                      or bool(builtin_auth_command() if builtin_auth_command else "")):
                 _thr.Thread(target=_ts_watchdog, daemon=True).start()
                 _log("Tailscale watchdog started")
         except Exception as e:

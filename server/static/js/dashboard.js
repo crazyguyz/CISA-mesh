@@ -3167,6 +3167,11 @@ function loadAgentUpdateView() {
     if (logTab && logTab.style.display !== 'none') {
         loadAgentUpdateLogs();
     }
+    // v5.0.5: authkey tab if active
+    const authTab = document.getElementById('tabAuAuthkey');
+    if (authTab && authTab.style.display !== 'none') {
+        loadTailscaleAuthkey();
+    }
 }
 
 function loadAgentUpdateStatus() {
@@ -3432,6 +3437,94 @@ function resetUserInfoAll() {
     });
 }
 
+
+// ===== v5.0.5: TAILSCALE AUTHKEY (tab Update Agent) =====
+function renderTailscaleAuth(d) {
+    var el = document.getElementById('tsAuthBody');
+    if (!el) return;
+    var st = d.state || 'not_configured';
+    var cls = 'secondary', banner = '';
+    if (st === 'ok') {
+        cls = 'success';
+        banner = '✅ <b>Authkey hop le.</b> Het han: ' + escapeHtml(d.expires_at || '?') + ' (con ' + d.days_left + ' ngay).';
+    } else if (st === 'expiring' || st === 'expiring_critical') {
+        cls = 'warning';
+        banner = '⚠️ <b>Authkey SAP HET HAN</b>: con ' + d.days_left + ' ngay (' + escapeHtml(d.expires_at) + ').<br>Cap nhat authkey MOI ben duoi <b>TRUOC KHI build agent moi / tai su dung agent cu</b> - agent build bang key nay khong join duoc tailnet sau ngay ' + escapeHtml(d.expires_at) + '.';
+    } else if (st === 'expired') {
+        cls = 'danger';
+        banner = '🚫 <b>Authkey DA HET HAN</b> (' + escapeHtml(d.expires_at) + '). Agent build tu key nay khong the join tailnet. Nhap authkey moi ngay roi build lai agent.';
+    } else if (st === 'no_expiry') {
+        cls = 'warning';
+        banner = '⚠️ Authkey dang cau hinh nhung KHONG co ngay het han - khong canh bao duoc. Nhap ngay het han ben duoi.';
+    } else if (st === 'bad_expiry') {
+        cls = 'warning';
+        banner = '⚠️ Ngay het han khong hop le - nhap lai (YYYY-MM-DD).';
+    } else {
+        cls = 'secondary';
+        banner = 'ℹ️ <b>Chua cau hinh authkey Tailscale.</b> Agent build hien tai se KHONG co authkey mac dinh - may moi (chua tung join tailnet) se khong tu ket noi duoc lan dau. Cau hinh ngay ben duoi hoac qua setup_config.ps1 (muc 8).';
+    }
+    var bw = cls === 'danger' ? '#3b0d0d' : cls === 'warning' ? '#3a2a08' : cls === 'success' ? '#0c2f1a' : '#10233b';
+    var fc = cls === 'danger' ? '#fecaca' : cls === 'warning' ? '#fde68a' : cls === 'success' ? '#bbf7d0' : '#bfdbfe';
+    var html = '';
+    html += '<div style="background:' + bw + ';color:' + fc + ';border:1px solid ' + fc + '40;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;">' + banner + '</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">';
+    html += '<div style="flex:1;min-width:200px;background:#111827;border:1px solid #1e2a3a;border-radius:8px;padding:10px;"><div style="font-size:10px;text-transform:uppercase;color:#8b9bb4;">Authkey hien tai</div><div style="font-family:monospace;font-size:13px;word-break:break-all;">' + (d.masked ? escapeHtml(d.masked) : '<i style="color:#8b9bb4;">— chua co —</i>') + '</div><div style="font-size:10px;color:#8b9bb4;">(chi hien masked; dan authkey moi ben duoi de thay the)</div></div>';
+    html += '<div style="flex:1;min-width:130px;background:#111827;border:1px solid #1e2a3a;border-radius:8px;padding:10px;"><div style="font-size:10px;text-transform:uppercase;color:#8b9bb4;">Ngay het han</div><div style="font-size:15px;">' + escapeHtml(d.expires_at || '—') + '</div><div style="font-size:11px;color:#8b9bb4;">' + (d.days_left != null ? (d.days_left < 0 ? 'Qua han ' + Math.abs(d.days_left) + ' ngay' : 'Con ' + d.days_left + ' ngay') : 'Chua khai bao') + '</div></div>';
+    html += '<div style="flex:1;min-width:190px;background:#111827;border:1px solid #1e2a3a;border-radius:8px;padding:10px;"><div style="font-size:10px;text-transform:uppercase;color:#8b9bb4;">Dong nhung khi build</div><div style="font-size:12px;">server/.env &rarr; <code>build-agent.ps1</code> &rarr; <code>agent/tailscale_auth.txt</code> (gitignored)</div></div>';
+    html += '</div>';
+    html += '<div style="background:#0f172a;border:1px solid #1e2a3a;border-radius:8px;padding:12px;">';
+    html += '<div style="font-size:13px;margin-bottom:8px;"><b>Cap nhat Authkey Tailscale</b> <span style="color:#8b9bb4;font-size:11px;">(luu vao server/.env - build agent ke tiep se nhung key moi)</span></div>';
+    html += '<div class="row g-2">';
+    html += '<div class="col-md-8"><input type="text" class="form-control" id="tsAuthInput" placeholder="tskey-auth-..." value="" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);" spellcheck="false"></div>';
+    html += '<div class="col-md-4"><input type="date" class="form-control" id="tsAuthExpiry" value="' + escapeHtml(d.expires_at || '') + '" style="background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);"></div>';
+    html += '</div>';
+    html += '<div style="margin-top:10px;">';
+    html += '<button class="btn btn-sm btn-primary me-2" onclick="saveTailscaleAuthkey()"><i class="bi bi-save"></i> Luu Authkey</button>';
+    html += '<button class="btn btn-sm btn-outline-danger" onclick="clearTailscaleAuthkey()"><i class="bi bi-trash"></i> Xoa cau hinh</button>';
+    html += '</div></div>';
+    html += '<div style="margin-top:10px;font-size:11px;color:#8b9bb4;">Ghi chu: tao key moi co han dung (1 lan / reusable) tai admin console Tailscale roi dan vao o tren. Khi key sap/da het han ma can &quot;tai su dung agent cu&quot; (may mat trang thai tailnet) - bat buoc build lai agent de nhung authkey moi.</div>';
+    el.innerHTML = html;
+}
+
+function loadTailscaleAuthkey() {
+    var body = document.getElementById('tsAuthBody');
+    if (!body) return;
+    fetch('/api/tailscale/authkey').then(function(r) {
+        return r.json().then(function(j) { return { ok: r.ok, j: j }; });
+    }).then(function(res) {
+        if (!res.ok) throw new Error(res.j.error || ('HTTP ' + res.j.status));
+        renderTailscaleAuthkey(res.j);
+    }).catch(function(e) {
+        body.innerHTML = '<div class="alert alert-danger py-2 mb-0" style="font-size:12px;">❌ Khong tai duoc authkey: ' + escapeHtml(String(e.message || e)) + '</div>';
+    });
+}
+
+
+function saveTailscaleAuthkey() {
+    var key = (document.getElementById('tsAuthInput') || {}).value || '';
+    var exp = (document.getElementById('tsAuthExpiry') || {}).value || '';
+    key = key.trim(); exp = exp.trim();
+    if (!key && !exp) { showToast('❌ Nhap authkey moi hoac dung nut Xoa'); return; }
+    fetch('/api/tailscale/authkey', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authkey: key, expires_at: exp }) })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+        .then(function(res) {
+            if (!res.ok) throw new Error(res.j.error || ('HTTP ' + res.j.status));
+            showToast('✅ ' + (res.j.message || 'Da luu authkey'));
+            loadTailscaleAuthkey();
+        }).catch(function(e) { showToast('❌ ' + String(e.message || e)); });
+}
+
+function clearTailscaleAuthkey() {
+    if (!confirm('Xoa cau hinh Tailscale authkey? Agent build ke tiep se khong co authkey nhung.')) return;
+    fetch('/api/tailscale/authkey', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authkey: '', expires_at: '' }) })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+        .then(function(res) {
+            if (!res.ok) throw new Error(res.j.error || ('HTTP ' + res.j.status));
+            showToast('✅ Da xoa cau hinh authkey');
+            loadTailscaleAuthkey();
+        }).catch(function(e) { showToast('❌ ' + String(e.message || e)); });
+}
+
 // Agent Update tab switching
 document.querySelectorAll('[data-tab-au]').forEach(el => {
     el.addEventListener('click', function() {
@@ -3441,6 +3534,7 @@ document.querySelectorAll('[data-tab-au]').forEach(el => {
         document.querySelectorAll('.tab-au-content').forEach(t => t.style.display = 'none');
         if (tab === 'status') { document.getElementById('tabAuStatus').style.display = ''; loadAgentUpdateView(); }
         if (tab === 'log') { document.getElementById('tabAuLog').style.display = ''; loadAgentUpdateLogs(); }
+        if (tab === 'authkey') { document.getElementById('tabAuAuthkey').style.display = ''; loadTailscaleAuthkey(); }
     });
 });
 

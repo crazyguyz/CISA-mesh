@@ -328,6 +328,52 @@ Ask-SecretKey "GIAMSAT_COMMAND_KEY" "GIAMSAT_COMMAND_KEY"
 Write-Host ""
 
 # =============================================================================
+# 8. Tailscale Authkey (v5.0.5) - tùy chọn nhung vao agent khi build
+# =============================================================================
+function TS-Text { param([string]$vi, [string]$en) if ($lang -eq 'en') { return $en }; return $vi }
+Write-Host "  $(TS-Text '--- Tailscale Authkey (khuyen nghi) ---' '--- Tailscale Authkey (recommended) ---')" -ForegroundColor Yellow
+Write-Host "  $(TS-Text '  Authkey dung de nhung vao GiamSatAgent.exe khi build' '  Authkey embedded into GiamSatAgent.exe at build time')" -ForegroundColor Gray
+Write-Host "  $(TS-Text '  Tao key moi tai: https://login.tailscale.com/admin/settings/keys' '  Create at: https://login.tailscale.com/admin/settings/keys')" -ForegroundColor Gray
+Write-Host "  $(TS-Text '  De trong = giu nguyen (hoac bo qua neu khong dung Tailscale).' '  Leave empty = keep current (or skip if not using Tailscale).')" -ForegroundColor Gray
+
+$tsKeyCurrent = $env["GIAMSAT_TAILSCALE_AUTHKEY"]
+$tsExpCurrent = $env["GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY"]
+if ($tsExpCurrent) {
+    try {
+        $tsExpDate = [datetime]::ParseExact($tsExpCurrent, "yyyy-MM-dd", $null)
+        $tsDays = [math]::Floor(($tsExpDate - (Get-Date).Date).TotalDays)
+        $tsDaysTxt = if ($tsDays -lt 0) { $(TS-Text 'DA HET HAN' 'EXPIRED') }
+                     elseif ($tsDays -le 14) { $(TS-Text "SAP HET HAN (con $tsDays ngay)" "EXPIRING (in $tsDays days)") }
+                     else { $(TS-Text "con $tsDays ngay" "in $tsDays days") }
+        Write-Host ("  " + $(TS-Text 'Authkey hien tai: co - het han ' 'Current authkey: set - expires ') + $tsExpCurrent + " (" + $tsDaysTxt + ")") -ForegroundColor $(if ($tsDays -le 14) { 'Yellow' } else { 'Gray' })
+    } catch {
+        Write-Host ("  " + $(TS-Text 'Authkey hien tai: co - ngay het han khong hop le' 'Current authkey: set - invalid expiry')) -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  $(TS-Text 'Authkey hien tai: chua cau hinh' 'Current authkey: not configured')" -ForegroundColor Gray
+}
+
+$tsKeyIn = Read-Host ("  " + $(TS-Text 'Authkey moi (tskey-auth-...)' 'New authkey (tskey-auth-...)') + " (Enter = giu nguyen)")
+if ($tsKeyIn -and $tsKeyIn.Trim() -ne "" -and $tsKeyIn.Trim() -notmatch "^tskey-auth-") {
+    Write-Host "  [!] $(TS-Text 'Authkey phai bat dau bang tskey-auth- - BO QUA doi nay' 'Authkey must start with tskey-auth- - SKIPPED')" -ForegroundColor Red
+} elseif ($tsKeyIn -and $tsKeyIn.Trim() -ne "") {
+    $env["GIAMSAT_TAILSCALE_AUTHKEY"] = $tsKeyIn.Trim()
+    Write-Host "  [+] $(TS-Text 'Authkey da cap nhat' 'Authkey updated')" -ForegroundColor Green
+}
+
+$tsExpIn = Read-Host ("  " + $(TS-Text 'Ngay het han (YYYY-MM-DD)' 'Expiry date (YYYY-MM-DD)') + " (Enter = giu nguyen)")
+if ($tsExpIn -and $tsExpIn.Trim() -ne "") {
+    $tsExpParsed = $null
+    try { $tsExpParsed = [datetime]::ParseExact($tsExpIn.Trim(), "yyyy-MM-dd", $null) } catch { try { $tsExpParsed = [datetime]::ParseExact($tsExpIn.Trim(), "dd/MM/yyyy", $null) } catch { $tsExpParsed = $null } }
+    if ($tsExpParsed) {
+        $env["GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY"] = $tsExpParsed.ToString("yyyy-MM-dd")
+        Write-Host ("  [+] " + $(TS-Text 'Ngay het han: ' 'Expiry: ') + $env["GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY"]) -ForegroundColor Green
+    } else {
+        Write-Host "  [!] $(TS-Text 'Dinh dang ngay khong hop le (can YYYY-MM-DD) - BO QUA doi nay' 'Invalid date format (need YYYY-MM-DD) - SKIPPED')" -ForegroundColor Red
+    }
+}
+
+# =============================================================================
 # Save to .env
 # =============================================================================
 Write-Host "============================================================" -ForegroundColor Cyan
@@ -353,6 +399,7 @@ $keys = @(
     "GIAMSAT_ADMIN_USER", "GIAMSAT_ADMIN_PASSWORD",
     "GIAMSAT_ENROLLMENT_SECRET",
     "GIAMSAT_AGENT_PSK", "GIAMSAT_SECRET_KEY", "GIAMSAT_COMMAND_KEY",
+    "GIAMSAT_TAILSCALE_AUTHKEY", "GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY",
     "GIAMSAT_CLUSTER_SECRET",
     "GIAMSAT_PER_MACHINE_PSK", "GIAMSAT_PER_MACHINE_PSK_FILE",
     # v5.0.4 — cổng / TLS / syslog TCP / threat-intel / net behavior

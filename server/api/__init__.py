@@ -36,6 +36,7 @@ from . import api_assets
 from . import api_netflow
 from . import api_watchlist
 from . import api_syslog
+from . import api_tailscale
 
 def register_all_routes(app, core):
     """Register all API route modules on the Flask app."""
@@ -73,3 +74,4 @@ def register_all_routes(app, core):
     api_netflow.register(app, core)
     api_watchlist.register(app, core)
     api_syslog.register(app, core)
+    api_tailscale.register(app, core)

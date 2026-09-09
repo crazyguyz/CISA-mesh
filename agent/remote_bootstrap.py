@@ -16,6 +16,7 @@ không bao giờ thực thi nội dung khác.
 import os
 import re
 import subprocess
+import sys
 import time
 
 # Google Drive "view" link -> "uc?export=download" để tải raw nội dung
@@ -48,6 +49,50 @@ def _auth_cmd_safe(auth_command):
             continue
         return False
     return True
+
+
+# ------------------------------------------------------------------ authkey nhung
+# v5.0.5: quan tri nhap authkey + expiry qua setup_config.ps1 / Dashboard -> luu
+# server/.env; build-agent.ps1 nhung vao exe (agent/tailscale_auth.txt, gitignored).
+# Agent dung authkey nay chay 'tailscale up' lan dau, KHONG can file Drive cong khai.
+def _bundled_ts_auth_file():
+    try:
+        base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+        p = os.path.join(base, "tailscale_auth.txt")
+        return p if os.path.exists(p) else ""
+    except Exception:
+        return ""
+
+
+def builtin_tailscale_auth():
+    """Tra ve (authkey, expiry) nhung trong exe - env override truoc (de test/admin)."""
+    authkey = os.environ.get("GIAMSAT_TAILSCALE_AUTHKEY", "").strip()
+    expiry = os.environ.get("GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY", "").strip()
+    if not authkey:
+        try:
+            p = _bundled_ts_auth_file()
+            if p:
+                for _ln in open(p, "r", encoding="utf-8"):
+                    _ln = _ln.strip()
+                    if _ln.startswith("GIAMSAT_TAILSCALE_AUTHKEY="):
+                        authkey = _ln.split("=", 1)[1].strip()
+                    elif _ln.startswith("GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY="):
+                        expiry = _ln.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    return (authkey or ""), (expiry or "")
+
+
+def builtin_auth_command():
+    """'tailscale up --authkey=...' tu authkey nhung (neu co) - da qua allowlist."""
+    try:
+        authkey, _ = builtin_tailscale_auth()
+        if authkey.startswith("tskey-auth-"):
+            cmd = "tailscale up --authkey=" + authkey
+            return cmd if _auth_cmd_safe(cmd) else ""
+    except Exception:
+        pass
+    return ""
 
 
 def _conf_path():

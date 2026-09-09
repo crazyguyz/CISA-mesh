@@ -54,3 +54,6 @@ agent/data/nvd_*.txt
 agent/config.json
 server/agent_update/*.exe
 tests/test_report.json
+
+# Tailscale authkey nhung vao agent luc build (v5.0.5) - KHONG commit len repo
+agent/tailscale_auth.txt

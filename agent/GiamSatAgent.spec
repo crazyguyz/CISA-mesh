@@ -10,6 +10,12 @@ for _sub in ('tcl8.6', 'tk8.6'):
     if os.path.isdir(_p):
         _tcl_datas.append((_p, os.path.join('tcl', _sub)))
 
+# v5.0.5: tailscale_auth.txt (authkey + expiry) duoc build-agent.ps1 tao ra o
+# agent/ TRUOC khi build, chi khi quan tri da cau hinh trong server/.env. File nay
+# gitignored. Duong dan trong spec tinh tu thu muc spec (= agent/).
+_ts_auth_datas = [('tailscale_auth.txt', '.')] if os.path.exists(
+    os.path.join('agent', 'tailscale_auth.txt')) else []
+
 
 a = Analysis(
     ['main.py'],
@@ -29,7 +35,7 @@ a = Analysis(
            ('sca_gdpr_policy.yaml', '.'),
            ('sca_hipaa_policy.yaml', '.'),
            ('sca_iso27001_policy.yaml', '.'),
-           ('vlan_config.json', '.')] + _tcl_datas,
+           ('vlan_config.json', '.')] + _tcl_datas + _ts_auth_datas,
     hiddenimports=['win32file'],
     hookspath=[],
     hooksconfig={},
