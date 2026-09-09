@@ -1,7 +1,10 @@
-"""GIAM-SAT Agent - remote bootstrap (v5.0.6): auto server info + Tailscale join.
+"""GIAM-SAT Agent - remote bootstrap (v5.0.7): auto server info + Tailscale join.
 
-Nguồn: một file text CỐ ĐỊNH (Google Drive / URL https), NỘI DUNG KHÔNG CÒN
-chứa bí mật. Định dạng (mỗi dòng một mục, không phân biệt hoa thường):
+Nguồn: một file text do MỖI TỔ CHỨC tự đặt (Google Drive / URL https của họ),
+KHÔNG có link mặc định chung trong repo công khai. Link được khai báo ở
+setup_config.ps1 -> server/.env (GIAMSAT_TAILSCALE_CONF_URL) -> nhúng vào exe lúc
+build (remote_conf_url.txt), hoặc đặt biến môi trường lúc chạy. Nội dung file
+KHÔNG chứa bí mật. Định dạng (mỗi dòng một mục):
   tailscale-server:100.109.231.14:6666   # địa chỉ server khi agent đi qua Tailscale
   lan-server:192.168.1.5:6666             # địa chỉ server trong LAN
   ip-server:host:port                     # (cũ) dùng chung cả 2 chế độ
@@ -20,10 +23,12 @@ import subprocess
 import sys
 import time
 
-# Google Drive "view" link -> "uc?export=download" để tải raw nội dung
-_REMOTE_URL = (
-    "https://drive.google.com/uc?export=download&id=1dcxpt-F0SN90q0ZUCIc1SWMSVDEvew_o"
-)
+# v5.0.7 (PUBLIC REPO): KHÔNG hardcode link Google Drive của một tổ chức nào làm
+# mặc định - ai dùng repo này phải tự khai báo link file cấu hình remote của HỌ
+# qua setup_config.ps1 (GIAMSAT_TAILSCALE_CONF_URL -> server/.env -> build nhúng
+# remote_conf_url.txt) hoặc biến môi trường lúc chạy.
+# Để trống = agent KHÔNG dùng file remote (cài/kết nối thủ công qua dialog).
+_REMOTE_URL = ""
 
 _TS_CMD_RE = re.compile(r"^tailscale\s+up\b")
 _BAD_CHARS = re.compile(r"[&|;`<>$]")
@@ -108,9 +113,9 @@ def _http_get(url, timeout=20):
         return r.read().decode("utf-8", "replace")
 
 
-# v5.0.6: link file conf được nhúng lúc build (remote_conf_url.txt) nếu người quản
-# trị đặt GIAMSAT_TAILSCALE_CONF_URL trong server/.env + setup_config.ps1.
-# Thứ tự ưu tiên: biến môi trường -> file nhúng -> link mặc định đã hardcode.
+# v5.0.7: link file conf do MỖI TỔ CHỨC tự cấu hình (setup_config.ps1 -> server/.env
+# -> nhúng lúc build) HOẶC biến môi trường; không có link mặc định chung.
+# Thứ tự ưu tiên: biến môi trường -> file nhúng -> rỗng (tắt remote conf).
 def _effective_conf_url():
     try:
         url = os.environ.get("GIAMSAT_TAILSCALE_CONF_URL", "").strip()
@@ -134,6 +139,10 @@ def fetch_remote_config(use_cache_fallback=True):
     hoặc ip-server hoặc psk/command_key) - trước đây Drive trả HTML/trang lỗi với
     HTTP 200 cũng bị ghi đè lên cache tốt."""
     url = _effective_conf_url()
+    if not url:
+        # v5.0.7: chưa cấu hình link file remote (repo công khai - mỗi tổ chức tự
+        # đặt qua setup_config.ps1 / env). Không dùng file remote.
+        return None
 
     def _meaningful(cfg):
         return bool(cfg and (cfg.get("auth_command") or cfg.get("server_host")

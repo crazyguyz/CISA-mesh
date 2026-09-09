@@ -122,7 +122,8 @@ if ($tsUrl -match '^https?://') {
     Write-OK "Da nhung link file cau hinh remote vao agent (agent/remote_conf_url.txt)"
 } else {
     if (Test-Path $tsUrlFile) { Remove-Item $tsUrlFile -Force -ErrorAction SilentlyContinue }
-    Write-INFO "Chua cau hinh GIAMSAT_TAILSCALE_CONF_URL - agent se dung link mac dinh da hardcode."
+    Write-INFO "Chua cau hinh GIAMSAT_TAILSCALE_CONF_URL trong server/.env - agent se KHONG dung file remote."
+    Write-INFO "Cau hinh: chay server\setup\setup_config.ps1 (muc 8) nhap link file cua ban roi build lai."
 }
 
 # STEP 3: Clear cache

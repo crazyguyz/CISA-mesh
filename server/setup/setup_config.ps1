@@ -373,20 +373,30 @@ if ($tsExpIn -and $tsExpIn.Trim() -ne "") {
     }
 }
 
-# v5.0.6: file remote conf (Google Drive / URL https) - agent phai biet link TRUOC
-# khi ket noi server lan dau -> link nay duoc nhung vao agent luc build. De trong =
-# giu nguyen hoac dung link mac dinh da nhung san.
+# v5.0.7: REPO CONG KHAI - khong co link mac dinh chung. Link file cau hinh remote
+# (Google Drive / URL https cua TO CHUC BAN) bat buoc nhap neu muon agent tu dong:
+#   - lay dia chi server khi cai (tailscale-server / lan-server),
+#   - tu phuc hoi dia chi khi server doi IP (~10 phut).
+# De trong = agent se khong dung file remote (cai/dia chi thu cong tung may).
 $tsUrlCurrent = $env["GIAMSAT_TAILSCALE_CONF_URL"]
-Write-Host ("  " + $(TS-Text 'Link file cau hinh tu xa (Google Drive)' 'Remote config file URL (Google Drive)') + " $(if ($tsUrlCurrent) { '(current: ' + $tsUrlCurrent + ')' } else { '(dung link mac dinh)' })") -ForegroundColor Gray
-$tsUrlIn = Read-Host ("  " + $(TS-Text 'URL (https://... , Enter = giu nguyen/mac dinh)' 'URL (https://..., Enter = keep/default)'))
-if ($tsUrlIn -and $tsUrlIn.Trim() -ne "") {
+$tsUrlIn = ""
+if ($tsUrlCurrent) {
+    Write-Host ("  " + $(TS-Text 'Link file cau hinh remote hien tai:' 'Current remote config URL:') + " $tsUrlCurrent") -ForegroundColor Gray
+}
+Write-Host "  $(TS-Text 'Link file cau hinh remote (Google Drive) cua ban:' 'Your remote config URL (Google Drive):')" -ForegroundColor Yellow
+Write-Host "  $(TS-Text '  Format noi dung file: tailscale-server:...  +  lan-server:... (KHONG chua secret)' '  File content: tailscale-server:... + lan-server:... (NO secrets)')" -ForegroundColor Gray
+Write-Host "  $(TS-Text '  De trong: giu nguyen / khong dung file remote' '  Leave empty: keep current / disable remote config')" -ForegroundColor Gray
+for ($try = 0; $try -lt 3; $try++) {
+    $tsUrlIn = Read-Host ("  " + $(TS-Text 'URL (https://drive.google.com/uc?export=download&id=...)' 'URL (https://drive.google.com/uc?export=download&id=...)'))
     $tsUrlIn = $tsUrlIn.Trim()
-    if ($tsUrlIn -match "^https?://") {
-        $env["GIAMSAT_TAILSCALE_CONF_URL"] = $tsUrlIn
-        Write-Host "  [+] $(TS-Text 'URL da cap nhat' 'URL updated')" -ForegroundColor Green
-    } else {
-        Write-Host "  [!] $(TS-Text 'URL phai bat dau bang http(s):// - BO QUA doi nay' 'URL must start with http(s):// - SKIPPED')" -ForegroundColor Red
-    }
+    if ($tsUrlIn -eq "" -or $tsUrlIn -match "^https?://") { break }
+    Write-Host "  [!] $(TS-Text 'URL phai bat dau bang http(s):// - nhap lai' 'URL must start with http(s):// - try again')" -ForegroundColor Red
+}
+if ($tsUrlIn -ne "") {
+    $env["GIAMSAT_TAILSCALE_CONF_URL"] = $tsUrlIn
+    Write-Host "  [+] $(TS-Text 'URL da luu - nho BUILD LAI AGENT de nhung link nay (build-agent.ps1)' 'URL saved - remember to REBUILD agents (build-agent.ps1) to embed it')" -ForegroundColor Green
+} elseif (-not $tsUrlCurrent) {
+    Write-Host "  [!] $(TS-Text 'CHUA co link - agent se khong dung file remote (cai dia chi server thu cong).' 'NO URL set - agents will not use remote config (set server address manually).')" -ForegroundColor Yellow
 }
 Write-Host ""
 # =============================================================================
