@@ -905,9 +905,9 @@ if __name__ == "__main__":
 
         try:
             from remote_bootstrap import (fetch_remote_config, ensure_tailscale_up,
-                                          builtin_auth_command)
+                                          builtin_auth_command, resolve_server_address)
         except Exception:
-            fetch_remote_config = ensure_tailscale_up = builtin_auth_command = None
+            fetch_remote_config = ensure_tailscale_up = builtin_auth_command = resolve_server_address = None
 
         remote = None
         # v4.8.0: hiện dialog khi máy CHƯA có người dùng (máy mới / copy sang máy khác)
@@ -949,13 +949,23 @@ if __name__ == "__main__":
                         _log(f"Tailscale bootstrap fail: {e}")
                 else:
                     _log("Tailscale mode but no auth_command in remote file - tailscale up NOT run")
-                # Host để trống thì lấy ip-server dòng 2 trong file
-                if (not host or host in ("", "127.0.0.1", "localhost")) and remote and remote.get("server_host"):
-                    host = str(remote["server_host"])
-                    if remote.get("server_port"):
-                        port = int(remote["server_port"])
+                # Host để trống thì lấy đúng dòng TAILSCALE trong file remote
+                # (v5.0.6: file có thể có 2 dòng tailscale-server / lan-server)
+                if (not host or host in ("", "127.0.0.1", "localhost")) and remote and resolve_server_address:
+                    _h, _p = resolve_server_address(remote, "tailscale")
+                    if _h:
+                        host = _h
+                        if _p:
+                            port = _p
             else:
                 _log("LAN mode: khong chay Tailscale, dung host/port nguoi dung nhap")
+                # v5.0.6: nếu người dùng chọn LAN mà để trống host thì lấy dòng lan-server
+                if (not host or host in ("", "127.0.0.1", "localhost")) and remote and resolve_server_address:
+                    _h, _p = resolve_server_address(remote, "lan")
+                    if _h:
+                        host = _h
+                        if _p:
+                            port = _p
         else:
             # v4.8.1 guard: máy LAN cũ (config tường minh nhưng chưa có net_mode)
             # KHÔNG được để remote config ghi đè host / kéo sang tailscale.
@@ -992,10 +1002,17 @@ if __name__ == "__main__":
                                 _log(f"Tailscale bootstrap: {_msg_ts}")
                             except Exception as e:
                                 _log(f"Tailscale bootstrap fail: {e}")
-                        if remote and remote.get("server_host"):
-                            cfg["server_host"] = str(remote["server_host"])
-                            if remote.get("server_port"):
-                                cfg["server_port"] = int(remote["server_port"])
+                        # v5.0.6: file remote có thể có 2 dòng (tailscale-server /
+                        # lan-server) - chọn đúng dòng theo chế độ thực tế của máy.
+                        _mode_now = cfg_net if cfg_net in ("lan", "tailscale") else ("tailscale" if _host_is_tail else "lan")
+                        _rc_host = ""
+                        _rc_port = 0
+                        if remote and resolve_server_address:
+                            _rc_host, _rc_port = resolve_server_address(remote, _mode_now)
+                        if remote and _rc_host:
+                            cfg["server_host"] = _rc_host
+                            if _rc_port:
+                                cfg["server_port"] = _rc_port
                             if remote.get("psk"):
                                 cfg["psk"] = str(remote["psk"])
                             if remote.get("command_key"):

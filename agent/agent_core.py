@@ -2903,13 +2903,66 @@ del "%~f0"
             print(f"[-] Behavior Collector failed to start: {e}")
 
         attempt = 0
+        recovery_state = None   # v5.0.6: {old_host, old_port, verify_fail} khi vừa đổi host
+        last_rec_ts = 0.0
         while self.running:
             if not self.connected:
                 wait = min(self.reconnect_interval * (2 ** attempt), self.max_reconnect_interval)
                 if attempt > 0: print(f"[*] Reconnecting in {wait}s...")
                 time.sleep(wait)
-                if self._connect(): attempt = 0
-                else: attempt += 1
+                if self._connect():
+                    attempt = 0
+                    if recovery_state:
+                        self._log_connect("[+] Host recovery OK - connected to new server address")
+                    recovery_state = None
+                else:
+                    attempt += 1
+                    # v5.0.6 HOST RECOVERY (địa chỉ server đổi bất thình lình):
+                    # - offline lâu (~mỗi 10 lần thất bại, backoff tối đa 60s ≈ 10 phút)
+                    #   -> đọc LẠI file remote, lấy đúng dòng theo net_mode
+                    #     (tailscale-server nếu đi Tailscale, lan-server nếu đi LAN)
+                    #     rồi cập nhật server_host/server_port + config.
+                    # - FAIL-SAFE: host mới không kết nối được sau 3 lần thử liên tiếp
+                    #   -> tự REVERT về địa chỉ cũ (chống file remote trỏ sai / giả mạo).
+                    if recovery_state:
+                        recovery_state["verify_fail"] += 1
+                        if recovery_state["verify_fail"] >= 3:
+                            _oh = recovery_state.get("old_host") or self.server_host
+                            _op = recovery_state.get("old_port") or self.server_port
+                            self._log_connect(f"[!] Host recovery FAILED (3 lan) - revert ve {_oh}:{_op}")
+                            self.server_host = _oh
+                            self.server_port = _op
+                            try:
+                                self.config.update("server_host", self.server_host)
+                                self.config.update("server_port", self.server_port)
+                            except Exception:
+                                pass
+                            recovery_state = None
+                    elif attempt % 10 == 0 and (time.time() - last_rec_ts) >= 540:
+                        last_rec_ts = time.time()
+                        try:
+                            _mode = str(self.config.get("net_mode", "") or "").strip().lower()
+                            if not _mode:
+                                _mode = "tailscale" if str(self.server_host).startswith("100.") else "lan"
+                            from remote_bootstrap import fetch_recovery_config
+                            _rc = fetch_recovery_config(mode=_mode, use_cache_fallback=True)
+                            if _rc and _rc.get("server_host"):
+                                _nh = str(_rc["server_host"]).strip()
+                                _np = int(_rc.get("server_port") or 0) or self.server_port
+                                if _nh and _nh != self.server_host:
+                                    self._log_connect(f"[*] Host recovery: server doi -> {_nh}:{_np} (tu file remote, mode={_mode})")
+                                    recovery_state = {"old_host": self.server_host,
+                                                      "old_port": self.server_port,
+                                                      "verify_fail": 0}
+                                    self.server_host = _nh
+                                    self.server_port = _np
+                                    try:
+                                        self.config.update("server_host", self.server_host)
+                                        self.config.update("server_port", self.server_port)
+                                    except Exception:
+                                        pass
+                        except Exception as e:
+                            self._log_connect(f"[-] Host recovery error: {e}")
             time.sleep(1)
 
         if self.sock:

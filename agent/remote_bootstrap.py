@@ -1,16 +1,17 @@
-"""GIAM-SAT Agent - remote bootstrap (v5.0.4): auto Tailscale + auto server info.
+"""GIAM-SAT Agent - remote bootstrap (v5.0.6): auto server info + Tailscale join.
 
-Nguồn dữ liệu: một file text CỐ ĐỊNH (host trên Google Drive / bất kỳ URL https),
-cấu trúc:
-  dòng 1  : lệnh kết nối Tailscale, VD  tailscale up --authkey=tskey-auth-...
-  dòng 2  : ip-server:<host>[:port]   (hoặc 'ip-server = host', không phân biệt hoa thường)
+Nguồn: một file text CỐ ĐỊNH (Google Drive / URL https), NỘI DUNG KHÔNG CÒN
+chứa bí mật. Định dạng (mỗi dòng một mục, không phân biệt hoa thường):
+  tailscale-server:100.109.231.14:6666   # địa chỉ server khi agent đi qua Tailscale
+  lan-server:192.168.1.5:6666             # địa chỉ server trong LAN
+  ip-server:host:port                     # (cũ) dùng chung cả 2 chế độ
+  tailscale up --authkey=...              # (cũ, KHÔNG đặt key công khai nữa)
 
-Agent tự tải file này, đọc cấu hình server từ đó (không cần người dùng điền) và
-tự cài/kết nối Tailscale nếu máy chưa có. Có thể đổi URL bằng biến môi trường
-GIAMSAT_TAILSCALE_CONF_URL (mặc định là link Drive cố định).
-
-An toàn: lệnh remote chỉ được phép là 'tailscale up ...' (không shell metachar),
-không bao giờ thực thi nội dung khác.
+Agent chọn địa chỉ theo net_mode (tailscale-server vs lan-server). Authkey để
+join Tailscale được NHÚNG vào exe lúc build (server/.env -> build-agent.ps1).
+Khi agent mất kết nối server lâu (~10 phút), agent_core đọc LẠI file này để lấy
+địa chỉ mới nếu người quản trị đã đổi IP server (host recovery), kèm fail-safe
+tự quay lại địa chỉ cũ nếu host mới không kết nối được.
 """
 
 import os
@@ -117,6 +118,8 @@ def fetch_remote_config(use_cache_fallback=True):
 
     def _meaningful(cfg):
         return bool(cfg and (cfg.get("auth_command") or cfg.get("server_host")
+                             or cfg.get("server_host_tailscale")
+                             or cfg.get("server_host_lan")
                              or cfg.get("psk") or cfg.get("command_key")))
 
     text = None
@@ -147,31 +150,101 @@ def fetch_remote_config(use_cache_fallback=True):
 
 
 def parse_remote_text(text):
-    """Parse nội dung file (không phụ thuộc CRLF)."""
+    """Parse nội dung file (không phụ thuộc CRLF).
+
+    v5.0.6: file remote = "địa chỉ book" 2 chế độ (không bắt buộc phải có đủ):
+      - dòng authkey cũ (dòng 1, tuỳ chọn — đã KHÔNG còn nên đặt key công khai):
+          tailscale up --authkey=...
+      - địa chỉ máy chủ qua Tailscale:
+          tailscale-server:100.109.231.14:6666      (hoặc ip-server-tailscale:/ts-server:)
+      - địa chỉ máy chủ trong LAN:
+          lan-server:192.168.1.5:6666                (hoặc ip-server-lan:/lan-ip:)
+      - key cũ `ip-server:` / `server:` vẫn hỗ trợ như dạng generic (dùng chung).
+    Agent chọn dòng theo net_mode của nó (xem resolve_server_address).
+    """
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
     out = {"auth_command": "", "server_host": "", "server_port": 0,
+           "server_host_tailscale": "", "server_port_tailscale": 0,
+           "server_host_lan": "", "server_port_lan": 0,
            "psk": "", "command_key": "", "raw": text[:2000]}
+
+    def _set(dst_key_host, dst_key_port, val):
+        host = val
+        port = 0
+        if ":" in val:
+            h, _, p = val.rpartition(":")
+            if h and p.isdigit():
+                host, port = h, int(p)
+        out[dst_key_host] = host
+        out[dst_key_port] = port
+        return bool(host)
+
     for i, ln in enumerate(lines):
         if i == 0 and _TS_CMD_RE.match(ln) and not _BAD_CHARS.search(ln) and _auth_cmd_safe(ln):
             out["auth_command"] = ln
             continue
+        m = re.match(r"(?i)^\s*(tailscale-server|ip-server-tailscale|ts-server|tailscale-ip)\s*[:=]\s*(\S+)\s*$", ln)
+        if m and m.group(2):
+            if _set("server_host_tailscale", "server_port_tailscale", m.group(2).strip()):
+                continue
+        m = re.match(r"(?i)^\s*(lan-server|ip-server-lan|lan-ip|local-server|ip-server-local)\s*[:=]\s*(\S+)\s*$", ln)
+        if m and m.group(2):
+            if _set("server_host_lan", "server_port_lan", m.group(2).strip()):
+                continue
         m = re.match(r"(?i)^\s*(?:ip-server|server)\s*[:=]\s*(\S+)\s*$", ln)
         if m and m.group(1):
-            val = m.group(1).strip()
-            if ":" in val:
-                host, _, port = val.rpartition(":")
-                if host and port.isdigit():
-                    out["server_host"] = host
-                    out["server_port"] = int(port)
-                    continue
-            out["server_host"] = val
-            continue
-        # tuỳ chọn (an toàn khi file được host NỘI BỘ): psk / command_key
+            if _set("server_host", "server_port", m.group(1).strip()):
+                continue
+        # (tuỳ chọn legacy — file nội bộ): psk / command_key
         sk = re.match(r"(?i)^\s*(psk|command[_-]?key)\s*[:=]\s*(\S+)\s*$", ln)
         if sk:
             key = "command_key" if "key" in sk.group(1).lower() else "psk"
             out[key] = sk.group(2)
+    # fallback: file cũ chỉ có ip-server generic -> dùng cho cả 2 chế độ
+    if not out["server_host_tailscale"] and out["server_host"]:
+        out["server_host_tailscale"] = out["server_host"]
+        out["server_port_tailscale"] = out["server_port"]
+    if not out["server_host_lan"] and out["server_host"]:
+        out["server_host_lan"] = out["server_host"]
+        out["server_port_lan"] = out["server_port"]
     return out
+
+
+def resolve_server_address(remote, mode="lan"):
+    """Chọn địa chỉ server theo chế độ kết nối của máy (đọc từ file remote).
+
+    mode='tailscale' -> ưu tiên dòng tailscale-server, ngược lại dùng lan-server.
+    Luôn fallback về dòng generic `ip-server:` (file cũ) nếu thiếu dòng riêng.
+    Trả (host, port) hoặc ("", 0)."""
+    remote = remote or {}
+    if (mode or "").strip().lower() == "tailscale":
+        host = remote.get("server_host_tailscale") or remote.get("server_host") or ""
+        port = remote.get("server_port_tailscale") or remote.get("server_port") or 0
+    else:
+        host = remote.get("server_host_lan") or remote.get("server_host") or ""
+        port = remote.get("server_port_lan") or remote.get("server_port") or 0
+    try:
+        port = int(port or 0)
+    except (TypeError, ValueError):
+        port = 0
+    return host, port
+
+
+def fetch_recovery_config(mode="lan", use_cache_fallback=True):
+    """Đọc lại file remote để lấy (host, port) cho chế độ mode.
+
+    CHỈ lấy địa chỉ — không chạy lệnh tailscale, không đụng psk/command_key.
+    Agent gọi khi mất kết nối server lâu (≈10 phút)."""
+    try:
+        cfg = fetch_remote_config(use_cache_fallback=use_cache_fallback)
+        if not cfg:
+            return None
+        host, port = resolve_server_address(cfg, mode)
+        if not host:
+            return None
+        return {"server_host": host, "server_port": int(port or 0)}
+    except Exception:
+        return None
 
 
 
