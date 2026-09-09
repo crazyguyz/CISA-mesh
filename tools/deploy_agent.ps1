@@ -68,6 +68,34 @@ foreach ($f in @("GiamSatAgent.exe", "GiamSatUpdater.exe", "agent_version.txt"))
     if (Test-Path $src) { Copy-Item $src (Join-Path $dest $f) -Force; Write-Host ("    [OK] " + $f) }
 }
 
+Write-Host "==> 3b. Siec ACL (v5.0.5 fix CRITICAL-3: user thuong khong ghi de duoc exe)..." -ForegroundColor Cyan
+# Mặc định C:\Tool kế thừa ACL C:\ -> "Authenticated Users:(M)" khiến MỌI user
+# local (hoặc malware chay user) ghi de duoc GiamSatAgent.exe / GiamSatUpdater.exe
+# - lan logon sau, task ONLOGON /RL HIGHEST chay file doc voi token admin (LPE).
+$sys = "*S-1-5-18"; $adm = "*S-1-5-32-544"
+try {
+    icacls $dest /inheritance:r /grant:r ($sys + ":(OI)(CI)F") ($adm + ":(OI)(CI)F") 2>&1 | Out-Null
+    foreach ($f in @("GiamSatAgent.exe", "GiamSatUpdater.exe", "agent_version.txt")) {
+        $fp = Join-Path $dest $f
+        if (Test-Path $fp) { icacls $fp /inheritance:r /grant:r ($sys + ":F") ($adm + ":F") 2>&1 | Out-Null }
+    }
+    Write-Host "    [OK] $dest : chi SYSTEM + Administrators (full)." -ForegroundColor Green
+} catch { Write-Host "    [!] ACL $dest that bai: $_" -ForegroundColor Yellow }
+
+# HIGH-3: ProgramData\GIAM-SAT truoc day BUILTIN\Users:(CI)(WD,AD,WEA,WA) - user
+# thuong tao duoc file (plant tailscale-hide-force -> taskkill GUI tailnet, DoS).
+# Gio: SYSTEM/Admins full, Users CHI DOC (khong tao/sua file); khoa luon cache/flags.
+$pd = "C:\ProgramData\GIAM-SAT"
+New-Item -ItemType Directory -Path $pd -Force | Out-Null
+try {
+    icacls $pd /inheritance:r /grant:r ($sys + ":(OI)(CI)F") ($adm + ":(OI)(CI)F") ("*S-1-5-11" + ":(OI)(CI)RX") 2>&1 | Out-Null
+    foreach ($f in @("Agent\tailscale-conf.txt", "Agent\tailscale-enabled.flag", "Agent\tailscale-hide-force")) {
+        $fp = Join-Path $pd $f
+        if (Test-Path $fp) { icacls $fp /inheritance:r /grant:r ($sys + ":F") ($adm + ":F") 2>&1 | Out-Null }
+    }
+    Write-Host "    [OK] $pd : Users doc-only (khong tao file)." -ForegroundColor Green
+} catch { Write-Host "    [!] ACL $pd that bai: $_" -ForegroundColor Yellow }
+
 Write-Host "==> 4. Dang ky task GiamSatUpdater (ONLOGON, HIGHEST)..." -ForegroundColor Cyan
 schtasks /create /tn "GiamSatUpdater" /tr ('"' + (Join-Path $dest "GiamSatUpdater.exe") + '"') /sc onlogon /rl highest /f 2>&1 | Out-String | Write-Host
 

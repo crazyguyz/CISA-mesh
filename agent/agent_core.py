@@ -1299,6 +1299,13 @@ class AgentCore:
             _extra_fields = self._load_user_fields()
             _fields_json = _json.dumps(_extra_fields, ensure_ascii=False).replace("'", "''")
 
+            # v5.0.5 (MEDIUM-2): escape server_host/server_port khi nội suy vào chuỗi
+            # PS double-quoted - trước đây nội suy raw, host độc dạng
+            # `";Start-Process calc;#` sẽ RCE khi reset_user rơi vào nhánh PS fallback
+            # (tkinter lỗi). Escaping giống updater.py: " -> `", $ -> `$.
+            _host_ps = str(self.server_host or "").replace("\\", "\\\\").replace('"', '`"').replace("$", "`$")
+            _port_ps = str(self.server_port or "").replace("\\", "\\\\").replace('"', '`"').replace("$", "`$")
+
             ps_script = '''
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -1372,9 +1379,9 @@ function Add-ComboBox($labelText, $opts, $y) {
 $y = 78
 $txtHost = $null; $txtPort = $null; $txtName = $null; $txtID = $null; $txtEmail = $null
 $y = Add-Label "Dia chi may chu (IP/Hostname):" $y
-$txtHost, $y = Add-TextBox "''' + self.server_host + '''" $y
+$txtHost, $y = Add-TextBox "''' + _host_ps + '''" $y
 $y = Add-Label "Cong ket noi:" $y
-$txtPort, $y = Add-TextBox "''' + str(self.server_port) + '''" $y 80
+$txtPort, $y = Add-TextBox "''' + _port_ps + '''" $y 80
 $y += 8
 $y = Add-Label "THONG TIN NGUOI SU DUNG" $y
 $y = Add-Label "Nguoi su dung:" $y

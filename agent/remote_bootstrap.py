@@ -26,6 +26,29 @@ _REMOTE_URL = (
 _TS_CMD_RE = re.compile(r"^tailscale\s+up\b")
 _BAD_CHARS = re.compile(r"[&|;`<>$]")
 
+# v5.0.5 (HIGH-2): allowlist flag THẬT sự cho 'tailscale up'. Trước đây bộ lọc chỉ
+# chặn shell metachar + tiền tố "tailscale up" -> file remote bị chỉnh có thể chèn
+# --ssh / --advertise-routes / --exit-node / --accept-routes / --login-server /
+# --state / --tun... (chạy list-args nên metachar vốn vô nghĩa). Fail-closed: flag
+# lạ => KHÔNG chạy lệnh đó.
+_ALLOWED_TS_EXACT = {"--reset", "--force-reauth"}
+_ALLOWED_TS_KV = re.compile(r"^--(?:authkey|hostname|advertise-tags)=.+$")
+
+
+def _auth_cmd_safe(auth_command):
+    """Chỉ cho phép: 'tailscale up' + flag nằm trong allowlist (fail-closed)."""
+    try:
+        parts = (auth_command or "").split()
+    except Exception:
+        return False
+    if len(parts) < 2 or parts[0].lower() != "tailscale" or parts[1].lower() != "up":
+        return False
+    for a in parts[2:]:
+        if a in _ALLOWED_TS_EXACT or _ALLOWED_TS_KV.match(a):
+            continue
+        return False
+    return True
+
 
 def _conf_path():
     return os.path.join(os.environ.get("PROGRAMDATA", r"C:\ProgramData"),
@@ -41,31 +64,41 @@ def _http_get(url, timeout=20):
 
 def fetch_remote_config(use_cache_fallback=True):
     """Tải + cache file cấu hình từ xa. Trả dict hoặc None.
-    keys: auth_command / server_host / server_port / raw"""
-    text = None
+    keys: auth_command / server_host / server_port / raw
+    v5.0.5 (LOW-6): chỉ ghi đè cache khi nội dung thật sự LÀ config (có auth_command
+    hoặc ip-server hoặc psk/command_key) - trước đây Drive trả HTML/trang lỗi với
+    HTTP 200 cũng bị ghi đè lên cache tốt."""
     url = os.environ.get("GIAMSAT_TAILSCALE_CONF_URL", _REMOTE_URL).strip()
+
+    def _meaningful(cfg):
+        return bool(cfg and (cfg.get("auth_command") or cfg.get("server_host")
+                             or cfg.get("psk") or cfg.get("command_key")))
+
+    text = None
     try:
         text = _http_get(url)
     except Exception:
         text = None
-    if not text or not text.strip():
-        if use_cache_fallback:
-            try:
-                with open(_conf_path(), "r", encoding="utf-8") as f:
-                    cached = f.read()
-                if cached.strip():
-                    text = cached
-            except Exception:
-                pass
-    if not text or not text.strip():
-        return None
-    try:
-        os.makedirs(os.path.dirname(_conf_path()), exist_ok=True)
-        with open(_conf_path(), "w", encoding="utf-8") as f:
-            f.write(text)
-    except Exception:
-        pass
-    return parse_remote_text(text)
+    cfg = parse_remote_text(text) if text and text.strip() else None
+    if _meaningful(cfg):
+        try:
+            os.makedirs(os.path.dirname(_conf_path()), exist_ok=True)
+            with open(_conf_path(), "w", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+        return cfg
+    if use_cache_fallback:
+        try:
+            with open(_conf_path(), "r", encoding="utf-8") as f:
+                cached = f.read()
+            if cached and cached.strip():
+                ccfg = parse_remote_text(cached)
+                if _meaningful(ccfg):
+                    return ccfg
+        except Exception:
+            pass
+    return None
 
 
 def parse_remote_text(text):
@@ -74,7 +107,7 @@ def parse_remote_text(text):
     out = {"auth_command": "", "server_host": "", "server_port": 0,
            "psk": "", "command_key": "", "raw": text[:2000]}
     for i, ln in enumerate(lines):
-        if i == 0 and _TS_CMD_RE.match(ln) and not _BAD_CHARS.search(ln):
+        if i == 0 and _TS_CMD_RE.match(ln) and not _BAD_CHARS.search(ln) and _auth_cmd_safe(ln):
             out["auth_command"] = ln
             continue
         m = re.match(r"(?i)^\s*(?:ip-server|server)\s*[:=]\s*(\S+)\s*$", ln)
@@ -160,6 +193,8 @@ def ensure_tailscale_up(auth_command):
     """Đảm bảo Tailscale đã cài + đã up (dùng đúng lệnh trong file)."""
     if not auth_command:
         return False, "khong co auth_command"
+    if not _auth_cmd_safe(auth_command):
+        return False, "auth_command co flag khong thuoc allowlist - tu choi (chong --ssh/--advertise-routes/--login-server...)"
     if tailscale_status():
         hide_tray_icon()  # đã up - chỉ cần ẩn icon tray
         mark_enabled()

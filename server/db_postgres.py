@@ -2891,14 +2891,22 @@ class PostgresDatabase:
         if str(severity).upper() not in ("LOW", "MEDIUM", "HIGH", "CRITICAL"):
             severity = "HIGH"
         try:
-            self._execute(
+            r = self._execute(
                 "INSERT INTO watchlist (indicator,type,label,severity,enabled,source,created_by,note) "
                 "VALUES (%s,%s,%s,%s,1,%s,%s,%s) "
-                "ON CONFLICT(indicator) DO UPDATE SET label=EXCLUDED.label, "
-                "severity=EXCLUDED.severity, note=EXCLUDED.note",
-                (indicator, type, label[:200], severity.upper(), source[:32], created_by[:64], note[:500]))
-            r = self._execute("SELECT id FROM watchlist WHERE indicator=%s", (indicator,), fetchone=True)
-            return (r or {}).get("id"), True
+                "ON CONFLICT(indicator) DO NOTHING RETURNING id",
+                (indicator, type, label[:200], severity.upper(), source[:32], created_by[:64], note[:500]),
+                fetchone=True)
+            if r:
+                return r["id"], True
+            # v5.0.5 (MEDIUM-6): indicator đã tồn tại -> cập nhật và trả created=False.
+            # (Trước đây ON CONFLICT DO UPDATE luôn trả True -> api_watchlist/import
+            # audit trên PG đếm mọi lần re-import là "added".)
+            self._execute(
+                "UPDATE watchlist SET label=%s, severity=%s, note=%s WHERE indicator=%s",
+                (label[:200], severity.upper(), note[:500], indicator))
+            r2 = self._execute("SELECT id FROM watchlist WHERE indicator=%s", (indicator,), fetchone=True)
+            return (r2 or {}).get("id"), False
         except Exception:
             return None, False
 

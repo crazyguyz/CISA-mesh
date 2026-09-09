@@ -5564,6 +5564,6 @@ function showView(view) {
 // onclick attribute (defense in depth for values that also passed server charset
 // validation - e.g. machine_id - against legacy/imported rows).
 function escJs(s) {
-    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/<\//g, '<\\/');
+    return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/<\//g, '<\\/');
 }
 

@@ -2,8 +2,16 @@
 API Threats - Threats, Vulns, YARA, Network Inspection, SCA.
 """
 
+import re
+
 from flask import request, jsonify
 from .api_common import check_auth
+
+# v5.0.5 (CRITICAL-1): assignee chỉ chấp nhận username an toàn (không có ký tự
+# HTML/attribute - dấu " / ' / & v.v.). Giá trị này sau đó được render vào chip
+# lọc và dropdown Threats; một payload như x" onmouseover=... chạy XSS với phiên
+# admin khi rê chuột. Chặn ở server = không bao giờ có payload vào DB.
+_ASSIGNEE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 def register(app, core):
@@ -61,16 +69,22 @@ def register(app, core):
 
     @app.route("/api/threats/<int:threat_id>/assign", methods=["POST"])
     def api_threat_assign(threat_id):
-        """v5.0.4 (Phase1 B1): assign an alert to a SOC analyst."""
+        """v5.0.5: assign an alert to a SOC analyst.
+        CRITICAL-1 fix: assignee phải là username hợp lệ (regex), không phải chuỗi
+        raw từ client. LOW-1 fix: '' / '__none__' = gỡ gán (unassign) thay vì 400."""
         username, err, code = check_auth("threat_triage")
         if err: return err, code
         assignee = ((request.json or {}).get("assignee") or "").strip()[:64]
-        if not assignee:
-            return jsonify({"success": False, "error": "assignee required"}), 400
+        if assignee in ("", "__none__"):
+            assignee = ""  # clear assignment
+        elif not _ASSIGNEE_RE.fullmatch(assignee):
+            return jsonify({"success": False,
+                            "error": "assignee invalid (chi chap nhan A-Za-z0-9._-)"}), 400
         try:
             core.db.set_threat_assign(threat_id, assignee, username)
             core.db.insert_audit_log(username, "threat_assign",
-                f"Threat #{threat_id} -> {assignee}", request.remote_addr)
+                (f"Threat #{threat_id} -> {assignee}" if assignee else f"Threat #{threat_id} -> (unassigned)"),
+                request.remote_addr)
             return jsonify({"success": True})
         except Exception as e:
             return jsonify({"success": False, "error": str(e)[:200]}), 500

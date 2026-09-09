@@ -88,11 +88,17 @@ class WatchlistMatcher(threading.Thread):
             return ind in text
         if item_type == "url":
             return ind in text
-        # domain
-        if ind in text:
-            return True
+        # domain (v5.0.5 MEDIUM-4 fix): so khớp theo hostname CHÍNH XÁC / hậu tố
+        # miền con - nhánh "if ind in text" cũ làm "evil.com" match cả
+        # "notevil.com" / "myevil.com.vn" -> false positive hàng loạt. Chuỗi tự do
+        # (URL trong mô tả) vẫn bắt được nhờ biên ký tự label.
         d = str(row.get("domain") or row.get("dns_query") or "").strip().lower()
-        return bool(d) and (d == ind or d.endswith("." + ind))
+        if d and (d == ind or d.endswith("." + ind)):
+            return True
+        try:
+            return re.search(r"(?<![a-z0-9._-])" + re.escape(ind) + r"(?![a-z0-9._-])", text) is not None
+        except Exception:
+            return ind in text
 
 
     def _scan_once(self):

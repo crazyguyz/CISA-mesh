@@ -243,7 +243,12 @@ class SyslogServer(threading.Thread):
                 # ---- v5.0.4 (Phase1 A1b): RFC5424 structured ----
                 m5424 = self._rfc5424_pattern.match(raw)
                 if m5424:
-                    ts_s, hostname, app_name, _proc, _msgid, rest = m5424.groups()
+                    # v5.0.5 (CRITICAL-2): regex has 7 groups (<PRI> TS HOST APP
+                    # PROC MSGID rest); PRI is already parsed from group(1) above,
+                    # so drop it here - the old 6-target unpack raised
+                    # "ValueError: too many values to unpack" and silently killed
+                    # EVERY RFC5424 message (rsyslog/syslog-ng/FortiGate default).
+                    ts_s, hostname, app_name, _proc, _msgid, rest = m5424.groups()[1:]
                     facility_name = facility_names.get(priority >> 3, f"facility_{priority >> 3}")
                     severity_name = severity_names.get(priority & 0x07, f"severity_{priority & 0x07}")
                     timestamp_str = ts_s

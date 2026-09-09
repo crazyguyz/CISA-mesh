@@ -868,9 +868,19 @@ def _agent_watchdog():
             if time.time() < _UPDATE_WINDOW_TS:
                 continue  # updater đang tự update (kill/start) - không can thiệp
             # Không can thiệp khi agent-side update (.bat) đang chạy (có update.lock)
+            # v5.0.5 (MEDIUM-1): lock mới (<10') mới là update thật đang chạy.
+            # Lock sót >10' (updater chết giữa kill/start, reboot giữa chừng...) thì
+            # reclaim - nếu không, agent chết thật sẽ không bao giờ được restart và
+            # Telegram cũng không báo (watchdog chỉ `continue` im lặng).
             try:
-                if os.path.exists(os.path.join(INSTALL_DIR, "update.lock")):
-                    continue
+                _lk = os.path.join(INSTALL_DIR, "update.lock")
+                if os.path.exists(_lk):
+                    if (time.time() - os.path.getmtime(_lk)) < 600:
+                        continue
+                    try:
+                        os.remove(_lk)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             agent_alive = False

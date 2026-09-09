@@ -130,7 +130,9 @@ def register(app, core):
                 with open(path, "r", encoding="utf-8") as f:
                     cur = json.load(f) or cur
             n_ip = n_dom = 0
-            for r in (core.db.list_watchlist() or []):
+            # v5.0.5 (MEDIUM-9): chỉ đẩy IOC đang ENABLED vào intel file - trước
+            # đây IOC operator đã tắt vẫn bị threat_intel gắn tag LOCAL:watch.
+            for r in (core.db.list_watchlist(enabled=True) or []):
                 ind = str(r.get("indicator") or "").strip()
                 typ = str(r.get("type") or "")
                 sev = str(r.get("severity") or "HIGH")
