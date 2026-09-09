@@ -57,21 +57,24 @@ def _write_env_keys(updates, path=None):
                 lines = f.read().splitlines()
         seen = set()
         result = []
-        # Cap nhat tai cho neu key da ton tai (giu nguyen comment/vi tri)
+        # Cap nhat tai cho neu key da ton tai (giu nguyen comment/vi tri);
+        # gia tri RONG = XOA dong do (khong de lai `KEY=` vo nghia)
         for ln in lines:
             stripped = ln.strip()
             matched = False
             if stripped and not stripped.startswith("#") and "=" in stripped:
                 k, _, _ = stripped.partition("=")
                 if k.strip() in updates:
-                    result.append(f"{k.strip()}={updates[k.strip()]}")
                     seen.add(k.strip())
+                    if updates[k.strip()]:
+                        result.append(f"{k.strip()}={updates[k.strip()]}")
+                    # else: dong cu bi bo di
                     matched = True
             if not matched:
                 result.append(ln)
-        # Them key moi o cuoi file
+        # Them key moi o cuoi file (chi khi gia tri khong rong)
         for k, v in updates.items():
-            if k not in seen:
+            if k not in seen and v:
                 if result and result[-1] != "":
                     result.append("")
                 result.append(f"{k}={v}")
@@ -184,8 +187,10 @@ def register(app, core):
         authkey = (data.get("authkey") or "").strip()
         expiry_raw = (data.get("expires_at") or "").strip()
 
-        # Bo trong = xoa cau hinh (clear)
-        if not authkey:
+        cur_key = (_read_env().get("GIAMSAT_TAILSCALE_AUTHKEY") or "").strip()
+
+        # CẢ key lẫn expiry để trống = xóa cấu hình (nút "Xóa cấu hình" ở UI)
+        if not authkey and not expiry_raw:
             ok, e = _write_env_keys({
                 "GIAMSAT_TAILSCALE_AUTHKEY": "",
                 "GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY": "",
@@ -198,6 +203,14 @@ def register(app, core):
             st["success"] = True
             return jsonify(st)
 
+        # Người dùng chỉ sửa ngày hết hạn cho key ĐANG CÓ (không được xóa key hiện hành)
+        if not authkey:
+            if not cur_key:
+                return jsonify({"success": False,
+                                "error": "Chua co authkey de gan ngay het han - nhap authkey truoc"}), 400
+            authkey = cur_key
+
+        is_new = authkey != cur_key
         if not _AUTHKEY_RE.match(authkey):
             return jsonify({"success": False,
                             "error": "Authkey khong hop le (phai bat dau bang tskey-auth-)"}), 400
@@ -205,7 +218,9 @@ def register(app, core):
         if expiry_raw and not expiry:
             return jsonify({"success": False,
                             "error": "Ngay het han khong hop le (dinh dang YYYY-MM-DD)"}), 400
-        if expiry:
+        # Chỉ chặn ngày quá khứ khi NHẬP key mới; sửa ngày cho key cũ (đã có thể
+        # quá hạn) thì cho phép để phản ánh đúng trạng thái.
+        if expiry and is_new:
             try:
                 if datetime.strptime(expiry, "%Y-%m-%d").date() < date.today():
                     return jsonify({"success": False,
@@ -220,10 +235,12 @@ def register(app, core):
         if not ok:
             return jsonify({"success": False, "error": e}), 500
         core.db.insert_audit_log(username, "tailscale_authkey",
-                                 f"Updated Tailscale authkey (expires {expiry or 'none'})",
+                                 (f"Updated Tailscale authkey (expires {expiry or 'none'})" if is_new
+                                  else f"Updated Tailscale authkey expiry ({expiry})"),
                                  request.remote_addr)
         st = _authkey_state()
         st["success"] = True
-        st["message"] = "Da luu authkey. Nho BUILD LAI AGENT de nhung authkey moi."
+        st["message"] = ("Da luu authkey. Nho BUILD LAI AGENT de nhung authkey moi." if is_new
+                         else "Da cap nhat ngay het han authkey.")
         return jsonify(st)
 

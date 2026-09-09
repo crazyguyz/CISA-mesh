@@ -2903,7 +2903,8 @@ del "%~f0"
             print(f"[-] Behavior Collector failed to start: {e}")
 
         attempt = 0
-        recovery_state = None   # v5.0.6: {old_host, old_port, verify_fail} khi vừa đổi host
+        recovery_state = None   # v5.0.6: {old_host, old_port, cand_host, verify_fail} khi vừa đổi host
+        rec_blacklist = set()   # địa chỉ từng thử recovery mà THẤT BẠI (tránh lặp vô hạn)
         last_rec_ts = 0.0
         while self.running:
             if not self.connected:
@@ -2915,6 +2916,7 @@ del "%~f0"
                     if recovery_state:
                         self._log_connect("[+] Host recovery OK - connected to new server address")
                     recovery_state = None
+                    rec_blacklist.clear()
                 else:
                     attempt += 1
                     # v5.0.6 HOST RECOVERY (địa chỉ server đổi bất thình lình):
@@ -2930,6 +2932,8 @@ del "%~f0"
                             _oh = recovery_state.get("old_host") or self.server_host
                             _op = recovery_state.get("old_port") or self.server_port
                             self._log_connect(f"[!] Host recovery FAILED (3 lan) - revert ve {_oh}:{_op}")
+                            if recovery_state.get("cand_host"):
+                                rec_blacklist.add(str(recovery_state["cand_host"]))
                             self.server_host = _oh
                             self.server_port = _op
                             try:
@@ -2938,7 +2942,7 @@ del "%~f0"
                             except Exception:
                                 pass
                             recovery_state = None
-                    elif attempt % 10 == 0 and (time.time() - last_rec_ts) >= 540:
+                    elif attempt >= 5 and (time.time() - last_rec_ts) >= 600:
                         last_rec_ts = time.time()
                         try:
                             _mode = str(self.config.get("net_mode", "") or "").strip().lower()
@@ -2949,10 +2953,11 @@ del "%~f0"
                             if _rc and _rc.get("server_host"):
                                 _nh = str(_rc["server_host"]).strip()
                                 _np = int(_rc.get("server_port") or 0) or self.server_port
-                                if _nh and _nh != self.server_host:
+                                if _nh and _nh != self.server_host and _nh not in rec_blacklist:
                                     self._log_connect(f"[*] Host recovery: server doi -> {_nh}:{_np} (tu file remote, mode={_mode})")
                                     recovery_state = {"old_host": self.server_host,
                                                       "old_port": self.server_port,
+                                                      "cand_host": _nh,
                                                       "verify_fail": 0}
                                     self.server_host = _nh
                                     self.server_port = _np
