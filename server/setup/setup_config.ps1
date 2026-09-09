@@ -373,6 +373,22 @@ if ($tsExpIn -and $tsExpIn.Trim() -ne "") {
     }
 }
 
+# v5.0.6: file remote conf (Google Drive / URL https) - agent phai biet link TRUOC
+# khi ket noi server lan dau -> link nay duoc nhung vao agent luc build. De trong =
+# giu nguyen hoac dung link mac dinh da nhung san.
+$tsUrlCurrent = $env["GIAMSAT_TAILSCALE_CONF_URL"]
+Write-Host ("  " + $(TS-Text 'Link file cau hinh tu xa (Google Drive)' 'Remote config file URL (Google Drive)') + " $(if ($tsUrlCurrent) { '(current: ' + $tsUrlCurrent + ')' } else { '(dung link mac dinh)' })") -ForegroundColor Gray
+$tsUrlIn = Read-Host ("  " + $(TS-Text 'URL (https://... , Enter = giu nguyen/mac dinh)' 'URL (https://..., Enter = keep/default)'))
+if ($tsUrlIn -and $tsUrlIn.Trim() -ne "") {
+    $tsUrlIn = $tsUrlIn.Trim()
+    if ($tsUrlIn -match "^https?://") {
+        $env["GIAMSAT_TAILSCALE_CONF_URL"] = $tsUrlIn
+        Write-Host "  [+] $(TS-Text 'URL da cap nhat' 'URL updated')" -ForegroundColor Green
+    } else {
+        Write-Host "  [!] $(TS-Text 'URL phai bat dau bang http(s):// - BO QUA doi nay' 'URL must start with http(s):// - SKIPPED')" -ForegroundColor Red
+    }
+}
+Write-Host ""
 # =============================================================================
 # Save to .env
 # =============================================================================
@@ -400,6 +416,7 @@ $keys = @(
     "GIAMSAT_ENROLLMENT_SECRET",
     "GIAMSAT_AGENT_PSK", "GIAMSAT_SECRET_KEY", "GIAMSAT_COMMAND_KEY",
     "GIAMSAT_TAILSCALE_AUTHKEY", "GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY",
+    "GIAMSAT_TAILSCALE_CONF_URL",
     "GIAMSAT_CLUSTER_SECRET",
     "GIAMSAT_PER_MACHINE_PSK", "GIAMSAT_PER_MACHINE_PSK_FILE",
     # v5.0.4 — cổng / TLS / syslog TCP / threat-intel / net behavior

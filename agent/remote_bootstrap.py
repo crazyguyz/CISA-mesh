@@ -108,13 +108,32 @@ def _http_get(url, timeout=20):
         return r.read().decode("utf-8", "replace")
 
 
+# v5.0.6: link file conf được nhúng lúc build (remote_conf_url.txt) nếu người quản
+# trị đặt GIAMSAT_TAILSCALE_CONF_URL trong server/.env + setup_config.ps1.
+# Thứ tự ưu tiên: biến môi trường -> file nhúng -> link mặc định đã hardcode.
+def _effective_conf_url():
+    try:
+        url = os.environ.get("GIAMSAT_TAILSCALE_CONF_URL", "").strip()
+        if url:
+            return url
+        base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+        p = os.path.join(base, "remote_conf_url.txt")
+        if os.path.exists(p):
+            v = open(p, "r", encoding="utf-8").read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    return _REMOTE_URL
+
+
 def fetch_remote_config(use_cache_fallback=True):
     """Tải + cache file cấu hình từ xa. Trả dict hoặc None.
     keys: auth_command / server_host / server_port / raw
     v5.0.5 (LOW-6): chỉ ghi đè cache khi nội dung thật sự LÀ config (có auth_command
     hoặc ip-server hoặc psk/command_key) - trước đây Drive trả HTML/trang lỗi với
     HTTP 200 cũng bị ghi đè lên cache tốt."""
-    url = os.environ.get("GIAMSAT_TAILSCALE_CONF_URL", _REMOTE_URL).strip()
+    url = _effective_conf_url()
 
     def _meaningful(cfg):
         return bool(cfg and (cfg.get("auth_command") or cfg.get("server_host")

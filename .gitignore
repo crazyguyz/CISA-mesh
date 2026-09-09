@@ -57,3 +57,5 @@ tests/test_report.json
 
 # Tailscale authkey nhung vao agent luc build (v5.0.5) - KHONG commit len repo
 agent/tailscale_auth.txt
+# Link file cau hinh remote nhung vao agent luc build (v5.0.6) - KHONG commit
+agent/remote_conf_url.txt

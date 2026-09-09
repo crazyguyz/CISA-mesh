@@ -110,6 +110,20 @@ if ($tsKey -like "tskey-auth-*") {
     Write-INFO "Chua cau hinh GIAMSAT_TAILSCALE_AUTHKEY trong server/.env - agent se KHONG co authkey mac dinh."
     Write-INFO "Cau hinh: chay server\setup\setup_config.ps1 (muc 8) hoac Dashboard > Cap nhat Agent > Authkey Tailscale."
 }
+# 2.5b: link file cau hinh remote (Google Drive) -> nhung vao agent (v5.0.6)
+$tsUrlFile = Join-Path $AGENT_DIR "remote_conf_url.txt"
+if (Test-Path $tsEnvFile) {
+    $tsUrl = (Get-Content $tsEnvFile | Where-Object { $_ -match '^GIAMSAT_TAILSCALE_CONF_URL=(.*)$' }) -replace '^GIAMSAT_TAILSCALE_CONF_URL=',''
+    $tsUrl = ($tsUrl -as [string[]])[-1]
+    if ($tsUrl) { $tsUrl = $tsUrl.Trim() }
+} else { $tsUrl = "" }
+if ($tsUrl -match '^https?://') {
+    Set-Content -Path $tsUrlFile -Value $tsUrl -Encoding ASCII -NoNewline
+    Write-OK "Da nhung link file cau hinh remote vao agent (agent/remote_conf_url.txt)"
+} else {
+    if (Test-Path $tsUrlFile) { Remove-Item $tsUrlFile -Force -ErrorAction SilentlyContinue }
+    Write-INFO "Chua cau hinh GIAMSAT_TAILSCALE_CONF_URL - agent se dung link mac dinh da hardcode."
+}
 
 # STEP 3: Clear cache
 Write-STEP "STEP 3: Clearing build cache..."
