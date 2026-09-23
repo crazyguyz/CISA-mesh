@@ -7,7 +7,7 @@ Generates automated PDF/HTML reports:
 - SCA compliance score
 """
 import os
-import html
+import html as _html  # v5.0.8: aliased - the report builder uses a local `html` variable
 import json
 import threading
 from datetime import datetime, timedelta
@@ -52,7 +52,12 @@ class ReportingEngine:
         sca_total = len(sca)
 
         # v5.0.4 R9 (MEDIUM-1): every agent/intel-controlled value is HTML-escaped
-        _esc = lambda v: html.escape(str(v if v is not None else ''), quote=True)
+        # v5.0.8 (bug): use the ALIASED module - the document below is built into a
+        # local variable named `html`, which shadowed the stdlib module and made every
+        # _esc() call raise "'str' object has no attribute 'escape'" as soon as the
+        # report had one row, so the weekly/daily HTML report + email attachment
+        # never got generated ("[-] WEEKLY failed" in the server log).
+        _esc = lambda v: _html.escape(str(v if v is not None else ''), quote=True)
         
         # Build HTML
         html = f"""<!DOCTYPE html>

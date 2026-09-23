@@ -39,6 +39,12 @@
 - **`tools/backfill_display_ids.py` (mới):** cấp mã cho dữ liệu cũ — dry-run mặc định, `--apply` mới ghi, `--normalize` để **chuẩn hoá luôn mã kiểu cũ** (8 hex / `TS-XX-…`); hỗ trợ PG + SQLite; mã **sinh từ `asset_id` nên chạy lại không đổi gì**.
 - **Test:** `tests/display_id_tests.py` (mới) — **70/70 PASS** gồm **chạy thật trên PostgreSQL** trong **DB dùng-một-lần** (tạo + xoá, không đụng dữ liệu thật): mã có **ngay lần báo cáo đầu** cho cả máy tính và màn hình, **giữ nguyên** qua các lần sau, **điền được dòng cũ rỗng**, nhật ký thay đổi có mã đọc được, **không còn mã rỗng / 32 ký tự / trùng**. Kèm sửa `tests/rule_engine_tests.py`: emoji ký tự `U+2705/U+274C/U+2192` làm test **crash trên console cp1252** → exit 1 dù **22/22 PASS**; nay ép stdout UTF-8 + dùng ASCII.
 
+### Báo cáo HTML & email báo cáo tuần — lỗi che (shadow) module `html` (v5.0.8)
+- **Hiện tượng:** `logs/giamsat.log` lặp lại `[-] WEEKLY failed: 'str' object has no attribute 'escape'` mỗi khi tới hạn báo cáo tuần (và cả ngay lúc server khởi động vì cơ chế catch-up); **không có file báo cáo HTML tuần/ngày**, email không có file đính kèm, `generate_pdf_report()` cũng hỏng.
+- **Nguyên nhân:** `server/reporting_engine.py` có `import html` rồi định nghĩa `_esc = lambda v: html.escape(…)` (thêm ở v5.0.4 R9 để chống XSS), **nhưng ngay sau đó lại gán biến cục bộ `html = f"""<!DOCTYPE html>…`** (chính tài liệu đang dựng) → trong hàm, tên `html` trở thành **str**, nên **lần gọi `_esc()` đầu tiên** (khi báo cáo có ít nhất 1 dòng) nổ `AttributeError: 'str' object has no attribute 'escape'`. Báo cáo **rỗng thì không lỗi** vì không dòng nào gọi `_esc` — đó là lý do lỗi lọt qua kiểm thử suốt từ v5.0.4.
+- **Fix:** `import html as _html` + `_esc = lambda v: _html.escape(…)` — đúng quy ước sẵn có của repo (`alerting_engine.py`, `dashboard_templates.py`, `server_core.py` đều import alias `_html`).
+- **Test:** `tests/reporting_html_tests.py` (mới) — **18/18 PASS**: báo cáo có dữ liệu sinh được file `.html` hoàn chỉnh (`<!DOCTYPE html> … </html>`), **giá trị do agent/IOC kiểm soát vẫn bị escape** (`<script>` → `&lt;script&gt;`, `&` → `&amp;`, `"` → `&quot;`), DB rỗng vẫn ra báo cáo bình thường, `generate_pdf_report()` fallback về file `.html`. Chạy chính test này trên bản **chưa sửa** thì **fail đúng 2 check** (chứng minh test thực sự bắt được lỗi).
+
 ## 0.1 v5.0.7 — (2026-09)
 
 ### Quản lý authkey Tailscale tập trung trên Dashboard (v5.0.5)
