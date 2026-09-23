@@ -1,9 +1,22 @@
 """Asset Discovery for GIAM-SAT Server - auto-discover printers, IP phones,
 network devices WITHOUT an agent, stored into assets_inventory (source=auto)."""
+import os
 import socket
 import threading
 import subprocess
 import time
+
+# v5.0.8: canonical asset code scheme (PR-xxxxxxxx / DT-xxxxxxxx / NM-xxxxxxxx)
+try:
+    from asset_ids import make_display_id
+except ImportError:  # pragma: no cover - imported with only the repo root on sys.path
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location(
+        "asset_ids", os.path.join(os.path.dirname(os.path.abspath(__file__)), "asset_ids.py"))
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    make_display_id = _mod.make_display_id
 
 PRINTER_PORTS = [9100, 631, 515]
 OID_SYSDESCR = "1.3.6.1.2.1.1.1.0"
@@ -199,11 +212,13 @@ def run_scan(cidr, db=None, max_threads=64, timeout=0.6):
             try:
                 # v4.10: stable id per (category, ip) - prevents duplicate assets
                 # on every scan run (previously a fresh uuid was generated each time).
+                # v5.0.8: display_id uses the shared scheme + a prefix, so the code
+                # looks the same as computer/monitor codes (was a bare 8-hex hash).
                 import hashlib as _hl
                 disc_key = f"discovered|{cat}|{ip}"
                 db.upsert_inventory_asset({
                     "asset_id": _hl.md5(disc_key.encode("utf-8")).hexdigest(),
-                    "display_id": f"{_hl.md5(('disp|' + disc_key).encode('utf-8')).hexdigest()[:8].upper()}",
+                    "display_id": make_display_id(cat, seed=disc_key),
                     "category": cat, "name": "%s @ %s" % (cat, ip), "model": model,
                     "brand": "", "serial_number": serial, "status": "online",
                     "ip_address": ip, "source": "auto", "notes": "auto",

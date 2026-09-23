@@ -21,6 +21,23 @@
 - **`setup_config.ps1` mục [9] (mới):** sau khi lưu `.env`, tự chạy dry-run công cụ trên → nếu có dữ liệu cũ thì in danh sách bảng + tổng số dòng rồi hỏi `YES` (xoá hết) / `keep` (giữ cấu hình) / `Enter` (bỏ qua); dò python theo PATH → `py` → đường dẫn chuẩn (bỏ qua stub WindowsApps) và bỏ qua an toàn nếu thiếu công cụ/python.
 - **Test (DB dùng-một-lần, không đụng dữ liệu thật):** SQLite — dry-run không sửa gì (verify lại số dòng), apply xoá đúng 59 dòng và **giữ 1 dòng watchlist** ở chế độ `keep-config`, schema + `sqlite_sequence` reset đúng, gõ `NO` → huỷ không xoá gì; PG — dry-run 132 dòng, `TRUNCATE` 131 dòng + giữ watchlist, **matview `mv_dashboard_stats` 2 → 0** sau refresh, schema còn nguyên; các nhánh lỗi (`--env`/`--sqlite` không tồn tại, `--mode` sai, thiếu psycopg2, PG không kết nối) đều báo lỗi rõ ràng và không xoá gì.
 - **Metadata lệch:** `agent/giamsat-agent.service` (Linux) còn `v3.9.3` + `Documentation=` trỏ repo cũ → nay `v5.0.8` + URL repo hiện tại; docstring `tools/reimport_sigma.py` bỏ đường dẫn máy cá nhân → ví dụ trung tính `D:\sigma-rules`.
+### Mã tài sản (display_id) — 6 nơi sinh mã, 4 định dạng, 2 lỗi thật ở PostgreSQL (v5.0.8)
+- **Hiện tượng:** cột **"Mã TS"** trên trang Tài sản và trong file Excel xuất ra **chỗ ngắn chỗ dài**: `01386692` (8 ký tự), `PC-0887498B` (11), `TS-PR-1A2B3C` (13) và **32 ký tự md5**; nặng nhất là **mã máy tính** và **mã màn hình**.
+- **Nguyên nhân:** mã hiển thị (`display_id`) được sinh ở **6 chỗ với 4 định dạng khác nhau**, và API/UI khi mã rỗng thì **rơi về `asset_id`** — vốn là **md5 32 ký tự**:
+
+  | Nơi sinh mã | Định dạng | Dài |
+  |---|---|---|
+  | `db_postgres` — máy tính | `PC-` + uuid4[:8] | 11 |
+  | **`db_postgres` — màn hình** | **KHÔNG BAO GIỜ SINH** (bug) | → rơi về md5 **32** |
+  | `db_manager` (SQLite) — máy tính / màn hình | `PC-` / `MN-` + uuid4[:8] | 11 |
+  | `_new_display_id` (kho nhập tay) | `TS-<XX>-` + uuid4[:6] (lặp tiền tố: `TS-TS-…`) | 12–13 |
+  | `asset_discovery` (quét mạng) / `sync_user_assets` | 8 hex **không tiền tố** | 8 |
+- **2 lỗi thật ở PostgreSQL** (`db_postgres.insert_machine_config`) — SQLite làm đúng nên 2 backend lệch nhau:
+  1. **Máy tính:** câu `UPDATE assets_computers SET display_id=… WHERE asset_id=…` chạy **TRƯỚC** `INSERT` (dòng chưa tồn tại → 0 dòng bị ảnh hưởng) và **`INSERT` thiếu hẳn cột `display_id`** → máy chỉ có mã từ **lần báo cáo cấu hình thứ 2**.
+  2. **Màn hình:** `INSERT INTO assets_monitors (…)` **thiếu `display_id`** → **không bao giờ có mã**, luôn hiển thị md5 32 ký tự.
+- **Fix:** thêm **`server/asset_ids.py`** làm **1 nguồn duy nhất** — định dạng `{PREFIX}-{8 hex}`, **luôn 11 ký tự** (PC máy tính, MN màn hình, PR máy in, DT điện thoại, NM thiết bị mạng, NV ngoại vi, LK linh kiện, US người dùng, TS khác); có bản **deterministic** theo `asset_id` để API và tool cho ra **cùng một mã**. `db_postgres` nay **ghi `display_id` ngay trong INSERT** (máy tính + màn hình) và `ON CONFLICT` **không ghi đè mã đã có**; cả 2 backend **điền mã cho dòng cũ đang rỗng** ở lần báo cáo kế tiếp; `asset_discovery` + `sync_user_assets` dùng chung helper; API/UI **không bao giờ trả md5 32 ký tự** nữa (`api_assets.asset_code()` + `Assets.shortId()`), đồng thời **escape** mã màn hình (trước đó in trực tiếp → lỗ hổng XSS).
+- **`tools/backfill_display_ids.py` (mới):** cấp mã cho dữ liệu cũ — dry-run mặc định, `--apply` mới ghi, `--normalize` để **chuẩn hoá luôn mã kiểu cũ** (8 hex / `TS-XX-…`); hỗ trợ PG + SQLite; mã **sinh từ `asset_id` nên chạy lại không đổi gì**.
+- **Test:** `tests/display_id_tests.py` (mới) — **70/70 PASS** gồm **chạy thật trên PostgreSQL** trong **DB dùng-một-lần** (tạo + xoá, không đụng dữ liệu thật): mã có **ngay lần báo cáo đầu** cho cả máy tính và màn hình, **giữ nguyên** qua các lần sau, **điền được dòng cũ rỗng**, nhật ký thay đổi có mã đọc được, **không còn mã rỗng / 32 ký tự / trùng**. Kèm sửa `tests/rule_engine_tests.py`: emoji ký tự `U+2705/U+274C/U+2192` làm test **crash trên console cp1252** → exit 1 dù **22/22 PASS**; nay ép stdout UTF-8 + dùng ASCII.
 
 ## 0.1 v5.0.7 — (2026-09)
 

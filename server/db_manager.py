@@ -5,6 +5,20 @@ import threading
 import json
 import time
 
+# v5.0.8: one canonical asset display-ID scheme for the whole server
+# (see server/asset_ids.py). Imported as a sibling module - same pattern the
+# PostgreSQL adapter uses for agent_auth.
+try:
+    from asset_ids import make_display_id
+except ImportError:  # pragma: no cover - imported with only the repo root on sys.path
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location(
+        "asset_ids", os.path.join(os.path.dirname(os.path.abspath(__file__)), "asset_ids.py"))
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    make_display_id = _mod.make_display_id
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "giamsat_data.db")
 
 # Max seconds without a heartbeat before a machine's uptime session is
@@ -3278,8 +3292,10 @@ class DatabaseManager:
                         changes.append({"type": "hardware_changed", "asset_id": computer_asset_id, "asset_type": "computer", "details": detail})
 
                 if not existing_display_id:
-                    import uuid
-                    existing_display_id = f"PC-{uuid.uuid4().hex[:8].upper()}"
+                    # v5.0.8: canonical format PC-XXXXXXXX (see asset_ids.py).
+                    # The UPDATE below is a no-op for a brand new row - the value
+                    # is written by the INSERT further down.
+                    existing_display_id = make_display_id("computer")
                     c.execute("UPDATE assets_computers SET display_id=? WHERE asset_id=?", (existing_display_id, computer_asset_id))
 
                 c.execute("""INSERT OR REPLACE INTO assets_computers (asset_id, machine_id, hostname, display_id,
@@ -3320,11 +3336,16 @@ class DatabaseManager:
                     c.execute("SELECT asset_id, display_id FROM assets_monitors WHERE asset_id=?", (monitor_asset_id,))
                     existing_mon = c.fetchone()
                     if not existing_mon:
-                        import uuid as _uuid
-                        mon_display_id = f"MN-{_uuid.uuid4().hex[:8].upper()}"
+                        mon_display_id = make_display_id("monitor")
                         c.execute("""INSERT OR IGNORE INTO assets_monitors (asset_id, display_id, name, manufacturer, model_type, resolution, monitor_hash)
                                      VALUES (?,?,?,?,?,?,?)""",
                                   (monitor_asset_id, mon_display_id, name[:256], mfr[:128], model_type, res[:32], monitor_hash))
+                    elif not (existing_mon[1] or "").strip():
+                        # v5.0.8: rows written by older builds / by the PG path
+                        # (which never assigned a monitor code) get one now, so
+                        # the UI stops displaying the raw 32-char md5 asset_id.
+                        c.execute("UPDATE assets_monitors SET display_id=? WHERE asset_id=? AND COALESCE(display_id,'')=''",
+                                  (make_display_id("monitor"), monitor_asset_id))
 
                     c.execute("SELECT computer_asset_id FROM assets_relations WHERE monitor_asset_id=? ORDER BY last_seen DESC LIMIT 1", (monitor_asset_id,))
                     existing_rel = c.fetchone()
@@ -3486,11 +3507,19 @@ class DatabaseManager:
                 c.execute("SELECT 1 FROM assets_change_log LIMIT 1")
             except Exception:
                 return []
-            q = "SELECT * FROM assets_change_log WHERE 1=1"
+            # v5.0.8: carry the human-readable code of the related asset so the
+            # Changes tab stops showing the raw 32-char md5 asset_id.
+            q = ("SELECT cl.*, "
+                 "COALESCE(NULLIF(c.display_id,''), NULLIF(m.display_id,''), NULLIF(i.display_id,'')) AS display_id "
+                 "FROM assets_change_log cl "
+                 "LEFT JOIN assets_computers c ON c.asset_id = cl.asset_id "
+                 "LEFT JOIN assets_monitors m ON m.asset_id = cl.asset_id "
+                 "LEFT JOIN assets_inventory i ON i.asset_id = cl.asset_id "
+                 "WHERE 1=1")
             params = []
             if unresolved_only:
-                q += " AND is_resolved=0"
-            q += " ORDER BY created_at DESC LIMIT ?"
+                q += " AND cl.is_resolved=0"
+            q += " ORDER BY cl.created_at DESC LIMIT ?"
             params.append(limit)
             c.execute(q, params)
             rows = [dict(r) for r in c.fetchall()]
@@ -3568,10 +3597,10 @@ class DatabaseManager:
         return hashlib.md5(f"inv|{category}|{uuid.uuid4()}".encode("utf-8")).hexdigest()
 
     def _new_display_id(self, category):
-        import uuid
-        prefix = {"printer": "PR", "phone": "DT", "network_device": "NM",
-                  "peripheral": "NV", "component": "LK", "other": "TS"}.get(category, "TS")
-        return f"TS-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+        # v5.0.8: use the shared scheme (PC/MN/PR/DT/NM/NV/LK/US/TS + 8 hex).
+        # Before: "TS-<XX>-<6 hex>" -> 12/13 chars and a doubled prefix for
+        # the 'other' category ("TS-TS-AB12CD").
+        return make_display_id(category)
 
     def upsert_inventory_asset(self, data):
         import json as _json
@@ -3665,7 +3694,9 @@ class DatabaseManager:
                     continue
                 key = "user|" + (mail or name)
                 aid = hashlib.md5(key.encode("utf-8")).hexdigest()
-                disp = hashlib.md5(("disp|" + key).encode("utf-8")).hexdigest()[:8].upper()
+                # v5.0.8: deterministic "US-XXXXXXXX" (was a bare 8-hex hash,
+                # which looked different from every other asset code).
+                disp = make_display_id("user", seed=key)
                 c.execute("""INSERT INTO assets_inventory (
                     asset_id, display_id, category, name, email, employee_id,
                     location, status, source, notes, quantity, updated_at)

@@ -440,6 +440,8 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   - **Nhập tay:** tab **Kho** → **"＋ Thêm tài sản"** → loại, hãng, model, serial, mã số tài sản, trạng thái (Còn hàng/Đã cấp/Đang sửa/Thanh lý), người dùng, vị trí/phòng, ngày mua, bảo hành, giá, ghi chú. Sửa/xóa trực tiếp từng dòng.
   - **Adopt:** tài sản tự phát hiện có nút **"Đưa vào kho"** để gán người/vị trí/mã TS (chuyển từ Tự động → Nhập tay).
   - **Xuất Excel đa sheet:** `May tinh, Man hinh, May in, Dien thoai, Thiet bi mang, Ngoai vi, Kho`.
+  - **Mã TS (cột "Mã TS"):** định dạng thống nhất **`PC-0887498B`** (11 ký tự) — tiền tố theo loại: **PC** máy tính · **MN** màn hình · **PR** máy in · **DT** điện thoại · **NM** thiết bị mạng · **NV** ngoại vi · **LK** linh kiện · **US** người dùng · **TS** khác. Mã do server sinh và **giữ nguyên** (không đổi mỗi lần agent báo cáo).
+    - *Trước v5.0.8* cột này **chỗ ngắn chỗ dài** (8 / 11 / 13 ký tự, có khi **32 ký tự md5**) do mã được sinh ở 6 chỗ với 4 định dạng, và máy mới/màn hình chưa có mã thì UI rơi về `asset_id`. Nay đã thống nhất; dữ liệu cũ có thể cấp mã bằng `python tools\backfill_display_ids.py` (thêm `--normalize` để chuẩn hoá cả mã kiểu cũ).
   - Theo dõi **thay đổi phần cứng** (đã xác nhận / chưa xử lý).
 - **EN:** IT asset management with 8 sub-tabs: **Computers, Monitors, Printers, Phones, Network devices, Peripherals, Inventory, Changes**.
   - **Auto scan:** **"🔍 Auto scan"** → enter an IP range → discovers printers (SNMP/JetDirect), IP phones (e.g. Yealink), routers/switches/APs → added as **"Auto"** (with serial, IP).

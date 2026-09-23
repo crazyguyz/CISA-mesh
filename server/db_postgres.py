@@ -33,6 +33,19 @@ try:
 except ImportError:
     HAS_POSTGRES = False
 
+# v5.0.8: one canonical asset display-ID scheme for the whole server
+# (see server/asset_ids.py). Sibling import - same pattern as agent_auth below.
+try:
+    from asset_ids import make_display_id
+except ImportError:  # pragma: no cover - imported with only the repo root on sys.path
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location(
+        "asset_ids", os.path.join(os.path.dirname(os.path.abspath(__file__)), "asset_ids.py"))
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    make_display_id = _mod.make_display_id
+
 # Max seconds without a heartbeat before a machine's uptime session is
 # considered ended (agent heartbeats every 120s; a longer gap means the
 # machine went offline/rebooted).
@@ -3372,11 +3385,13 @@ class PostgresDatabase:
         import hashlib
         return hashlib.md5(raw_string.encode("utf-8")).hexdigest()
 
-    def _generate_display_id(self, prefix, table_name):
-        """Generate unique display_id using first 8 chars of asset_id hash.
-        Avoids race condition and duplicates from sequential numbering."""
-        import uuid
-        return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+    def _generate_display_id(self, prefix, table_name=None):
+        """Kept for compatibility with older call sites.
+
+        v5.0.8: the canonical generator lives in server/asset_ids.py so both
+        database backends and the API/backfill agree on one format.
+        """
+        return make_display_id("other", prefix=prefix)
 
     def _compute_hardware_hash(self, config_data):
         """Compute SHA256 hash of critical hardware fields for change detection."""
@@ -3497,15 +3512,19 @@ class PostgresDatabase:
                         "details": detail
                     })
             
-            # Generate display_id if empty
+            # v5.0.8 BUGFIX: assign the asset code BEFORE the upsert and write it
+            # through the INSERT. Previously this did
+            #     UPDATE assets_computers SET display_id=... WHERE asset_id=...
+            # on a row that does not exist yet (the INSERT comes after it) and the
+            # INSERT column list had no display_id either, so a machine only got
+            # its code on the SECOND config report - until then the dashboard fell
+            # back to the raw 32-char md5 asset_id.
             if not existing_display_id:
-                existing_display_id = self._generate_display_id("PC", "assets_computers")
-                self._execute("UPDATE assets_computers SET display_id=%s WHERE asset_id=%s",
-                              (existing_display_id, computer_asset_id))
+                existing_display_id = make_display_id("computer")
             
             # Upsert computer
             self._execute(
-                """INSERT INTO assets_computers (asset_id, machine_id, hostname,
+                """INSERT INTO assets_computers (asset_id, machine_id, hostname, display_id,
                    user_name, employee_id, email,
                    os_name, os_version,
                    motherboard_manufacturer, motherboard_product, motherboard_serial,
@@ -3514,9 +3533,17 @@ class PostgresDatabase:
                    ram_total_gb, ram_sticks_json, disks_json, gpu_json, monitors_json,
                    installed_software_json, printer_json,
                    hardware_hash, last_seen, updated_at, is_online)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW(),TRUE)
+                VALUES (%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        NOW(),NOW(),TRUE)
                 ON CONFLICT(asset_id) DO UPDATE SET
                    machine_id=EXCLUDED.machine_id, hostname=EXCLUDED.hostname,
+                   display_id=CASE WHEN COALESCE(assets_computers.display_id,'')=''
+                                   THEN EXCLUDED.display_id
+                                   ELSE assets_computers.display_id END,
                    user_name=EXCLUDED.user_name, employee_id=EXCLUDED.employee_id, email=EXCLUDED.email,
                    os_name=EXCLUDED.os_name, os_version=EXCLUDED.os_version,
                    motherboard_manufacturer=EXCLUDED.motherboard_manufacturer,
@@ -3536,7 +3563,7 @@ class PostgresDatabase:
                    last_seen=NOW(), updated_at=NOW(), is_online=TRUE
                 """,
                 (
-                    computer_asset_id, machine_id, hostname,
+                    computer_asset_id, machine_id, hostname, existing_display_id,
                     user_info.get("user_name", "")[:128],
                     user_info.get("employee_id", "")[:64],
                     user_info.get("email", "")[:128],
@@ -3579,17 +3606,32 @@ class PostgresDatabase:
                 
                 # Check if this monitor already exists
                 existing_mon = self._execute(
-                    "SELECT asset_id, monitor_hash FROM assets_monitors WHERE asset_id=%s",
+                    "SELECT asset_id, monitor_hash, display_id FROM assets_monitors WHERE asset_id=%s",
                     (monitor_asset_id,), fetch=True
                 )
                 
+                # v5.0.8 BUGFIX: the INSERT below never set display_id, so EVERY
+                # monitor on a PostgreSQL install had an empty code and both the
+                # Assets page and the Excel export showed the raw 32-char md5
+                # asset_id (the SQLite adapter has always stored "MN-XXXXXXXX").
+                mon_display_id = ""
+                if existing_mon:
+                    mon_display_id = (existing_mon.get("display_id") or "").strip()
+                if not mon_display_id:
+                    mon_display_id = make_display_id("monitor")
+                    if existing_mon:
+                        self._execute(
+                            "UPDATE assets_monitors SET display_id=%s "
+                            "WHERE asset_id=%s AND COALESCE(display_id,'')=''",
+                            (mon_display_id, monitor_asset_id))
+                
                 if not existing_mon:
-                    # New monitor
+                    # New monitor - display_id is written with the row (v5.0.8 fix).
                     self._execute(
-                        """INSERT INTO assets_monitors (asset_id, name, manufacturer, model_type, resolution, monitor_hash)
-                           VALUES (%s,%s,%s,%s,%s,%s)
+                        """INSERT INTO assets_monitors (asset_id, display_id, name, manufacturer, model_type, resolution, monitor_hash)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)
                            ON CONFLICT(asset_id) DO NOTHING""",
-                        (monitor_asset_id, name[:256], mfr[:128], model_type, res[:32], monitor_hash)
+                        (monitor_asset_id, mon_display_id, name[:256], mfr[:128], model_type, res[:32], monitor_hash)
                     )
                 
                 # Check relation: is this monitor previously connected to a DIFFERENT computer?
@@ -3786,11 +3828,17 @@ class PostgresDatabase:
         if not self._connected:
             return []
         try:
-            q = "SELECT * FROM assets_change_log WHERE 1=1"
+            q = ("SELECT cl.*, "
+                 "COALESCE(NULLIF(c.display_id,''), NULLIF(m.display_id,''), NULLIF(i.display_id,'')) AS display_id "
+                 "FROM assets_change_log cl "
+                 "LEFT JOIN assets_computers c ON c.asset_id = cl.asset_id "
+                 "LEFT JOIN assets_monitors m ON m.asset_id = cl.asset_id "
+                 "LEFT JOIN assets_inventory i ON i.asset_id = cl.asset_id "
+                 "WHERE 1=1")
             params = []
             if unresolved_only:
-                q += " AND is_resolved=FALSE"
-            q += " ORDER BY created_at DESC LIMIT %s"
+                q += " AND cl.is_resolved=FALSE"
+            q += " ORDER BY cl.created_at DESC LIMIT %s"
             params.append(limit)
             rows = self._execute(q, tuple(params), fetchall=True) or []
             for r in rows:
@@ -3874,10 +3922,8 @@ class PostgresDatabase:
         return hashlib.md5(f"inv|{category}|{uuid.uuid4()}".encode("utf-8")).hexdigest()
 
     def _new_display_id(self, category):
-        import uuid
-        prefix = {"printer": "PR", "phone": "DT", "network_device": "NM",
-                  "peripheral": "NV", "component": "LK", "other": "TS"}.get(category, "TS")
-        return f"TS-{prefix}-{uuid.uuid4().hex[:6].upper()}"
+        # v5.0.8: shared scheme (see db_manager._new_display_id / asset_ids.py).
+        return make_display_id(category)
 
     def upsert_inventory_asset(self, data):
         import json as _json
@@ -3961,7 +4007,8 @@ class PostgresDatabase:
                     continue
                 key = "user|" + (mail or name)
                 aid = hashlib.md5(key.encode("utf-8")).hexdigest()
-                disp = hashlib.md5(("disp|" + key).encode("utf-8")).hexdigest()[:8].upper()
+                # v5.0.8: deterministic "US-XXXXXXXX" (was a bare 8-hex hash).
+                disp = make_display_id("user", seed=key)
                 self._execute("""INSERT INTO assets_inventory (
                     asset_id, display_id, category, name, email, employee_id,
                     location, status, source, notes, quantity, updated_at)

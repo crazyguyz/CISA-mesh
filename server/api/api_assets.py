@@ -3,10 +3,36 @@ API Assets - v4.4: Quản lý tài sản (máy tính, màn hình)
 REST endpoints cho danh sách tài sản và lịch sử thay đổi.
 """
 import json
+import os
 from flask import Blueprint, request, jsonify
 from .api_common import check_auth
 
+# v5.0.8: canonical asset code scheme, shared with both database backends.
+try:
+    from asset_ids import derive_for_asset
+except ImportError:  # pragma: no cover - imported with only the repo root on sys.path
+    import importlib.util
+
+    _spec = importlib.util.spec_from_file_location(
+        "asset_ids", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "asset_ids.py"))
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    derive_for_asset = _mod.derive_for_asset
+
 assets_bp = Blueprint("api_assets", __name__)
+
+
+def asset_code(row, category):
+    """Human-readable asset code for a row: 'PC-0887498B'.
+
+    v5.0.8: rows written before the display_id fix have an empty code; the old
+    code fell back to `asset_id`, which is a 32-character md5 hash. The export
+    and the dashboard now always show a short, prefixed code.
+    """
+    code = (row.get("display_id") or "").strip()
+    if code:
+        return code
+    return derive_for_asset(category, row.get("asset_id") or "") or "-"
 
 
 def init_assets_api(app, db):
@@ -23,6 +49,10 @@ def init_assets_api(app, db):
         except (TypeError, ValueError):
             limit = 200
         rows = db.get_asset_computers(search=search, limit=limit) if db else []
+        # v5.0.8: always ship a short code (PC-XXXXXXXX) so the UI never falls
+        # back to the 32-char md5 asset_id.
+        for row in rows or []:
+            row["display_id"] = asset_code(row, "computer")
         return jsonify({"computers": rows})
 
     @app.route("/api/assets/monitors")
@@ -35,6 +65,9 @@ def init_assets_api(app, db):
         except (TypeError, ValueError):
             limit = 200
         rows = db.get_asset_monitors(search=search, limit=limit) if db else []
+        # v5.0.8: same as computers - 'MN-XXXXXXXX' instead of a 32-char hash.
+        for row in rows or []:
+            row["display_id"] = asset_code(row, "monitor")
         return jsonify({"monitors": rows})
 
     # =========================================================================
@@ -240,7 +273,7 @@ def init_assets_api(app, db):
         computers = db.get_asset_computers(limit=5000) if db else []
         for r, c in enumerate(computers, 2):
             row_data = [
-                c.get('display_id') or c.get('asset_id', '-'),
+                asset_code(c, 'computer'),
                 c.get('hostname') or c.get('machine_id', '-'),
                 c.get('user_name', '-'),
                 c.get('employee_id', '-'),
@@ -293,7 +326,7 @@ def init_assets_api(app, db):
         monitors = db.get_asset_monitors(limit=5000) if db else []
         for r, m in enumerate(monitors, 2):
             row_data = [
-                m.get('display_id') or m.get('asset_id', '-'),
+                asset_code(m, 'monitor'),
                 m.get('name', '-'),
                 m.get('manufacturer', '-'),
                 m.get('resolution', '-'),
@@ -326,7 +359,7 @@ def init_assets_api(app, db):
             for r, a in enumerate(items, 2):
                 source_label = 'Tự động' if a.get('source') == 'auto' else 'Nhập tay'
                 row_data = [
-                    a.get('display_id') or a.get('asset_id', '-'),
+                    asset_code(a, a.get('category') or 'other'),
                     a.get('category', '-'),
                     a.get('name', '-'),
                     a.get('brand', '-'),

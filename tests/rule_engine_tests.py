@@ -23,6 +23,16 @@ from collections import defaultdict, deque
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "agent"))
 
+# v5.0.8: rule/test names legitimately contain non-ASCII (the LOTL test case is
+# "Document -> PowerShell -> Network" with U+2192 arrows). Printing those on a
+# Windows console using cp1252 raised UnicodeEncodeError, so the suite exited 1
+# even when all 22 cases passed. Force UTF-8 output instead of crashing.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 class RuleTestRunner:
     """Loads test cases from JSON and validates them against correlation engine."""
@@ -209,7 +219,7 @@ class RuleTestRunner:
         }
 
         if self.verbose:
-            status = "✅ PASS" if passed else "❌ FAIL"
+            status = "PASS" if passed else "FAIL"
             print(f"  {status} {test_id}: {name} ({len(events)} events)")
 
         return passed, detail
@@ -239,7 +249,7 @@ class RuleTestRunner:
             else:
                 self.results["failed"] += 1
                 if not self.verbose:
-                    print(f"  ❌ FAIL {case['id']}: {case['name']}")
+                    print(f"  FAIL {case['id']}: {case['name']}")
 
         self.print_summary()
         return self.results["failed"] == 0
@@ -257,12 +267,16 @@ class RuleTestRunner:
                 if not d["passed"]:
                     print(f"  [{d['id']}] {d['name']}")
                     for err in d["errors"]:
-                        print(f"    → {err}")
+                        print(f"    -> {err}")
 
+        # v5.0.8: plain ASCII - the emoji/cross/arrow characters (U+2705, U+274C,
+        # U+2192) crashed this suite on Windows consoles using cp1252
+        # (UnicodeEncodeError -> exit code 1 even when every case passed), which
+        # made the suite look broken in logs and CI.
         if r["passed"] == r["total"]:
-            print(f"\n✅ All {r['total']} tests passed!")
+            print(f"\nAll {r['total']} tests passed!")
         else:
-            print(f"\n❌ {r['failed']}/{r['total']} tests failed")
+            print(f"\n{r['failed']}/{r['total']} tests failed")
 
         # Save JSON report
         report_path = os.path.join(os.path.dirname(__file__), "test_report.json")

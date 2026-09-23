@@ -29,6 +29,21 @@ var Assets = {
         setInterval(Assets.updateBadges, 60000);
     },
 
+    /**
+     * v5.0.8: short, readable asset code.
+     * The old markup used `display_id || asset_id`, so any row without a stored
+     * code showed the raw 32-character md5 asset_id (that is why some codes were
+     * 8 chars, some 11 and some 32). The API now always fills display_id; this is
+     * the safety net for a stale/partial response.
+     */
+    shortId: function(item) {
+        if (!item) return '-';
+        var code = (item.display_id || '').trim();
+        if (code) return code;
+        var aid = (item.asset_id || '').trim();
+        return aid ? aid.substring(0, 8).toUpperCase() : '-';
+    },
+
     updateBadges: function() {
         fetch('/api/assets/unresolved_count')
             .then(function(r) { return r.json(); })
@@ -79,7 +94,7 @@ var Assets = {
 
                     var mbInfo = Assets.esc(c.motherboard_manufacturer || '') + ' ' + Assets.esc(c.motherboard_product || '');
                     if (!mbInfo.trim()) mbInfo = '-';
-                    var displayId = c.display_id || c.asset_id || '-';
+                    var displayId = Assets.shortId(c);
                     var onlineDot = c.is_online ? '<span class="online-dot online"></span>' : '<span class="online-dot offline"></span>';
                     var updated = c.updated_at ? c.updated_at.substring(0, 16) : '-';
 
@@ -127,9 +142,9 @@ var Assets = {
 
                 monitors.forEach(function(m) {
                     var updated = m.updated_at ? m.updated_at.substring(0, 16) : '-';
-                    var displayId = m.display_id || m.asset_id || '-';
+                    var displayId = Assets.shortId(m);
                     html += '<tr>' +
-                        '<td><code style="font-size:11px;font-weight:bold;color:#00d4aa;">' + displayId + '</code></td>' +
+                        '<td><code style="font-size:11px;font-weight:bold;color:#00d4aa;">' + Assets.esc(displayId) + '</code></td>' +
                         '<td><strong>' + Assets.esc(m.name || '-') + '</strong><br><small class="text-muted">' + Assets.esc(m.model_type || 'Monitor') + '</small></td>' +
                         '<td>' + Assets.esc(m.manufacturer || '-') + '</td>' +
                         '<td>' + Assets.esc(m.resolution || '-') + '</td>' +
@@ -197,7 +212,7 @@ var Assets = {
                     html += '<tr>' +
                         '<td><small>' + (ch.created_at || '').substring(0, 16) + '</small></td>' +
                         '<td><span class="badge ' + typeBadge + '">' + typeLabel + '</span></td>' +
-                        '<td><code style="font-size:10px;">' + Assets.esc(ch.asset_id || '-') + '</code><br><small>' + Assets.esc(ch.asset_type || '') + '</small></td>' +
+                        '<td><code style="font-size:10px;">' + Assets.esc(Assets.shortId(ch)) + '</code><br><small>' + Assets.esc(ch.asset_type || '') + '</small></td>' +
                         '<td style="font-size:11px;">' + Assets.esc(desc) + '</td>' +
                         '<td>' + statusHtml + '</td>' +
                         '<td>' + actionHtml + '</td>' +
@@ -331,7 +346,7 @@ var Assets = {
                         actions = '<button class="btn btn-sm btn-success py-0 px-1 ms-1" onclick="Assets.adoptAsset(\'' + Assets.escJs(a.asset_id) + '\')">' + t('assets.adopt') + '</button>' + actions;
                     }
                 }
-                html += '<tr><td><code style="font-size:10px;">' + Assets.esc(a.display_id || a.asset_id) + '</code></td>' +
+                html += '<tr><td><code style="font-size:10px;">' + Assets.esc(Assets.shortId(a)) + '</code></td>' +
                     '<td><span class="badge bg-dark">' + Assets.esc(catLbl) + '</span></td>' +
                     '<td>' + Assets.esc(a.name || modelTxt) + '</td>' +
                     '<td>' + Assets.esc(a.brand || '-') + '</td>' +

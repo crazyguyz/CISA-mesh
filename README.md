@@ -446,6 +446,7 @@ giamsat/
 ├── tests/                    # Unit tests
 └── tools/                    # Utility scripts
     ├── reset_data.py           # Xoá sạch dữ liệu vận hành (giữ schema) — dry-run mặc định
+    ├── backfill_display_ids.py # Cấp mã tài sản (PC-…/MN-…) cho dữ liệu cũ — dry-run mặc định
     ├── fix_pg_auth.ps1         # Đồng bộ role/DB PostgreSQL theo server\.env
     ├── deploy_agent.ps1        # Cài/cập nhật agent lên máy trạm
     ├── migrate_sqlite_to_pg.py # Chuyển dữ liệu SQLite → PostgreSQL
