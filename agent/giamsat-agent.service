@@ -1,6 +1,6 @@
 [Unit]
-Description=GIAM-SAT Agent v3.9.3 - Security Monitoring Agent
-Documentation=https://github.com/giangbeohu/giamsat
+Description=GIAM-SAT Agent v5.0.8 - Security Monitoring Agent
+Documentation=https://github.com/crazyguyz/CISA-mesh
 After=network-online.target
 Wants=network-online.target
 

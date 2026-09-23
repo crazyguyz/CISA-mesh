@@ -27,6 +27,9 @@ server/data/
 # Installer binaries
 server/setup/*.exe
 
+# start_server.bat do install_all.ps1 sinh ra luc cai (chua duong dan may - khong nen commit)
+server/setup/start_server.bat
+
 # Sigma Rules
 .sigma_repo/
 

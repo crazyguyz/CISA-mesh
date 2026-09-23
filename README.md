@@ -1,4 +1,4 @@
-# GIAM-SAT v5.0.7 — Hệ thống Giám sát An ninh Mạng Nội bộ
+# GIAM-SAT v5.0.8 — Hệ thống Giám sát An ninh Mạng Nội bộ
 
 > **GIAM-SAT** (GIAM SÁT) là hệ thống giám sát an ninh mạng mã nguồn mở, kiến trúc **Agent-Server**, hỗ trợ giám sát Windows/Linux endpoint, phân tích threat theo MITRE ATT&CK, quản lý tài sản CNTT, và cảnh báo thời gian thực qua Telegram/Email.
 
@@ -174,6 +174,35 @@ python main.py
 
 ---
 
+### 🧹 Dữ liệu nằm ở đâu? / Cài lại sạch "Clean reinstall"
+
+Repo **KHÔNG chứa dữ liệu vận hành**. Toàn bộ dữ liệu giám sát nằm ở **PostgreSQL** (hoặc SQLite nếu không dùng PG — file `server\data\*.db`), tức **ngoài thư mục cài đặt** → xoá thư mục rồi clone lại thì **dữ liệu cũ vẫn còn nguyên** (server mới đọc lại đúng DB đó vì `server\.env` trỏ tới `GIAMSAT_PG_HOST/PG_DBNAME`).
+
+| Thành phần | Vị trí | Repo có chứa? |
+|---|---|---|
+| Dữ liệu (máy, netflow, alert, case…) | PostgreSQL `datadir` — Windows mặc định `C:\Program Files\PostgreSQL\16\data` — hoặc `server\data\*.db` | ❌ không |
+| Bí mật & tài khoản: `.env`, `users.json`, `.user_key` | thư mục cài đặt | ❌ (gitignore — do `setup_config.ps1` sinh ra) |
+| Sinh ra lúc cài/chạy: `logs\`, `server\data\`, `.sigma_repo\`, `dist\`, `build\`, `server\setup\start_server.bat`, `server\agent_update\` | thư mục cài đặt | ❌ (gitignore) |
+
+**Muốn cài lại SẠCH (mất hết dữ liệu) — PostgreSQL:**
+```powershell
+# 1. Dừng server (Ctrl+C) để không còn kết nối tới DB
+# 2. Backup trước (khuyến nghị)
+& "C:\Program Files\PostgreSQL\16\bin\pg_dump.exe" -U admin -d giamsat -f D:\backup_giamsat.sql
+# 3. Xoá + tạo lại database RỖNG (schema được server tự tạo lại khi khởi động — _init_db)
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U admin -d postgres -c "DROP DATABASE giamsat;"
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U admin -d postgres -c "CREATE DATABASE giamsat OWNER admin;"
+# 4. (tuỳ chọn) dọn state phụ trong thư mục cài đặt
+Remove-Item server\data\* -Force -ErrorAction SilentlyContinue; Remove-Item logs\* -Force -ErrorAction SilentlyContinue
+# 5. Chạy lại server → bảng tạo mới, dashboard trắng dữ liệu
+```
+> **Giữ dữ liệu nhưng muốn môi trường riêng:** đổi `GIAMSAT_PG_DBNAME` trong `server\.env` (VD `giamsat_test`) rồi tạo DB đó — server tạo schema riêng, dữ liệu cũ vẫn nguyên.
+> **Xoá role/db để cài lại từ đầu:** `DROP DATABASE giamsat; DROP ROLE admin;` rồi chạy `tools\fix_pg_auth.ps1 -ServerDir <đường dẫn>\server`.
+>
+> **EN:** the repo ships **no runtime data**; everything lives in PostgreSQL/SQLite outside the install folder, so wiping the folder and re-cloning does **not** clear data. Drop/recreate the database (commands above) for a truly clean install — or switch `GIAMSAT_PG_DBNAME` to isolate a new environment.
+
+---
+
 ## 🖥️ Build Agent (Windows)
 
 Agent được build thành file `.exe` bằng PyInstaller, chạy trên máy trạm để giám sát.
@@ -187,14 +216,17 @@ Agent được build thành file `.exe` bằng PyInstaller, chạy trên máy tr
 ### Build
 ```PS
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-.\build-agent.ps1
+.\build-agent.ps1                 # v5.0.8: không cần nhập version - lấy từ server\version.txt
+.\build-agent.ps1 -Version 6.0.1  # hoặc chỉ định version mới
 ```
 
 ```cmd
 REM Build Windows Agent + Updater
-build-agent.cmd 4.8.0
+build-agent.cmd                   REM Enter = dùng version hiện tại trong server\version.txt
+build-agent.cmd 6.0.1             REM hoặc chỉ định version mới
 REM Output: dist\GiamSatAgent.exe, dist\GiamSatUpdater.exe
-REM 4.8.0 = version agent ghi vào server\version.txt - phải KHỚP với EXE đang phát hành
+REM Version được ghi vào CẢ agent\agent_version.txt và server\version.txt → phải KHỚP với EXE đang phát hành.
+REM v5.0.8: mặc định đọc server\version.txt (trước đây rơi vào 3.9.3 hardcode → hạ phiên bản + vòng lặp update).
 ```
 
 ### Cài đặt Agent lên máy trạm
@@ -212,8 +244,8 @@ Agent **tự cài Tailscale + tự lấy địa chỉ server** từ một **file
 
 **1) File cấu hình remote — CHỈ chứa ĐỊA CHỈ, KHÔNG chứa bí mật:**
 ```
-tailscale-server:100.109.231.14:6666     # máy chạy chế độ Tailscale đọc dòng này
-lan-server:192.168.1.248:6666            # máy trong LAN đọc dòng này
+tailscale-server:100.x.y.z:6666          # máy chạy chế độ Tailscale đọc dòng này (thay bằng IP tailnet của server bạn)
+lan-server:192.168.1.50:6666             # máy trong LAN đọc dòng này (thay bằng IP LAN của server bạn)
 ```
 - Tên dòng tương đương: `ip-server-tailscale:` / `ts-server:` / `tailscale-ip:` và `ip-server-lan:` / `lan-ip:` / `local-server:` / `ip-server-local:`
 - File cũ chỉ có `ip-server:host:port` **vẫn được hỗ trợ** (dùng chung cả 2 chế độ) → agent cũ không vỡ.

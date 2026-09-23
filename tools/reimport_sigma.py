@@ -7,7 +7,7 @@ field-level (field_contains on CommandLine/Image/...) instead of weak
 description_contains. Hand-written THREAT-* rules are kept untouched.
 
 Usage:
-    python tools/reimport_sigma.py --sigma-dir D:\\CISA-mesh-main\\.sigma_repo --dry-run
+    python tools/reimport_sigma.py --sigma-dir D:\\sigma-rules --dry-run
     python tools/reimport_sigma.py --sigma-dir .sigma_repo
     python tools/reimport_sigma.py --sigma-dir .sigma_repo --agent-copy  # also rewrite agent/rules/correlation_rules.yaml
 """

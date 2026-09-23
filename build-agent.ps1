@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GIAM-SAT Agent Build Script v3.5.0
+    GIAM-SAT Agent Build Script v5.0.8
     Build GiamSatAgent.exe + GiamSatUpdater.exe (2 EXE files).
 
 .DESCRIPTION
@@ -8,7 +8,8 @@
     Updater: daemon, HTTP localhost server, kill/start Agent, auto-update 15ph.
 
 .PARAMETER Version
-    Version number (e.g., "3.5.0"). Required.
+    Version number (e.g., "6.0.0"). Optional (v5.0.8) - mac dinh lay tu server\version.txt.
+    Gia tri nay duoc ghi vao ca agent\agent_version.txt va server\version.txt.
 
 .PARAMETER NoServer
     Skip server restart after build.
@@ -19,8 +20,13 @@
 #>
 
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$Version,
+    # v5.0.8 (FIX): -Version tro thanh TUY CHON.
+    # Truoc day Mandatory=$true nen vi du `.\build-agent.ps1` trong README bao thieu
+    # tham so, con build-agent.cmd thi roi vao default 3.9.3 hardcode -> ghi
+    # server\version.txt = 3.9.3 = HA PHIEN BAN agent => moi agent bao version khac
+    # => vong lap update lien tuc.
+    # Nay: khong truyen -Version => lay dung gia tri trong server\version.txt.
+    [string]$Version = "",
 
     [switch]$RestartServer,
 
@@ -30,6 +36,17 @@ param(
     # with "No module named '_ssl'" at startup, boots 11x/12x at 16:37:52).
     [switch]$RestartAgent
 )
+
+# v5.0.8: resolve version - nguon su that la server\version.txt
+if (-not $Version -or $Version.Trim() -eq "") {
+    $verFile = Join-Path $PSScriptRoot "server\version.txt"
+    if (Test-Path $verFile) { $Version = (Get-Content $verFile -Raw -ErrorAction SilentlyContinue).Trim() }
+    if (-not $Version) {
+        Write-Host "[FAIL] Khong xac dinh duoc version: truyen -Version <x.y.z> hoac tao server\version.txt" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "[*] Khong truyen -Version -> dung version hien tai trong server\version.txt: $Version" -ForegroundColor Cyan
+}
 
 $ErrorActionPreference = "Continue"
 $ROOT = $PSScriptRoot
@@ -46,7 +63,7 @@ function Write-INFO { Write-Host "[*] " -NoNewline -ForegroundColor Cyan; Write-
 function Write-STEP { Write-Host "`n>>> " -NoNewline -ForegroundColor Magenta; Write-Host $args[0] -ForegroundColor White }
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  GIAM-SAT Agent Build Script v3.5.0" -ForegroundColor Cyan
+Write-Host "  GIAM-SAT Agent Build Script v5.0.8" -ForegroundColor Cyan
 Write-Host "  Version: $Version  |  2 files: Agent + Updater daemon" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 

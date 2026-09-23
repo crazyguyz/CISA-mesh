@@ -5,7 +5,7 @@ KHÔNG có link mặc định chung trong repo công khai. Link được khai b�
 setup_config.ps1 -> server/.env (GIAMSAT_TAILSCALE_CONF_URL) -> nhúng vào exe lúc
 build (remote_conf_url.txt), hoặc đặt biến môi trường lúc chạy. Nội dung file
 KHÔNG chứa bí mật. Định dạng (mỗi dòng một mục):
-  tailscale-server:100.109.231.14:6666   # địa chỉ server khi agent đi qua Tailscale
+  tailscale-server:100.x.y.z:6666          # địa chỉ server khi agent đi qua Tailscale (thay bằng IP tailnet của bạn)
   lan-server:192.168.1.5:6666             # địa chỉ server trong LAN
   ip-server:host:port                     # (cũ) dùng chung cả 2 chế độ
   tailscale up --authkey=...              # (cũ, KHÔNG đặt key công khai nữa)
@@ -184,7 +184,7 @@ def parse_remote_text(text):
       - dòng authkey cũ (dòng 1, tuỳ chọn — đã KHÔNG còn nên đặt key công khai):
           tailscale up --authkey=...
       - địa chỉ máy chủ qua Tailscale:
-          tailscale-server:100.109.231.14:6666      (hoặc ip-server-tailscale:/ts-server:)
+          tailscale-server:100.x.y.z:6666             (hoặc ip-server-tailscale:/ts-server:)
       - địa chỉ máy chủ trong LAN:
           lan-server:192.168.1.5:6666                (hoặc ip-server-lan:/lan-ip:)
       - key cũ `ip-server:` / `server:` vẫn hỗ trợ như dạng generic (dùng chung).

@@ -1,10 +1,22 @@
-# GIAM-SAT v5.0.7 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+# GIAM-SAT v5.0.8 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
 > KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● HUMAN-IN-THE-LOOP ● PHÂN LOẠI CẢNH BÁO (TRIAGE) ● MADE IN VIETNAM 🇻🇳
 
 ---
 
-## 0. v5.0.7 — Cập nhật gần nhất (2026-09)
+## 0. v5.0.8 — Cập nhật gần nhất (2026-09)
+
+### Vệ sinh repo công khai, đồng bộ phiên bản build & chống "dữ liệu cá nhân trong repo"
+- **Bỏ IP nội bộ khỏi tài liệu & code:** ví dụ trong `README.md` và docstring `agent/remote_bootstrap.py` đổi sang placeholder (`100.x.y.z`, `192.168.1.50`) → repo công khai không lộ IP tailnet/LAN của tổ chức tác giả.
+- **Ẩn danh hoá changelog:** `summary.md` bỏ tên máy nội bộ khi kể lại lần dọn orphan (chỉ còn "3 cấu hình máy tính").
+- **Đồng bộ version (bug thật):** ở HEAD `agent/agent_version.txt` = **4.8.1** nhưng `server/version.txt` = **4.8.0** → theo luật `update_available = agent_version != version.txt`, mọi bản build từ repo sẽ **lặp update vô hạn**; nay cả hai = **6.0.0** (khớp `dist\GiamSatAgent.exe` đang phát hành).
+- **`build-agent.cmd` hardcode default `3.9.3` (bug thật):** bấm Enter là ghi `server\version.txt = 3.9.3` → **hạ phiên bản agent + vòng lặp update**; nay mặc định **đọc `server\version.txt`** và báo lỗi rõ nếu không xác định được version.
+- **`build-agent.ps1 -Version` chuyển thành tuỳ chọn (bug thật):** trước đây `Mandatory=$true` nên ví dụ `.\build-agent.ps1` trong README **không chạy được**; nay không truyền thì lấy từ `server\version.txt`.
+- **`.gitignore`:** thêm `server/setup/start_server.bat` (do `install_all.ps1` sinh ra, chứa đường dẫn máy) → hết `git status` bẩn sau mỗi lần cài.
+- **Tài liệu:** thêm mục README **"Dữ liệu nằm ở đâu? / Cài lại sạch"** — giải thích repo không chứa dữ liệu, dữ liệu nằm ở PostgreSQL **ngoài** thư mục cài (nên xoá thư mục + clone lại KHÔNG xoá dữ liệu), kèm lệnh `pg_dump` → `DROP/CREATE DATABASE` để cài lại sạch.
+- **Metadata lệch:** `agent/giamsat-agent.service` (Linux) còn `v3.9.3` + `Documentation=` trỏ repo cũ → nay `v5.0.8` + URL repo hiện tại; docstring `tools/reimport_sigma.py` bỏ đường dẫn máy cá nhân → ví dụ trung tính `D:\sigma-rules`.
+
+## 0.1 v5.0.7 — (2026-09)
 
 ### Quản lý authkey Tailscale tập trung trên Dashboard (v5.0.5)
 | # | Nội dung | File |
@@ -53,7 +65,7 @@
 ### Hotfix — Xóa máy trạm dọn sạch asset registry
 - **Bug:** `delete_machine()` trước đây chỉ xóa events/alerts/... — KHÔNG xóa bảng Assets → máy đã xóa vẫn hiện **Máy tính/Màn hình** trên dashboard Tài sản (cấu hình orphan).
 - **Fix (cả SQLite + PG):** `delete_machine()` giờ xóa thêm 22 bảng machine-scoped (`sysmon_events`, `sca_events`, `messages`, `policy_apply_status`, `machine_users`, `machine_uptime`, `agent_update_log`, `alert_suppression`, `fim_baseline`, `agent_group_members`...) + toàn bộ asset registry theo thứ tự: `assets_computers` → `assets_relations` → `assets_monitors` (giữ màn hình còn được máy khác dùng) → `assets_inventory` → `assets_change_log`.
-- **Tool dọn orphan cũ:** `tools/cleanup_orphan_assets.py` (dry-run mặc định, `--apply` để xóa; hỗ trợ SQLite/PG từ `.env`) — đã chạy trên PG production: xóa **3 cấu hình máy tính** (LAPTOP-14, IT-YSNT, YSNTBK) + 3 màn hình + 3 relation + 17 messages + 5 machine_users + 1 uptime + 1831 agent_update_log + 759 fim_baseline.
+- **Tool dọn orphan cũ:** `tools/cleanup_orphan_assets.py` (dry-run mặc định, `--apply` để xóa; hỗ trợ SQLite/PG từ `.env`) — đã chạy trên PG production: xóa **3 cấu hình máy tính** (máy trạm cũ đã gỡ) + 3 màn hình + 3 relation + 17 messages + 5 machine_users + 1 uptime + 1831 agent_update_log + 759 fim_baseline.
 - **Test:** `tests/delete_machine_tests.py` (16 check: purge toàn bộ + màn hình shared còn sống).
 
 ### Round 7 — Review 2026-08-31 (đã verify + fix)
@@ -624,6 +636,7 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 | **v5.0.5** | **2026-09** | **Authkey Tailscale chuyển vào build (setup_config.ps1 → server\\.env → build-agent.ps1 nhúng `agent\\tailscale_auth.txt` vào EXE) + tab 🔑 Authkey Tailscale trên Dashboard (masked, ngày hết hạn, cảnh báo ≤14 ngày, audit log) — KHÔNG còn authkey trong file công khai** |
 | **v5.0.6** | **2026-09** | **File cấu hình remote 2 địa chỉ (`tailscale-server:` / `lan-server:`, không chứa secret) + agent tự đọc LẠI file khi mất kết nối ~10 phút → đổi host/port; địa chỉ mới fail 3 lần thì revert về địa chỉ cũ + blacklist chống lặp vô hạn** |
 | **v5.0.7** | **2026-09** | **Repo công khai: bỏ link Google Drive hardcode (mỗi tổ chức nhập `GIAMSAT_TAILSCALE_CONF_URL` → build nhúng `agent\\remote_conf_url.txt`; ưu tiên env → file nhúng → rỗng) + PUT authkey chỉ đổi ngày thì giữ key cũ / clear xoá hẳn dòng + UI tab Authkey song ngữ đầy đủ (36 key vi/en) + cập nhật README/dashboard-guide + xoá `_o.txt`** |
+| **v5.0.8** | **2026-09** | **Vệ sinh repo công khai + sửa lỗi build: bỏ IP nội bộ khỏi README/docstring (placeholder `100.x.y.z`/`192.168.1.50`), bỏ tên máy nội bộ khỏi changelog; đồng bộ `agent_version.txt` = `server/version.txt` = **6.0.0** (trước lệch 4.8.1/4.8.0 → vòng lặp update); `build-agent.cmd` bỏ default 3.9.3 hardcode (nay đọc `server\\version.txt`), `build-agent.ps1 -Version` thành tuỳ chọn; `.gitignore` thêm `server/setup/start_server.bat`; README thêm mục "Dữ liệu nằm ở đâu? / Cài lại sạch" (dữ liệu nằm ở PostgreSQL ngoài thư mục cài + lệnh drop/recreate DB)** |
 
 ---
 

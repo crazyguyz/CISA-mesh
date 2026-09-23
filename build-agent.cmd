@@ -1,21 +1,33 @@
 @echo off
 REM ============================================================
-REM  GIAM-SAT v3.9.3 - Multi-Platform Build Script (CMD wrapper)
+REM  GIAM-SAT v5.0.8 - Multi-Platform Build Script (CMD wrapper)
 REM  Builds Agent + Updater for Windows AND Linux (via WSL)
 REM
 REM  Auto-update: Server serves files from dist\
 REM  Windows: build-agent.ps1 -> dist\GiamSatAgent.exe, GiamSatUpdater.exe
 REM  Linux:   agent/build-agent.sh (via WSL) -> agent/dist/linux_*/
 REM
-REM  Double-click to build, or: build-agent.cmd 3.9.3 [windows|all]
+REM  Double-click to build, or: build-agent.cmd 6.0.1 [windows|all]
 REM ============================================================
 setlocal enabledelayedexpansion
 
 set VERSION=%1
 set TARGET=%2
 
-if "%VERSION%"=="" set /p VERSION="Enter version (e.g., 3.9.3): "
-if "%VERSION%"=="" set VERSION=3.9.3
+REM v5.0.8 (FIX): version mac dinh doc tu server\version.txt.
+REM Truoc day hardcode "3.9.3" -> bam Enter la ghi server\version.txt = 3.9.3
+REM = HA PHIEN BAN agent => moi agent bao version khac => vong lap update.
+set "CURVER="
+if "%VERSION%"=="" (
+    for /f "usebackq tokens=* delims=" %%v in ("%~dp0server\version.txt") do set "CURVER=%%v"
+)
+if "%VERSION%"=="" set /p VERSION="Enter version (Enter = %CURVER%): "
+if "%VERSION%"=="" set "VERSION=%CURVER%"
+if "%VERSION%"=="" (
+    echo [!] ERROR: khong xac dinh duoc version - truyen tham so ^(build-agent.cmd 6.0.1^) hoac tao server\version.txt
+    pause
+    exit /b 1
+)
 if "%TARGET%"=="" (
     echo.
     echo Select build target:
