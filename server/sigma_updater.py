@@ -150,9 +150,13 @@ class SigmaAutoUpdater:
                 existing["rules"] = existing_rules
                 existing["metadata"]["last_updated"] = datetime.now().strftime("%Y-%m-%d")
 
-                with open(rules_path, "w", encoding="utf-8") as f:
-                    _yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
+                # v5.0.8: giu khoi comment header (yaml.dump khong giu comment)
+                try:
+                    from rules_io import dump_preserving_header
+                    dump_preserving_header(rules_path, existing)
+                except ImportError:
+                    with open(rules_path, "w", encoding="utf-8") as f:
+                        _yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
                 print(f"[*] Sigma: Imported {imported} new rules (total: {len(existing_rules)})")
             else:
                 print(f"[*] Sigma: No new rules to import (all {len(rules)} already exist)")

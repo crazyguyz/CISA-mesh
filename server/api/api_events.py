@@ -348,8 +348,13 @@ def register(app, core):
             existing["metadata"]["version"] = f"{float(existing.get('metadata', {}).get('version', '2.0').split('.')[0])}.{int(existing.get('metadata', {}).get('version', '2.0').split('.')[1] or '0') + 1}"
             existing["metadata"]["last_updated"] = __import__('datetime').datetime.now().strftime("%Y-%m-%d")
 
-            with open(rules_path, "w", encoding="utf-8") as f:
-                _yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            # v5.0.8: giu khoi comment header (yaml.dump khong giu comment)
+            try:
+                from rules_io import dump_preserving_header
+                dump_preserving_header(rules_path, existing)
+            except ImportError:
+                with open(rules_path, "w", encoding="utf-8") as f:
+                    _yaml.dump(existing, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
             return jsonify({
                 "status": "ok",

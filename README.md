@@ -180,7 +180,7 @@ Repo **KHÔNG chứa dữ liệu vận hành**. Toàn bộ dữ liệu giám sá
 
 | Thành phần | Vị trí | Repo có chứa? |
 |---|---|---|
-| Dữ liệu (máy, netflow, alert, case…) | PostgreSQL `datadir` — Windows mặc định `C:\Program Files\PostgreSQL\16\data` — hoặc `server\data\*.db` | ❌ không |
+| Dữ liệu (máy, netflow, alert, case…) | PostgreSQL `datadir` — Windows mặc định `C:\Program Files\PostgreSQL\16\data` — hoặc `server\giamsat_data.db` nếu chạy SQLite | ❌ không |
 | Bí mật & tài khoản: `.env`, `users.json`, `.user_key` | thư mục cài đặt | ❌ (gitignore — do `setup_config.ps1` sinh ra) |
 | Sinh ra lúc cài/chạy: `logs\`, `server\data\`, `.sigma_repo\`, `dist\`, `build\`, `server\setup\start_server.bat`, `server\agent_update\` | thư mục cài đặt | ❌ (gitignore) |
 

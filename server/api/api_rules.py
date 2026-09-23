@@ -26,6 +26,15 @@ def _load_rules_yaml():
 
 
 def _save_rules_yaml(data):
+    # v5.0.8: di qua rules_io de GIU khoi comment header (yaml.dump khong giu
+    # duoc comment -> truoc day moi lan luu rule la xoa mat header, lam repo
+    # tracked luon "dirty"). Fallback ve cach cu neu import loi.
+    try:
+        from rules_io import dump_preserving_header
+        dump_preserving_header(_RULES_PATH, data)
+        return
+    except Exception:
+        pass
     with open(_RULES_PATH, "w", encoding="utf-8") as f:
         import yaml
         yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
