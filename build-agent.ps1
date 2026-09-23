@@ -88,8 +88,11 @@ if ($RestartAgent) {
 
 # STEP 2: Update version
 Write-STEP "STEP 2: Updating version to $Version..."
-Set-Content -Path "$AGENT_DIR\agent_version.txt" -Value $Version -Encoding ASCII
-Set-Content -Path "$SERVER_DIR\version.txt" -Value $Version -Encoding ASCII
+# v5.0.8 (bug): -NoNewline - Set-Content appended a trailing newline, so the
+# tracked version files (committed WITHOUT a trailing newline) showed as modified
+# in `git status` after EVERY build -> repo always dirty. Write the exact bytes.
+Set-Content -Path "$AGENT_DIR\agent_version.txt" -Value $Version -Encoding ASCII -NoNewline
+Set-Content -Path "$SERVER_DIR\version.txt" -Value $Version -Encoding ASCII -NoNewline
 Write-OK "agent_version.txt -> $Version"
 Write-OK "server/version.txt -> $Version"
 
