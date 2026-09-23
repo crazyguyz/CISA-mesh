@@ -1,10 +1,29 @@
-# GIAM-SAT v5.0.4 — Hệ Thống Giám Sát Bảo Mật Tập Trung
+# GIAM-SAT v5.0.7 — Hệ Thống Giám Sát Bảo Mật Tập Trung
 
 > KIẾN TRÚC AGENT-SERVER ● 1000+ AGENTS ● 4 DATABASE BACKENDS ● HUMAN-IN-THE-LOOP ● PHÂN LOẠI CẢNH BÁO (TRIAGE) ● MADE IN VIETNAM 🇻🇳
 
 ---
 
-## 0. v5.0.4 — Cập nhật gần nhất (2026-08)
+## 0. v5.0.7 — Cập nhật gần nhất (2026-09)
+
+### Quản lý authkey Tailscale tập trung trên Dashboard (v5.0.5)
+| # | Nội dung | File |
+|---|----------|------|
+| 1 | Authkey Tailscale **không còn nằm trong file công khai**: `setup_config.ps1` nhập authkey + ngày hết hạn → `server\.env` (`GIAMSAT_TAILSCALE_AUTHKEY`, `..._EXPIRY`) → `build-agent.ps1` nhúng `agent\tailscale_auth.txt` (gitignore) vào `GiamSatAgent.exe`; agent chạy `tailscale up --authkey=...` bằng key nhúng (qua allowlist tham số cứng) | `server\setup\setup_config.ps1`, `build-agent.ps1`, `agent\GiamSatAgent.spec`, `agent\remote_bootstrap.py`, `.gitignore` |
+| 2 | Tab mới **🔑 Authkey Tailscale** trong Cập nhật Agent: `GET/PUT /api/tailscale/authkey` (role `settings` + audit log) — hiển thị **masked** + ngày hết hạn + số ngày còn lại; **vàng ≤14 ngày / đỏ khi quá hạn / xám khi chưa cấu hình**; ô cập nhật + nút Xóa (ghi `.env` atomic, giữ nguyên các key khác) | `server\api\api_tailscale.py`, `server\api\__init__.py`, `server\templates\index.html`, `server\static\js\dashboard.js`, `server\static\js\i18n.js` |
+
+### File cấu hình remote 2 địa chỉ + tự phục hồi host (v5.0.6)
+- File remote chỉ chứa **địa chỉ** — `tailscale-server:` (máy Tailscale) / `lan-server:` (máy LAN); vẫn hỗ trợ `ip-server:` cũ dùng chung → **không chứa bí mật**.
+- Agent chọn đúng dòng theo `net_mode` của máy (`resolve_server_address`).
+- **Tự phục hồi:** mất kết nối **≥5 lần và ≥600s (~10 phút)** → **đọc LẠI file remote** → đổi host/port + kết nối lại. Nếu địa chỉ mới fail **3 lần** → **tự revert** về địa chỉ cũ + **blacklist** địa chỉ đó (xoá blacklist khi kết nối thành công) → chống lặp vô hạn / chống file bị trỏ sai. Recovery chỉ đọc **địa chỉ**, không chạy lệnh Tailscale, không lấy `psk`/`command_key`.
+
+### Repo công khai — bỏ link Google Drive hardcode (v5.0.7)
+- Agent **không còn link mặc định nào trong mã** (người dùng repo khác không bị trỏ vào file Drive của tác giả); mỗi tổ chức nhập link của mình ở `setup_config.ps1` → `GIAMSAT_TAILSCALE_CONF_URL` → `build-agent.ps1` nhúng `agent\remote_conf_url.txt` (gitignore). Thứ tự ưu tiên khi agent đọc: **biến môi trường → file nhúng → rỗng (tắt remote config)**.
+- Rà soát kèm: `PUT` authkey chỉ sửa **ngày** thì **giữ key cũ**, clear thì **xoá hẳn dòng** trong `.env`; cache file remote **chỉ ghi khi bản mới hợp lệ** (trang HTML/đăng nhập Drive không phá cache tốt); UI tab Authkey **song ngữ đầy đủ** (36 key vi/en) + toast riêng khi chỉ đổi ngày; xoá file rác `_o.txt`; cập nhật `README.md` + `dashboard-guide.md` (tab mới + luồng remote config mới).
+
+---
+
+## 0.1 v5.0.4 — (2026-08)
 
 ### Bảo mật & lõi (Round 6 review — CRITICAL/HIGH/MEDIUM/LOW)
 | # | Nội dung | File |
@@ -601,6 +620,10 @@ Sau  v3.9.0: 200 máy × 5.8K = 1.16M events/ngày → SQLite hoạt động ổ
 | **v5.0.2** | **2026-08-24** | **Đại tu Group Policies (fix 5 bug critical): bảng policy_apply_status theo dõi theo TỪNG MÁY (fix first-machine-wins + trạng thái không bao giờ ghi nhận → re-push loop); policy đẩy qua commands table (máy offline vẫn nhận khi reconnect) + TCP push; agent báo policy_id qua command-result → ghi nhận applied/failed theo máy; disable/delete → tự đẩy remove_* cho mọi máy đã áp (soft-delete + purge, thống nhất cả 2 backend — fix SQLite removal không hoạt động); /api/policies/status + pending chuyển sang check_agent_psk; UI: nút 👁 trạng thái theo máy + ↻ áp lại tất cả, thêm policy tôn trọng checkbox Kích hoạt, ẩn danh sách nhóm khi mở tab policy, không đè config khi sửa; fix esc() (Messages tab lỗi 'Lỗi tải dữ liệu máy trạm/nhóm' — group id dạng số làm crash + esc không hề escape HTML)** |
 | **v5.0.3** | **2026-08-24** | **Agent/Updater chạy ẩn (windowed build): GiamSatAgent.spec + updater.spec chuyển console=False → Task Scheduler khởi động KHÔNG hiện cửa sổ console đen (trước đây flash 10-15s trên máy cấu hình thấp, người dùng vô ý đóng → agent/updater tắt); main.py + updater.py redirect stdout/stderr khi windowed (tránh print() crash); build-agent.ps1 bỏ guard chặn console=False. Fix single-instance guard main.py (_log gọi trước khi định nghĩa → NameError bị nuốt → instance thứ 2 vẫn chạy = gửi trùng event). PG backend parity: thêm set_threat/yara/vuln/inspection_status + bảng netflow_flows + insert/get_netflow_flows (thiếu → triage + NetFlow 500 trên PG)** |
 | v3.6.1 | 2026-06 | Initial release |
+| **v5.0.4** | **2026-08** | **PostgreSQL chính thức: role/db `giamsat` đúng (role `admin` SUPERUSER), tool migrate SQLite→PG 36 bảng ~160k rows (verify 0 issues), PG parity (ON CONFLICT predicate, network_baseline, status filter, materialized views), fallback SQLite có banner đỏ + server_error.log + /api/health `db_fallback`; UI hunting campaigns/history + panel Kênh Cảnh báo (Telegram/Slack/Webhook) + 8 SOAR action; fix lũ 429 (SSE debounce + 1800/min)** |
+| **v5.0.5** | **2026-09** | **Authkey Tailscale chuyển vào build (setup_config.ps1 → server\\.env → build-agent.ps1 nhúng `agent\\tailscale_auth.txt` vào EXE) + tab 🔑 Authkey Tailscale trên Dashboard (masked, ngày hết hạn, cảnh báo ≤14 ngày, audit log) — KHÔNG còn authkey trong file công khai** |
+| **v5.0.6** | **2026-09** | **File cấu hình remote 2 địa chỉ (`tailscale-server:` / `lan-server:`, không chứa secret) + agent tự đọc LẠI file khi mất kết nối ~10 phút → đổi host/port; địa chỉ mới fail 3 lần thì revert về địa chỉ cũ + blacklist chống lặp vô hạn** |
+| **v5.0.7** | **2026-09** | **Repo công khai: bỏ link Google Drive hardcode (mỗi tổ chức nhập `GIAMSAT_TAILSCALE_CONF_URL` → build nhúng `agent\\remote_conf_url.txt`; ưu tiên env → file nhúng → rỗng) + PUT authkey chỉ đổi ngày thì giữ key cũ / clear xoá hẳn dòng + UI tab Authkey song ngữ đầy đủ (36 key vi/en) + cập nhật README/dashboard-guide + xoá `_o.txt`** |
 
 ---
 

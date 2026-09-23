@@ -1,4 +1,4 @@
-# GIAM-SAT v5.0.4 — Hệ thống Giám sát An ninh Mạng Nội bộ
+# GIAM-SAT v5.0.7 — Hệ thống Giám sát An ninh Mạng Nội bộ
 
 > **GIAM-SAT** (GIAM SÁT) là hệ thống giám sát an ninh mạng mã nguồn mở, kiến trúc **Agent-Server**, hỗ trợ giám sát Windows/Linux endpoint, phân tích threat theo MITRE ATT&CK, quản lý tài sản CNTT, và cảnh báo thời gian thực qua Telegram/Email.
 
@@ -67,6 +67,10 @@ git pull
 
 - 🔐 **v5.0.3 (2026-08):** NetFlow DoS hardening (rate-limit/exporter + template cache TTL + batch insert), 2FA rate-limit+lockout & audit username & re-enroll cần mã cũ + admin reset, nonce chống replay lệnh ký, che `ultraview_password` khỏi viewer, rate-limit dict GC + blacklist evict theo hạn, syslog UDP rate-limit, engine server đồng bộ agent (subtype/dst_port/field_equals/field_regex/FIELD_ALIASES), **PSK per-machine** (`GIAMSAT_PER_MACHINE_PSK[_FILE]`) + validate `machine_id` + sanitize hostname ở mọi ngưỡng — triệt tiêu nguồn gốc stored-XSS. Agent version bump → **4.6.6** (phải KHỚP với dist\GiamSatAgent.exe thật — lệch version = vòng lặp update vô hạn) (cần rebuild agent + push qua "Cập nhật Agent").
 - 🗄️ **v5.0.4 (2026-08) — PostgreSQL chính thức:** khôi phục role/DB PG đúng (role `admin` SUPERUSER + DB `giamsat` owner admin), **tool migrate SQLite→PG** `tools/migrate_sqlite_to_pg.py` (36 bảng ~160k rows, verify 0 issues), PG parity (ON CONFLICT predicate, `network_baseline`, `status` filter, materialized views dashboard). Nếu PG không kết nối được server **fallback SQLite có banner đỏ** + `server_error.log` + `/api/health` báo `db_fallback` — không còn âm thầm. Fix lũ 429 (SSE loadStats debounce + rate limit 1800/min), fix TypeError click tab Email/Assets/Agentless, UI hunting campaigns/history + Alerting Channels panel (Telegram/Slack/Webhook) + danh sách 8 SOAR action. Xem `dashboard-guide.md` + `summary.md`.
+- 🔑 **v5.0.5 (2026-09) — Authkey Tailscale KHÔNG còn nằm trong file công khai:** authkey chuyển hẳn vào **build**: `setup_config.ps1` nhập `GIAMSAT_TAILSCALE_AUTHKEY` + `GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY` → `server\.env` → `build-agent.ps1` nhúng `agent\tailscale_auth.txt` (đã gitignore) vào `GiamSatAgent.exe`; agent chạy `tailscale up --authkey=...` bằng key nhúng khi chọn chế độ Tailscale. Dashboard thêm tab **🔑 Authkey Tailscale** (`GET/PUT /api/tailscale/authkey`, role `settings`, có audit log): hiển thị masked + ngày hết hạn, cảnh báo **vàng ≤14 ngày / đỏ khi quá hạn / xám khi chưa cấu hình**, ô cập nhật trực tiếp + nút xoá. **Đổi authkey ⇒ phải build lại agent rồi phát hành qua “Cập nhật Agent”.** (cần restart server để nạp API/tab mới)
+- 📡 **v5.0.6 (2026-09) — File cấu hình remote 2 địa chỉ + tự phục hồi khi server đổi IP:** file remote chỉ còn **địa chỉ** (`tailscale-server:` cho máy Tailscale, `lan-server:` cho máy LAN — vẫn hỗ trợ `ip-server:` cũ dùng chung) → **không chứa bí mật**. Agent mất kết nối liên tục **~10 phút** (attempt ≥5, ≥600s) thì **đọc LẠI file** → đổi host/port + kết nối lại; nếu địa chỉ mới fail **3 lần** → **tự revert** về địa chỉ cũ + **blacklist** địa chỉ đó (chống lặp vô hạn, xoá blacklist khi kết nối thành công). Nhờ vậy **đổi IP server chỉ cần sửa 1 dòng trong file remote — không cần rebuild, không cần tới từng máy.**
+- 🔓 **v5.0.7 (2026-09) — Repo công khai: bỏ link Google Drive cá nhân hardcode:** agent **không còn link mặc định nào trong mã** (người dùng repo khác không bị trỏ vào file Drive của tác giả). Mỗi tổ chức tự nhập link file cấu hình của mình ở `setup_config.ps1` (`GIAMSAT_TAILSCALE_CONF_URL` → `.env` → build nhúng `agent\remote_conf_url.txt`, đã gitignore); thứ tự ưu tiên khi agent đọc: **env → file nhúng → rỗng (tắt remote config)**. Kèm rà soát: PUT authkey chỉ sửa ngày thì **giữ key cũ**, clear thì **xoá hẳn dòng** trong `.env`; tab Authkey **song ngữ đầy đủ** (36 key vi/en) + toast riêng khi chỉ đổi ngày; cache file remote **chỉ ghi khi bản mới hợp lệ** (trang HTML/đăng nhập Drive không phá cache tốt); `.env.example`/`.gitignore` cập nhật; xoá file rác `_o.txt`.
+
 
 ---
 
@@ -188,8 +192,9 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ```cmd
 REM Build Windows Agent + Updater
-build-agent.cmd 4.5.4
+build-agent.cmd 4.8.0
 REM Output: dist\GiamSatAgent.exe, dist\GiamSatUpdater.exe
+REM 4.8.0 = version agent ghi vào server\version.txt - phải KHỚP với EXE đang phát hành
 ```
 
 ### Cài đặt Agent lên máy trạm
@@ -200,29 +205,52 @@ REM Chạy với tham số server IP (hoặc cơ chế tự động bên dưới
 GiamSatAgent.exe --server 192.168.1.10 --port 6666
 ```
 
-#### 🟢 Tự động kết nối qua Tailscale + server config từ xa (v5.0.4)
+#### 🟢 Tự động kết nối qua Tailscale + server config từ xa (v5.0.7)
 
-Agent (kể từ bản rebuild 4.6.7) có thể **tự cài Tailscale + tự lấy địa chỉ server** từ một **file cấu hình cố định** trên web — người dùng chỉ cần điền **thông tin cá nhân** khi chạy lần đầu, **không cần biết/điền server**:
+Agent **tự cài Tailscale + tự lấy địa chỉ server** từ một **file cấu hình trên web** (Google Drive) do **chính tổ chức của bạn** đăng — người dùng chỉ điền **thông tin cá nhân** khi chạy lần đầu, **không cần biết/điền server**.
+> **EN:** the agent auto-installs Tailscale and resolves the server address from a remote config file **you host yourself**; end users only fill in personal info on the first run.
 
-- File cấu hình (mặc định là link Google Drive đã nhúng trong agent; có thể đổi bằng biến môi trường `GIAMSAT_TAILSCALE_CONF_URL` khi build/deploy):
-  ```
-  tailscale up --authkey=tskey-auth-XXXXXXXXXXXXXXXXXXXX     ← dòng 1: lệnh kết nối Tailscale
-  ip-server:giamsat-server:6666                              ← dòng 2: server host[:port]
-  ```
-- Khi agent khởi động:
-  1. Tự tải file (offline thì dùng bản cache gần nhất trong `%ProgramData%\GIAM-SAT\Agent\tailscale-conf.txt`).
-  2. Nếu máy chưa có Tailscale → **tự cài** (winget, fallback MSI `pkgs.tailscale.com` — cần quyền Admin/SYSTEM) rồi **chạy đúng lệnh ở dòng 1** để kết nối vào tailnet.
-  3. Đọc `ip-server:` ở dòng 2 → cập nhật server host/port cho agent.
-- **Muốn đổi authkey / địa chỉ server**: chỉ cần sửa đúng file txt đó (giữ cấu trúc 2 dòng), agent các máy sẽ tự lấy bản mới — không cần rebuild.
-- Dialog lần đầu khi có remote config: **host/port được tự động hoá** (không hiện), còn **PSK + Command Key vẫn hiển thị để nhập** (server bắt buộc xác thực bằng PSK). Nếu file cấu hình được host **nội bộ** (không public), có thể thêm 2 dòng tuỳ chọn để agent tự điền luôn:
+**1) File cấu hình remote — CHỈ chứa ĐỊA CHỈ, KHÔNG chứa bí mật:**
+```
+tailscale-server:100.109.231.14:6666     # máy chạy chế độ Tailscale đọc dòng này
+lan-server:192.168.1.248:6666            # máy trong LAN đọc dòng này
+```
+- Tên dòng tương đương: `ip-server-tailscale:` / `ts-server:` / `tailscale-ip:` và `ip-server-lan:` / `lan-ip:` / `local-server:` / `ip-server-local:`
+- File cũ chỉ có `ip-server:host:port` **vẫn được hỗ trợ** (dùng chung cả 2 chế độ) → agent cũ không vỡ.
+
+**2) Link file remote (v5.0.7) — mỗi tổ chức tự nhập, repo KHÔNG nhúng link của ai:**
+- `server\setup\setup_config.ps1` → mục 8: nhập **link file cấu hình của bạn** (Enter = giữ nguyên/bỏ qua) → lưu `GIAMSAT_TAILSCALE_CONF_URL` vào `server\.env`
+- `build-agent.ps1` đọc `.env` → nhúng `agent\remote_conf_url.txt` (đã gitignore) vào EXE
+- Thứ tự ưu tiên khi agent đọc link: **biến môi trường → file nhúng trong EXE → rỗng (tắt remote config)**
+- Để trống = agent **không dùng** file remote → phải cài thủ công từng máy: `GiamSatAgent.exe --server <ip> --port 6666`
+
+**3) Authkey Tailscale được NHÚNG vào EXE lúc build (v5.0.5) — không đặt trong file công khai:**
+- Nguồn: `setup_config.ps1` nhập → `server\.env` (`GIAMSAT_TAILSCALE_AUTHKEY`, `GIAMSAT_TAILSCALE_AUTHKEY_EXPIRY`) → `build-agent.ps1` nhúng `agent\tailscale_auth.txt` → `GiamSatAgent.exe`
+- Quản lý/đổi trên **Dashboard → Cập nhật Agent → tab “🔑 Authkey Tailscale”**: hiển thị **masked** + ngày hết hạn, cảnh báo **vàng ≤14 ngày / đỏ khi quá hạn / xám khi chưa cấu hình**, ô cập nhật trực tiếp + nút xoá; mọi thay đổi đều **ghi audit log** (`GET/PUT /api/tailscale/authkey`, role `settings`)
+- ⚠️ **Đổi authkey ⇒ phải build lại agent** rồi phát hành qua “Cập nhật Agent” (khác địa chỉ server: đổi địa chỉ **không** cần rebuild). Máy **đã join tailnet** thì `tailscale up` không cần authkey nữa (identity lưu trong state).
+- 🔒 Vì sao: file Drive public mà chứa authkey = ai đọc được file là **chiếm được tailnet** → key phải nằm trong EXE (không public) và nên có **hạn dùng** để xoay định kỳ.
+
+**4) Khi agent khởi động:**
+  1. Tự tải file remote — offline thì dùng cache gần nhất `%ProgramData%\GIAM-SAT\Agent\tailscale-conf.txt` (cache **chỉ ghi khi bản mới hợp lệ**, nên trang HTML/đăng nhập Drive không phá cache tốt).
+  2. Máy chưa có Tailscale → **tự cài** (winget, fallback MSI `pkgs.tailscale.com` — cần quyền Admin/SYSTEM) rồi chạy `tailscale up --authkey=...` bằng **authkey nhúng trong EXE** (đã qua allowlist tham số cứng).
+  3. **Chọn dòng theo chế độ của máy** (`net_mode`): `tailscale` → `tailscale-server:`, `lan` → `lan-server:` → cập nhật server host/port cho agent.
+
+**5) Tự phục hồi khi server đổi IP (v5.0.6):**
+- Agent **mất kết nối liên tục ~10 phút** (attempt ≥5 và ≥600s) → **đọc LẠI file remote**; nếu địa chỉ đã đổi → cập nhật host/port và kết nối lại. **Không cần rebuild, không cần tới từng máy — chỉ sửa 1 dòng trong file remote.**
+- 🛡️ **Chống file trỏ sai / bị sửa:** nếu địa chỉ mới kết nối thất bại **3 lần liên tiếp** → **tự quay về địa chỉ cũ**, đưa địa chỉ đó vào **blacklist** (không thử lặp vô hạn); blacklist được xoá khi kết nối thành công.
+- Recovery chỉ đọc **địa chỉ** — **không** chạy lệnh Tailscale, **không** lấy `psk`/`command_key`.
+
+**6) Dialog lần đầu khi có remote config:**
+- **Host/port được tự động hoá** (không hiện trong dialog); **PSK + Command Key vẫn hiển thị để nhập** (server bắt buộc xác thực PSK).
+- Nếu file cấu hình được host **nội bộ** (không public), có thể thêm 2 dòng tuỳ chọn để agent tự điền luôn:
   ```
   psk:MatKhauPSK_Trung_Server
   command_key:CommandKey_Trung_Server
   ```
-  ⚠️ KHÔNG đưa PSK/command_key vào file nếu file đang public trên Google Drive — ai đọc được file là chiếm được toàn bộ agent.
+- ⚠️ **KHÔNG** đưa PSK/command_key vào file nếu file đang public trên Google Drive — ai đọc được file là chiếm được toàn bộ agent.
 - ⚠️ Lưu ý: Tailscale phải được cài **cả trên máy chủ** và máy trạm nằm cùng tailnet; server vẫn cần có PSK (`GIAMSAT_AGENT_PSK`) khớp — nếu không đặt PSK trong file nội bộ thì người cài máy trạm sẽ tự nhập PSK ở dialog (đúng như trước đây).
 - 🙈 **Ẩn icon Tailscale:** sau khi kết nối, agent tự **xóa shortcut Startup** (`...\Startup\Tailscale.lnk`) và **taskkill GUI `tailscale-ipn.exe`** — kết nối VPN do **service Tailscale (tailscaled)** đảm nhiệm nên ẩn GUI hoàn toàn không ảnh hưởng kết nối; icon không tự mở lại mỗi lần logon.
-- 🔁 **Tự phục hồi:** agent chạy watchdog 60s — nếu người dùng **lỡ xóa/uninstall Tailscale** khiến mất kết nối, agent **tự cài lại** (winget/MSI) → chạy lại lệnh auth (dòng 1 file) → ẩn icon. Máy nào đang dùng cơ chế này có marker `%ProgramData%\GIAM-SAT\Agent\tailscale-enabled.flag`.
+- 🔁 **Tự phục hồi:** agent chạy watchdog 60s — nếu người dùng **lỡ xóa/uninstall Tailscale** khiến mất kết nối, agent **tự cài lại** (winget/MSI) → chạy lại lệnh auth (**authkey nhúng trong EXE**) → ẩn icon. Máy nào đang dùng cơ chế này có marker `%ProgramData%\GIAM-SAT\Agent\tailscale-enabled.flag`.
 
 ### Cấu hình thông tin người dùng (dropdown "Chi nhánh" / tuỳ chỉnh)
 

@@ -326,17 +326,21 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
 ### Cập nhật Agent (Update Agent)
 
 - **VI:** Quản lý phiên bản và đẩy cập nhật agent xuống máy trạm.
-  1. Vào menu **Update Agent** → 2 tab: **📋 Trạng thái Agent** và **📜 Nhật ký Update**.
+  1. Vào menu **Update Agent** → **3 tab**: **📋 Trạng thái Agent**, **📜 Nhật ký Update** và **🔑 Authkey Tailscale**.
   2. Trạng thái: xem **phiên bản agent trên server**, danh sách máy theo nhóm với phiên bản đang chạy.
   3. Nhấn **Push Update Tất cả** để đẩy agent mới cho toàn bộ máy; hoặc push từng nhóm/máy.
   4. Nút **Reset User Info All** xóa thông tin người dùng trên agent (máy sẽ phải khai báo lại).
   5. Tab **Nhật ký Update** theo dõi kết quả cập nhật từng máy.
+  6. Tab **🔑 Authkey Tailscale** (v5.0.5+): xem **authkey đang dùng ở dạng masked** + **ngày hết hạn** kèm số ngày còn lại — **vàng khi còn ≤14 ngày**, **đỏ khi đã hết hạn**, **xám khi chưa cấu hình**. Nhập **authkey mới + ngày hết hạn** rồi **Lưu** (không phải mở file `.env` sửa tay); nút **Xóa cấu hình** để bỏ hẳn. Chỉ đổi **ngày** mà để trống ô authkey = **giữ key cũ**. Mọi thay đổi đều **ghi audit log** (role `settings`).
+     ⚠️ Authkey này được **nhúng vào `GiamSatAgent.exe` lúc build** ⇒ **đổi authkey PHẢI build lại agent** rồi push qua *Push Update Tất cả* (đổi **địa chỉ server** thì không cần, xem mục “Tự động kết nối qua Tailscale” trong `README.md`).
 - **EN:** Manage agent versions and push updates to endpoints.
-  1. Open **Update Agent** → 2 tabs: **📋 Agent Status** and **📜 Update Log**.
+  1. Open **Update Agent** → **3 tabs**: **📋 Agent Status**, **📜 Update Log** and **🔑 Tailscale Authkey**.
   2. Status: **server agent version**, per-group machine list with running versions.
   3. Click **Push Update All** to deploy the new agent everywhere, or push per group/machine.
   4. **Reset User Info All** wipes user info on agents (they must be re-declared).
   5. The **Update Log** tab tracks the result per machine.
+  6. The **🔑 Tailscale Authkey** tab (v5.0.5+) shows the **authkey in use (masked)** and its **expiry date** with days remaining — **yellow at ≤14 days**, **red when expired**, **grey when not configured**. Enter a **new authkey + expiry** and press **Save** (no manual `.env` editing), or use **Clear** to remove it. Changing only the **date** with an empty authkey box **keeps the current key**. Every change is **audit-logged** (role `settings`).
+     ⚠️ This authkey is **embedded into `GiamSatAgent.exe` at build time** ⇒ **changing it REQUIRES rebuilding the agent** and pushing via *Push Update All* (changing the **server address** does not — see the “Tailscale auto-connect” section in `README.md`).
 
 ### FIM Baseline
 
