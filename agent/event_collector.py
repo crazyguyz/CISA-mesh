@@ -25,6 +25,60 @@ _SELF_NOISE_PROCESSES = {
     "wmic.exe", "ping.exe", "nslookup.exe", "schtasks.exe", "cmd.exe",
 }
 
+# v5.0.8 (bug): bounds + helpers for the event-log polling loop.
+#  * MAX_EVENTS_PER_POLL caps how many records ONE channel poll may hold in RAM.
+#    The drain loop reads the log BACKWARDS (newest first); without a stop
+#    condition it kept reading the whole channel on every 3s poll (up to
+#    200 x 1024 = 204.800 pywin32 objects at once) - the repeated huge
+#    allocations pushed the agent working set into the GBs.
+#  * RESET_ALERT_MIN_INTERVAL_S throttles the "log cleared" alert per channel so a
+#    host that really does clear its logs cannot flood the server either.
+MAX_EVENTS_PER_POLL = 20000
+RESET_ALERT_MIN_INTERVAL_S = 1800
+
+
+def is_real_log_reset(newest_record, last_seen):
+    """True only when a Windows event log was really cleared / reset.
+
+    v5.0.8 (bug that): after 'wevtutil cl <log>' Windows restarts record
+    numbering at 1, so the NEWEST record number becomes SMALLER than the
+    watermark we already processed. The old test was `_newest_rec <= last_seen`,
+    which also fired when a channel simply had NO new events (newest record ==
+    watermark - the normal steady state). Because that branch additionally
+    rewound the watermark to 0, every 3s poll of every idle channel produced a
+    false HIGH 'LOG_RESET' alert AND re-collected the whole backlog: 18 channels
+    -> ~6 false alerts/second (~500k/day), agent.log grew past 400MB, the offline
+    cache to 13GB and the shared `events` table on the server was 83% LOG_RESET.
+    Equality must NOT count as a reset.
+    """
+    try:
+        newest = int(newest_record)
+        seen = int(last_seen)
+    except (TypeError, ValueError):
+        return False
+    return seen > 0 and newest < seen
+
+
+def should_stop_draining(chunk_len, oldest_record, last_seen, collected,
+                         max_records=MAX_EVENTS_PER_POLL):
+    """True when the backwards drain loop must stop reading the channel.
+
+    Stops when the log is exhausted (short chunk), when the chunk already
+    reaches records we processed (oldest <= watermark) or when the per-poll
+    bound is hit - so a busy or freshly cleared channel cannot blow up memory.
+    """
+    if chunk_len < 1024:
+        return True
+    if collected >= max_records:
+        return True
+    if last_seen > 0 and oldest_record is not None:
+        try:
+            return int(oldest_record) <= int(last_seen)
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 # Expanded log channels (12+) with categories
 MONITORED_LOGS = {
     "Security": {"priority": "HIGH", "category": "Security"},
@@ -343,6 +397,10 @@ class EnhancedEventCollector(threading.Thread):
         # flaky DNS generates unbounded network_inspection rows (the DPI path has
         # its own 300s dedup; this path had none).
         self._dns_ann_ts = {}
+        # v5.0.8: per-channel throttle for the 'log cleared' alert (see
+        # is_real_log_reset) - a machine that really clears its logs repeatedly
+        # must not be able to flood the server with alerts or the log file.
+        self._reset_alert_ts = {}
         # v4.6.5: reduce self-inflicted 4688 volume - drop the agent's OWN routine
         # child processes (netstat poll, powershell/conhost from scans) and any
         # configured process (e.g. postgres.exe when the server runs on SQLite).
@@ -452,16 +510,33 @@ class EnhancedEventCollector(threading.Thread):
             # v4.10 (HIGH-16): ReadEventLog returns at most ~1024 records per call.
             # Drain in a loop until empty so high-volume logs (Security on DCs/busy
             # hosts) never silently lose events between polls.
+            last_seen = self.last_event_ids.get(log_name, 0)
+            new_max_id = last_seen
             event_records = []
             for _chunk_i in range(200):
                 chunk = win32evtlog.ReadEventLog(hand, flags, 0)
                 if not chunk:
                     break
-                event_records.extend(list(chunk))
-                if len(chunk) < 1024:
+                _chunk_list = list(chunk)
+                event_records.extend(_chunk_list)
+                # v5.0.8 (bug): the read is BACKWARDS, so _chunk_list[-1] is the
+                # OLDEST record of the chunk. Stop as soon as this chunk reaches
+                # records we already processed (nothing newer can be left) or the
+                # per-poll bound is hit. Previously the loop drained the WHOLE
+                # channel on EVERY 3s poll - up to 200 x 1024 = 204.800 win32
+                # event objects held in memory (and thrown away) each time, which
+                # is what pushed the agent's working set into the GBs.
+                _oldest_rec = None
+                try:
+                    _oldest_rec = int(_chunk_list[-1].RecordNumber)
+                except (AttributeError, IndexError, TypeError, ValueError):
+                    _oldest_rec = None
+                if should_stop_draining(len(chunk), _oldest_rec, last_seen, len(event_records)):
                     break
-            last_seen = self.last_event_ids.get(log_name, 0)
-            new_max_id = last_seen
+            # v5.0.8: hard bound - the list is newest-first, so keep the newest
+            # records and drop the tail instead of allocating unbounded memory.
+            if len(event_records) > MAX_EVENTS_PER_POLL:
+                del event_records[MAX_EVENTS_PER_POLL:]
 
             # v4.13 (P0.1): detect event-log clear / record-number reset.
             # After 'wevtutil cl Security', Windows restarts record numbering at 1,
@@ -473,29 +548,41 @@ class EnhancedEventCollector(threading.Thread):
             # 'LOG RESET' on EVERY poll of any busy log (span > 50 records) and then
             # rewound the watermark to min-1 -> re-sent the whole range (duplicate
             # storm). A reset is real only when the NEWEST record <= last_seen.
-            if last_seen > 0 and event_records:
+            if event_records:
                 _newest_rec = None
                 try:
                     _newest_rec = int(event_records[0].RecordNumber)
                 except (AttributeError, TypeError, ValueError):
                     pass
-                if _newest_rec is not None and _newest_rec <= last_seen:
-                    print(f"[!] LOG RESET DETECTED on '{log_name}': record number dropped from {last_seen} to {_newest_rec}")
-                    events.append({
-                        "type": "windows_event",
-                        "subtype": log_name,
-                        "event_category": "EventLog",
-                        "event_id": "LOG_RESET",
-                        "event_type": "ALERT",
-                        "source": "EventCollector",
-                        "computer": os.environ.get("COMPUTERNAME", ""),
-                        "user": "N/A",
-                        "category": "Tampering",
-                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "description": f"Event log '{log_name}' was CLEARED or reset (record number dropped from {last_seen} to {_newest_rec}). Possible log tampering - historical events lost.",
-                        "raw_data": "",
-                        "severity": "HIGH",
-                    })
+                # v5.0.8 (bug that): `<=` counted the normal steady state (newest
+                # record == watermark, i.e. NO new events) as a reset and then
+                # rewound the watermark, so every 3s poll of every idle channel
+                # emitted a false HIGH alert + re-collected the whole channel.
+                # is_real_log_reset() requires a STRICT rewind (newest < watermark).
+                if is_real_log_reset(_newest_rec, last_seen):
+                    # v5.0.8: throttle the alert itself (log file + server) per
+                    # channel, but ALWAYS rewind the watermark below - otherwise
+                    # every record of the restarted log stays <= last_seen and the
+                    # host would go blind.
+                    _now_ts = time.time()
+                    if _now_ts - self._reset_alert_ts.get(log_name, 0) >= RESET_ALERT_MIN_INTERVAL_S:
+                        self._reset_alert_ts[log_name] = _now_ts
+                        print(f"[!] LOG RESET DETECTED on '{log_name}': record number dropped from {last_seen} to {_newest_rec}")
+                        events.append({
+                            "type": "windows_event",
+                            "subtype": log_name,
+                            "event_category": "EventLog",
+                            "event_id": "LOG_RESET",
+                            "event_type": "ALERT",
+                            "source": "EventCollector",
+                            "computer": os.environ.get("COMPUTERNAME", ""),
+                            "user": "N/A",
+                            "category": "Tampering",
+                            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "description": f"Event log '{log_name}' was CLEARED or reset (record number dropped from {last_seen} to {_newest_rec}). Possible log tampering - historical events lost.",
+                            "raw_data": "",
+                            "severity": "HIGH",
+                        })
                     # Reset the watermark so the restarted log (incl. 1102) IS collected
                     last_seen = 0
                     self.last_event_ids[log_name] = last_seen

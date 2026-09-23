@@ -114,6 +114,17 @@ class EncryptedCache:
     """Thread-safe encrypted cache with DPAPI key protection + Merkle integrity chain.
     v3.6: Falls back to plaintext if cryptography unavailable."""
 
+    # v5.0.8 (bug that): bounds. verify_integrity() used to SELECT every row of the
+    # table with fetchall() every 30 seconds - on the host where the false
+    # 'LOG_RESET' storm had grown the cache to 13.2M rows / 13.2GB that loaded tens
+    # of GB of Python objects every cycle (the agent's commit charge reached 22GB and
+    # the working set kept climbing). Verify only the newest window, only when the
+    # table changed, and cap how many rows the cache may keep.
+    VERIFY_WINDOW = 5000        # rows checked per integrity cycle (newest first)
+    MAX_CACHE_ROWS = 200000     # hard cap on cached rows - oldest are trimmed first
+    TRIM_CHECK_EVERY = 500      # inserts between cap checks (keeps writes cheap)
+    TRIM_BATCH = 50000          # max rows deleted per cap check (bounded transaction)
+
     def __init__(self, send_callback=None, integrity_callback=None):
         self.send_callback = send_callback
         # v3.6: integrity_callback(data) called when tamper detected
@@ -125,6 +136,10 @@ class EncryptedCache:
         self._aesgcm = None
         self._last_db_stat = None  # v3.6: for tamper detection
         self._guard_running = True
+        # v5.0.8: state for the bounded/incremental integrity check + cache cap
+        self._last_verify_max_id = None
+        self.last_verified_rows = 0
+        self._inserts = 0
         if ENCRYPTION_ENABLED and self._key:
             self._aesgcm = AESGCM(self._key)
             print("[*] Encrypted cache enabled (AES-256-GCM)")
@@ -263,7 +278,9 @@ class EncryptedCache:
                 pass
 
     def cache(self, data):
-        """v3.6: Cache with Merkle integrity chain."""
+        """v3.6: Cache with Merkle integrity chain.
+        v5.0.8: the cache is BOUNDED now (see _enforce_cap) - an agent that cannot
+        reach the server can no longer grow the file to 13GB."""
         try:
             plain = json.dumps(data, ensure_ascii=False)
             encrypted = self._encrypt(plain)
@@ -275,10 +292,51 @@ class EncryptedCache:
                     (encrypted, chain_hash)
                 )
                 self.conn.commit()
+            self._inserts += 1
+            if self._inserts % self.TRIM_CHECK_EVERY == 0:
+                self._enforce_cap()
         except Exception as e:
             print(f"[-] Cache write error: {e}", flush=True)
 
+    def _enforce_cap(self):
+        """v5.0.8: keep at most MAX_CACHE_ROWS rows, dropping the OLDEST first.
+
+        ids are AUTOINCREMENT (monotonic), so `id <= max_id - MAX_CACHE_ROWS` is an
+        index-friendly cutoff - no COUNT(*) over the whole table. The delete itself
+        is ALSO bounded (TRIM_BATCH rows per call) so a host that already carries a
+        huge backlog drains it over the next few checks instead of doing one giant
+        transaction (which would need a multi-GB WAL). Returns rows dropped.
+        """
+        try:
+            with self.lock:
+                max_id = self.conn.execute("SELECT COALESCE(MAX(id), 0) FROM log_cache").fetchone()[0]
+                if not max_id:
+                    return 0
+                cutoff = int(max_id) - int(self.MAX_CACHE_ROWS)
+                if cutoff <= 0:
+                    return 0
+                cur = self.conn.execute(
+                    "DELETE FROM log_cache WHERE id IN "
+                    "(SELECT id FROM log_cache WHERE id <= ? LIMIT ?)",
+                    (cutoff, self.TRIM_BATCH)
+                )
+                dropped = cur.rowcount or 0
+                self.conn.commit()
+            if dropped:
+                print(f"[*] Cache trimmed: dropped {dropped} oldest row(s) "
+                      f"(cap {self.MAX_CACHE_ROWS})", flush=True)
+            return dropped
+        except Exception:
+            return 0
+
     def flush_batch(self, batch_size=100, delay_ms=200):
+        """Send cached rows in batches. Returns number sent.
+
+        v5.0.8 (perf bug): the old loop ran one DELETE + one COMMIT per row, so
+        flushing a large backlog (millions of rows) could never catch up and the
+        WAL/file kept growing. Now every sent batch is removed with ONE statement
+        (`id <= <highest id of the batch>`) and one commit.
+        """
         total_sent = 0
         while True:
             batch = []
@@ -290,40 +348,80 @@ class EncryptedCache:
                 batch = [(row[0], row[1]) for row in cursor.fetchall()]
             if not batch:
                 break
+            done_ids = []
+            stop = False
             for row_id, data_str in batch:
                 try:
                     plain = self._decrypt(data_str)
                     if plain is None:
-                        with self.lock:
-                            self.conn.execute("DELETE FROM log_cache WHERE id=?", (row_id,))
-                            self.conn.commit()
+                        done_ids.append(row_id)   # undecryptable -> drop
                         continue
                     data = json.loads(plain)
                     if self.send_callback and self.send_callback(data):
-                        with self.lock:
-                            self.conn.execute("DELETE FROM log_cache WHERE id=?", (row_id,))
-                            self.conn.commit()
+                        done_ids.append(row_id)
                         total_sent += 1
                     else:
-                        return total_sent
+                        stop = True               # send failed - keep the rows
+                        break
                 except Exception:
-                    with self.lock:
-                        self.conn.execute("DELETE FROM log_cache WHERE id=?", (row_id,))
-                        self.conn.commit()
+                    done_ids.append(row_id)       # corrupted entry -> drop
+            if done_ids:
+                with self.lock:
+                    self.conn.execute(
+                        "DELETE FROM log_cache WHERE id <= ?", (max(done_ids),)
+                    )
+                    self.conn.commit()
+            if stop:
+                return total_sent
             time.sleep(delay_ms / 1000)
         return total_sent
 
-    def verify_integrity(self):
-        """v3.6: Verify Merkle chain integrity of all cached rows.
-        Returns (valid, errors) tuple."""
+    def verify_integrity(self, window=None):
+        """v3.6: Verify Merkle chain integrity of the cache.
+        v5.0.8 (bug that): the previous implementation ran
+
+            SELECT id, data, chain_hash FROM log_cache ORDER BY id ASC
+            rows = cursor.fetchall()          # <-- the WHOLE table
+
+        i.e. it loaded every cached row (13.2M rows / 13GB on the affected host)
+        into Python and SHA-256'd each one, EVERY 30 SECONDS. That single query is
+        what pushed the agent's commit charge to 22GB and kept the working set
+        climbing. Now only the newest VERIFY_WINDOW rows are checked:
+
+          * the oldest row of the window is used as a trusted anchor - its
+            predecessor may already have been flushed and deleted (the old code
+            then reported the surviving rows as 'tampered' forever);
+          * the check is skipped entirely when the table has not changed since the
+            previous cycle (no new row => same result, zero IO);
+          * self.last_verified_rows reports how many rows were hashed this cycle.
+
+        Returns (valid, errors) - unchanged API.
+        """
         errors = []
-        with self.lock:
-            cursor = self.conn.execute(
-                "SELECT id, data, chain_hash FROM log_cache ORDER BY id ASC"
-            )
-            rows = cursor.fetchall()
-            prev_hash = None
-            for row in rows:
+        self.last_verified_rows = 0
+        try:
+            window = int(window or self.VERIFY_WINDOW)
+            if window < 2:
+                window = 2
+            with self.lock:
+                max_id = self.conn.execute(
+                    "SELECT COALESCE(MAX(id), 0) FROM log_cache"
+                ).fetchone()[0]
+                if not max_id:
+                    return True, []
+                if max_id == self._last_verify_max_id:
+                    return True, []          # nothing new since the last cycle
+                self._last_verify_max_id = max_id
+                cursor = self.conn.execute(
+                    "SELECT id, data, chain_hash FROM log_cache ORDER BY id DESC LIMIT ?",
+                    (window,)
+                )
+                rows = list(cursor.fetchall())
+            rows.reverse()                   # oldest -> newest within the window
+            if len(rows) < 2:
+                return True, []
+            prev_hash = rows[0][2] or ""
+            for row in rows[1:]:
                 expected_hash = self._compute_chain_hash(prev_hash, row[1])
                 actual_hash = row[2] or ""
                 if expected_hash != actual_hash:
@@ -332,13 +430,32 @@ class EncryptedCache:
                         "expected": expected_hash[:16],
                         "actual": actual_hash[:16],
                     })
-                prev_hash = expected_hash
+                # anchor the next comparison on the STORED hash so a single tampered
+                # row does not cascade into 'everything after it looks tampered'
+                prev_hash = actual_hash
+            self.last_verified_rows = len(rows) - 1
+        except Exception:
+            return True, []
         return len(errors) == 0, errors
 
-    def get_cache_size(self):
-        with self.lock:
-            cursor = self.conn.execute("SELECT COUNT(*) FROM log_cache")
-            return cursor.fetchone()[0]
+    def get_cache_size(self, limit=100001):
+        """Number of cached rows (v5.0.8: BOUNDED count).
+
+        COUNT(*) over a 13M-row cache is a full table scan - seconds of disk IO on
+        every call (and _flush_cache() calls it before every flush). Callers only
+        need to distinguish 'empty' from 'there is a backlog', so the count stops
+        at `limit`.
+        Returns min(rows, limit).
+        """
+        try:
+            with self.lock:
+                cursor = self.conn.execute(
+                    "SELECT COUNT(*) FROM (SELECT 1 FROM log_cache LIMIT ?)",
+                    (int(limit),)
+                )
+                return cursor.fetchone()[0]
+        except Exception:
+            return 0
 
     def close(self):
         self._guard_running = False
