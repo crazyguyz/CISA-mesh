@@ -467,4 +467,102 @@ Write-Host ""
 Write-Host "  $($T['restart'])" -ForegroundColor Yellow
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
+
+# =============================================================================
+# 9. Kiem tra du lieu cu trong database (v5.0.8)
+# =============================================================================
+# Repo KHONG chua du lieu van hanh. Du lieu giam sat nam o PostgreSQL/SQLite -
+# NGOAI thu muc cai dat - nen khi cai lai / clone moi, dashboard van hien may
+# tram cu, syslog cu, alert cu... Phan nay phat hien va (neu dong y) xoa sach.
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  $(TS-Text '[9] Kiem tra du lieu cu trong database' '[9] Check the database for old data')" -ForegroundColor Cyan
+Write-Host "  $(TS-Text '  Du lieu KHONG nam trong repo - no nam o PostgreSQL/SQLite (ngoai thu muc cai).' '  Data is NOT in the repo - it lives in PostgreSQL/SQLite (outside the install folder).')" -ForegroundColor Gray
+
+$ResetTool = [System.IO.Path]::GetFullPath((Join-Path $ServerDir "..\tools\reset_data.py"))
+# Tim python: PATH -> py launcher -> duong dan chuan (bo qua stub WindowsApps,
+# stub nay chi mo Microsoft Store chu khong chay file .py).
+$ResetPy = $null
+foreach ($cand in @("python", "python3", "py")) {
+    $cmdInfo = Get-Command $cand -ErrorAction SilentlyContinue
+    if ($cmdInfo -and $cmdInfo.Source -and $cmdInfo.Source -notmatch 'WindowsApps') { $ResetPy = $cmdInfo.Source; break }
+}
+if (-not $ResetPy) {
+    $pyCandidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\python.exe"),
+        "C:\Program Files\Python311\python.exe",
+        "C:\Python311\python.exe",
+        (Join-Path $env:APPDATA "uv\python\cpython-3.11-windows-x86_64-none\python.exe")
+    )
+    foreach ($p in $pyCandidates) {
+        if ($p -and (Test-Path $p)) { $ResetPy = $p; break }
+    }
+}
+
+if (-not (Test-Path $ResetTool)) {
+    Write-Host "  [!] $(TS-Text 'Khong tim thay tools\reset_data.py - bo qua buoc nay' 'tools\reset_data.py not found - step skipped')" -ForegroundColor Yellow
+} elseif (-not $ResetPy) {
+    Write-Host "  [!] $(TS-Text 'Khong tim thay lenh python - bo qua buoc nay' 'python command not found - step skipped')" -ForegroundColor Yellow
+} else {
+    # Dry-run: chi bao cao, KHONG xoa gi
+    $rpt = & $ResetPy $ResetTool --env $EnvFile 2>&1 | Out-String
+    $mTable = [regex]::Match($rpt, "\[i\] (\d+) table\(s\)")
+    $mWould = [regex]::Match($rpt, "\[i\] (\d+) row\(s\) would be deleted")
+
+    if ($rpt -match "already clean") {
+        Write-Host "  [+] $(TS-Text 'Database sach - khong co du lieu cu.' 'Database is clean - no old data found.')" -ForegroundColor Green
+    } elseif ($mWould.Success) {
+        $would = [int]$mWould.Groups[1].Value
+        $ntab  = if ($mTable.Success) { $mTable.Groups[1].Value } else { "?" }
+        Write-Host ""
+        Write-Host "  [!] $(TS-Text "TIM THAY DU LIEU CU trong $ntab bang:" "FOUND OLD DATA in $ntab table(s):")" -ForegroundColor Yellow
+        # Chi in cac bang co du lieu (bo qua bang 0 dong cho gon)
+        foreach ($ln in ($rpt -split "`r?`n")) {
+            if ($ln -match '^\s{4}\S+\s+\d+$') {
+                if (($ln -split '\s+')[-1] -ne "0") { Write-Host ("      " + $ln.Trim()) -ForegroundColor Gray }
+            }
+        }
+        Write-Host ""
+        Write-Host "  [!] $(TS-Text "Tong cong $would dong du lieu van hanh cu (may tram, syslog, alert, log...)." "Total $would rows of old operational data (machines, syslog, alerts, logs...).")" -ForegroundColor Yellow
+        Write-Host "  $(TS-Text '  Dashboard se hien lai du lieu nay ngay khi khoi dong server.' '  The dashboard will show this data again as soon as the server starts.')" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "  $(TS-Text 'Xoa sach ngay bay gio? (nen DUNG server truoc khi xoa)' 'Delete it now? (stop the server first)')" -ForegroundColor White
+        Write-Host "    $(TS-Text 'YES  = xoa het du lieu van hanh (de xuat khi cai moi)' 'YES  = delete all operational data (recommended for a fresh install)')" -ForegroundColor Gray
+        Write-Host "    $(TS-Text 'keep = xoa du lieu, GIU cau hinh (watchlist/nhom/policy/dashboard)' 'keep = delete data but KEEP configuration (watchlist/groups/policies/dashboards)')" -ForegroundColor Gray
+        Write-Host "    $(TS-Text 'Enter = khong xoa (bo qua)' 'Enter = do not delete (skip)')" -ForegroundColor Gray
+        $ans = (Read-Host "  $(TS-Text 'Lua chon (YES/keep/Enter)' 'Choice (YES/keep/Enter)')").Trim().ToLower()
+        if ($ans -in @("yes", "y", "c", "co")) { $ans = "yes" }
+        elseif ($ans -in @("keep", "k", "giu")) { $ans = "keep" }
+        else { $ans = "skip" }
+
+        if ($ans -eq "skip") {
+            Write-Host "  [i] $(TS-Text 'Da bo qua - du lieu cu VAN CON trong database.' 'Skipped - the old data is STILL in the database.')" -ForegroundColor Yellow
+            Write-Host "      $(TS-Text 'Chay lai sau: python tools\reset_data.py --apply' 'Run later: python tools\reset_data.py --apply')" -ForegroundColor Gray
+        } else {
+            $modeTxt = if ($ans -eq "keep") { "keep-config" } else { "all" }
+            Write-Host "  $(TS-Text '  Dang xoa...' '  Deleting...')" -ForegroundColor Cyan
+            $out = & $ResetPy $ResetTool --env $EnvFile --mode $modeTxt --apply --yes 2>&1 | Out-String
+            foreach ($ln in ($out -split "`r?`n")) {
+                if ($ln -match '^\[\+\]|^\[i\] \d+ row\(s\) still|^\[-\]|^\[!\]') { Write-Host ("    " + $ln.Trim()) -ForegroundColor Gray }
+            }
+            $mLeft = [regex]::Match($out, "\[i\] (\d+) row\(s\) still")
+            if ($mLeft.Success) {
+                $left = [int]$mLeft.Groups[1].Value
+                if ($left -eq 0) {
+                    Write-Host "  [+] $(TS-Text 'Da xoa sach - database trong, schema van con (server tu tao lai bang).' 'Wiped - database empty, schema preserved (the server recreates tables).')" -ForegroundColor Green
+                    Write-Host "  [i] $(TS-Text 'Tai khoan dashboard (users.json) VAN CON - khong nam trong database.' 'Dashboard accounts (users.json) are KEPT - they are not in the database.')" -ForegroundColor Gray
+                } else {
+                    Write-Host "  [!] $(TS-Text "Con $left dong - co the server dang chay va ghi du lieu moi." "Still $left row(s) - the server may be running and writing new data.")" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "  [!] $(TS-Text 'Khong doc duoc ket qua xoa - chay thu cong: python tools\reset_data.py --apply' 'Could not read the result - run manually: python tools\reset_data.py --apply')" -ForegroundColor Yellow
+                Write-Host ($out.Trim()) -ForegroundColor Gray
+            }
+        }
+    } else {
+        Write-Host "  [!] $(TS-Text 'Khong doc duoc ket qua kiem tra - xem chi tiet ben duoi.' 'Could not read the check result - see the detail below.')" -ForegroundColor Yellow
+        Write-Host ($rpt.Trim()) -ForegroundColor Gray
+    }
+}
+Write-Host ""
+
 Read-Host "  $($T['exitPrompt'])"

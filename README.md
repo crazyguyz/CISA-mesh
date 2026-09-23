@@ -176,7 +176,7 @@ python main.py
 
 ### 🧹 Dữ liệu nằm ở đâu? / Cài lại sạch "Clean reinstall"
 
-Repo **KHÔNG chứa dữ liệu vận hành**. Toàn bộ dữ liệu giám sát nằm ở **PostgreSQL** (hoặc SQLite nếu không dùng PG — file `server\data\*.db`), tức **ngoài thư mục cài đặt** → xoá thư mục rồi clone lại thì **dữ liệu cũ vẫn còn nguyên** (server mới đọc lại đúng DB đó vì `server\.env` trỏ tới `GIAMSAT_PG_HOST/PG_DBNAME`).
+Repo **KHÔNG chứa dữ liệu vận hành**. Toàn bộ dữ liệu giám sát nằm ở **PostgreSQL** (hoặc SQLite nếu không dùng PG — file `server\giamsat_data.db`), tức **ngoài thư mục cài đặt** → xoá thư mục rồi clone lại thì **dữ liệu cũ vẫn còn nguyên** (server mới đọc lại đúng DB đó vì `server\.env` trỏ tới `GIAMSAT_PG_HOST/PG_DBNAME`).
 
 | Thành phần | Vị trí | Repo có chứa? |
 |---|---|---|
@@ -184,7 +184,17 @@ Repo **KHÔNG chứa dữ liệu vận hành**. Toàn bộ dữ liệu giám sá
 | Bí mật & tài khoản: `.env`, `users.json`, `.user_key` | thư mục cài đặt | ❌ (gitignore — do `setup_config.ps1` sinh ra) |
 | Sinh ra lúc cài/chạy: `logs\`, `server\data\`, `.sigma_repo\`, `dist\`, `build\`, `server\setup\start_server.bat`, `server\agent_update\` | thư mục cài đặt | ❌ (gitignore) |
 
-**Muốn cài lại SẠCH (mất hết dữ liệu) — PostgreSQL:**
+**Cách nhanh nhất — công cụ có sẵn (khuyến nghị):**
+```powershell
+cd <thư-mục-cài>
+python tools\reset_data.py                    # xem trước (dry-run): liệt kê từng bảng + số dòng
+python tools\reset_data.py --apply            # xoá thật (hỏi YES)
+python tools\reset_data.py --mode keep-config --apply   # xoá dữ liệu, GIỮ cấu hình (watchlist/nhóm/policy/dashboard/syslog_sources)
+```
+> Tool **chỉ DELETE/TRUNCATE dòng**, **không xoá bảng** (schema giữ nguyên — server tự tạo lại phần thiếu), **không đụng** `users.json`, `.env`, `logs\`, agent trên máy trạm; hỗ trợ **cả PostgreSQL và SQLite** (đọc backend từ `server\.env`, hoặc dùng `--sqlite <file>`); sau khi xoá sẽ **refresh materialized view** để dashboard không còn hiện số liệu cache.
+> `setup_config.ps1` (mục **[9]**) cũng **tự kiểm tra** dữ liệu cũ sau khi lưu `.env` và hỏi có xoá ngay hay không.
+
+**Hoặc tự làm bằng SQL — PostgreSQL:**
 ```powershell
 # 1. Dừng server (Ctrl+C) để không còn kết nối tới DB
 # 2. Backup trước (khuyến nghị)
@@ -435,6 +445,11 @@ giamsat/
 ├── agent/                    # Agent source code
 ├── tests/                    # Unit tests
 └── tools/                    # Utility scripts
+    ├── reset_data.py           # Xoá sạch dữ liệu vận hành (giữ schema) — dry-run mặc định
+    ├── fix_pg_auth.ps1         # Đồng bộ role/DB PostgreSQL theo server\.env
+    ├── deploy_agent.ps1        # Cài/cập nhật agent lên máy trạm
+    ├── migrate_sqlite_to_pg.py # Chuyển dữ liệu SQLite → PostgreSQL
+    └── cleanup_orphan_assets.py # Dọn asset mồ côi (dry-run mặc định)
 ```
 
 ---
