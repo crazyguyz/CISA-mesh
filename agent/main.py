@@ -139,10 +139,13 @@ def _setup_agent_environment():
         log_file = os.path.join(log_dir, "agent.log")
         root = logging.getLogger()
         if not root.handlers:
+            # v5.0.8: rotate at 20MB (the old FileHandler had no bound at all)
+            from logging.handlers import RotatingFileHandler
             logging.basicConfig(
                 level=logging.INFO,
                 format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                handlers=[logging.FileHandler(log_file, encoding="utf-8")]
+                handlers=[RotatingFileHandler(log_file, maxBytes=20 * 1024 * 1024,
+                                              backupCount=1, encoding="utf-8")]
             )
             _log(f"Logging: {log_file}")
     except Exception as _e:

@@ -16,6 +16,32 @@ from datetime import datetime
 from collections import deque
 
 
+AGENT_LOG_MAX_BYTES = 20 * 1024 * 1024   # v5.0.8: rotate agent.log at 20MB
+
+
+def rotate_log_if_needed(path, max_bytes=AGENT_LOG_MAX_BYTES):
+    """v5.0.8 (bug): rotate a log file (path -> path.1) once it exceeds max_bytes.
+
+    The agent's print() tee (below) opened agent.log and appended on EVERY print
+    with no rotation at all, so the log only grew - the false 'LOG RESET' storm
+    pushed it to 413MB on the affected host and nothing ever reclaimed it. The
+    server-side logger (common/logger.py) already rotates at 20MB; this brings the
+    agent in line. Returns True when a rotation happened.
+    """
+    try:
+        if not path or not os.path.exists(path):
+            return False
+        if os.path.getsize(path) <= max_bytes:
+            return False
+        backup = path + ".1"
+        if os.path.exists(backup):
+            os.remove(backup)
+        os.replace(path, backup)
+        return True
+    except Exception:
+        return False
+
+
 def _setup_agent_env():
     try:
         if os.name == "nt":
@@ -31,7 +57,11 @@ def _setup_agent_env():
         log_file = os.path.join(log_dir, "agent.log")
         root = logging.getLogger()
         if not root.handlers:
-            handler = logging.FileHandler(log_file, encoding="utf-8")
+            # v5.0.8: RotatingFileHandler - the old FileHandler grew agent.log
+            # without limit (413MB on the host hit by the LOG_RESET storm).
+            from logging.handlers import RotatingFileHandler
+            handler = RotatingFileHandler(log_file, maxBytes=AGENT_LOG_MAX_BYTES,
+                                          backupCount=1, encoding="utf-8")
             handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
             root.addHandler(handler)
             root.setLevel(logging.INFO)
@@ -41,6 +71,11 @@ def _setup_agent_env():
         def _print_to_log(*args, **kwargs):
             try:
                 msg = " ".join(str(a) for a in args)
+                # v5.0.8: rotate at 20MB - checked every 200 writes so the stat()
+                # call stays off the hot path
+                _log_writes["n"] += 1
+                if _log_writes["n"] % 200 == 0:
+                    rotate_log_if_needed(log_file)
                 with open(log_file, "a", encoding="utf-8") as f:
                     from datetime import datetime as _dt
                     f.write(f"[{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
@@ -52,6 +87,7 @@ def _setup_agent_env():
             except Exception:
                 pass
         _bi.print = _print_to_log
+        _log_writes = {"n": 0}
     except Exception:
         pass
 

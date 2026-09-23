@@ -248,6 +248,43 @@ def test_log_cache_bounds():
         lc.LogCache.TRIM_CHECK_EVERY = old_check
 
 
+def test_log_rotation():
+    """Bug 5: the agent's print() tee never rotated agent.log (413MB and growing)."""
+    print("\n-- agent log rotation --")
+    # isolate the agent data dir BEFORE importing agent_core (its import-time
+    # _setup_agent_env() redirects print() into %PROGRAMDATA%\\GIAM-SAT\\Agent)
+    isolated = tempfile.mkdtemp(prefix="giamsat_programdata_")
+    TMP_DIRS.append(isolated)
+    os.environ["PROGRAMDATA"] = isolated
+    import agent_core as ac
+
+    path = tmp_path("agent.log")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("x" * 5000)
+    check("small log is NOT rotated",
+          ac.rotate_log_if_needed(path, max_bytes=10000) is False)
+    check("small log keeps its content", os.path.getsize(path) == 5000,
+          os.path.getsize(path))
+    check("agent.log limit is 20MB",
+          ac.AGENT_LOG_MAX_BYTES == 20 * 1024 * 1024, ac.AGENT_LOG_MAX_BYTES)
+
+    check("log above the limit IS rotated",
+          ac.rotate_log_if_needed(path, max_bytes=1000) is True)
+    check("rotated content moved to <log>.1", os.path.exists(path + ".1"))
+    check("live log gone after rotation", not os.path.exists(path))
+
+    # a second rotation must replace the previous .1 (keep a single backup)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("y" * 5000)
+    check("second rotation works too",
+          ac.rotate_log_if_needed(path, max_bytes=1000) is True)
+    check("only one backup kept (.1, no .2)",
+          os.path.exists(path + ".1") and not os.path.exists(path + ".2"))
+    check("missing file is a no-op",
+          ac.rotate_log_if_needed(os.path.join(os.path.dirname(path), "nope.log")) is False)
+    check("empty path is a no-op", ac.rotate_log_if_needed("") is False)
+
+
 def main():
     print("=" * 68)
     print("  GIAM-SAT agent memory / cache regression tests - v5.0.8")
@@ -257,6 +294,7 @@ def main():
         test_should_stop_draining()
         test_encrypted_cache_bounds()
         test_log_cache_bounds()
+        test_log_rotation()
     finally:
         for d in TMP_DIRS:
             shutil.rmtree(d, ignore_errors=True)
