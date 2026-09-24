@@ -254,11 +254,15 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   2. Dán JSON IOC vào ô **JSON IOCs** (định dạng: `[{"type":"ip","value":"1.2.3.4","source":"OTX"}, ...]`) — hoặc chọn file để upload.
   3. Nhấn **Quét IOC** → kết quả: máy nào khớp với IOC nào, đường dẫn file/hash.
   4. Theo dõi tổng số khớp ở góc phải (**iocStats**).
+  5. **🆕 Tab "Hướng dẫn"** (cạnh tab Quét IOC): cấu trúc dữ liệu vào (JSON/CSV) đầy đủ, bảng "loại IOC × bảng × cột được quét", **danh sách 12 lệnh kèm công dụng từng lệnh** (API sweep, upload file, Watchlist thêm/import/bật-tắt/xoá/push-intel, retro sweep tự động mỗi giờ, threat hunting, chặn cảnh báo giả) và cấu trúc kết quả trả về + giới hạn.
+
 - **EN:** Sweep all machines against Indicators of Compromise.
   1. Open **IOC Sweep**.
   2. Paste IOC JSON into **JSON IOCs** (format: `[{"type":"ip","value":"1.2.3.4","source":"OTX"}, ...]`) — or upload a file.
   3. Click **Scan IOC** → results: which machine matched which IOC, file path/hash.
   4. Watch the match counter on the right (**iocStats**).
+  5. **🆕 "Guide" tab** (next to IOC Scan): the full JSON/CSV input structure, the "IOC type × table × column" matrix, the **12 commands with the purpose of each** (sweep API, file upload, Watchlist add/import/toggle/delete/push-intel, automatic hourly retro sweep, threat hunting, suppression) and the result structure + limits.
+
 
 ### MITRE ATT&CK
 
@@ -266,10 +270,14 @@ Bilingual (Vietnamese - English) detailed guide to every function and how to use
   - Chọn khoảng thời gian (1h/6h/24h/72h/7 ngày) rồi nhấn **Tải lại**.
   - Ma trận hiện tactic (cột) × kỹ thuật (hàng); kỹ thuật đã phát hiện được tô màu — bấm để xem chi tiết.
   - **🆕 Đánh dấu đã xử lý ngay trong matrix:** bấm vào ô kỹ thuật → modal liệt kê từng alert → bấm **"✓ Xử lý"** cạnh một alert → nó **biến mất khỏi matrix** (số liệu trong ô giảm đi). Matrix chỉ hiện alert **chưa xử lý**; để xem lại alert MITRE đã xử lý → vào tab **Threats** bật **"Hiện đã xử lý"** (cùng nguồn dữ liệu).
+  - **🆕 Bấm tên sự kiện/rule để mở đúng cảnh báo:** trong modal kỹ thuật, tên rule (vd `ANOMALY-12765`) là **link** → mở chi tiết đúng cảnh báo đó; tiêu đề "MITRE Technique: …" và nút **🔎 Xem trong Đe dọa** → nhảy sang tab **Threats** và **lọc đúng rule** đó (có chip lọc kèm nút ✕ để bỏ lọc).
+
 - **EN:** MITRE ATT&CK matrix of detected techniques.
   - Pick a period (1h/6h/24h/72h/7 days) then click **Reload**.
   - Matrix shows tactics (columns) × techniques (rows); detected ones are highlighted — click for details.
   - **🆕 Resolve right from the matrix:** click a technique cell → the modal lists each alert → click **"✓ Mark handled"** next to an alert → it **disappears from the matrix** (cell counts drop). The matrix only shows **unhandled** alerts; to review handled MITRE alerts open the **Threats** tab and tick **"Show handled"** (same data source).
+  - **🆕 Click the event/rule name to open that exact alert:** in the technique modal the rule name (e.g. `ANOMALY-12765`) is a link → it opens that alert's full detail; the title "MITRE Technique: …" and the **🔎 Open in Threats** button jump to the **Threats** tab **filtered to that rule** (a filter chip with ✕ clears it).
+
 
 ### Agent Assistant (Trợ lý AI)
 
