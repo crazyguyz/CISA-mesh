@@ -12,6 +12,17 @@ MITRE_TACTICS = [
     "Exfiltration", "Impact"
 ]
 
+# v5.0.8 (bug that): a valid MITRE technique id looks like T1059 / T1059.001 / S0002 /
+# G0001. Anything else must NOT become a "technique": the matrix used to fall back to
+# `technique_id = rule_id`, so every one-off rule (event_worker generated a fresh
+# "ANOMALY-<n>" id per alert) produced its own cell - the live matrix showed 48
+# "techniques" of which 46 were ANOMALY-* garbage with tactic=Unknown and count=1.
+# Alerts without a MITRE mapping are now collapsed into ONE bucket.
+_MITRE_ID_RE = __import__("re").compile(r"^(T\d{4}(\.\d{3})?|S\d{4}|G\d{4})$")
+UNMAPPED_TECHNIQUE_ID = "UNMAPPED"
+UNMAPPED_TECHNIQUE_NAME = "Unmapped alerts (no MITRE technique)"
+
+
 def register_routes(app, core):
     """Register MITRE ATT&CK API routes."""
 
@@ -121,15 +132,23 @@ def register_routes(app, core):
             mitre_tech_id = raw.get("mitre_technique_id", "")
             mitre_tech_name = raw.get("mitre_technique_name", "")
             
-            if mitre_tactic and mitre_tech_id:
+            if mitre_tactic and mitre_tech_id and _MITRE_ID_RE.match(str(mitre_tech_id).strip()):
                 tactic = mitre_tactic
-                technique_id = mitre_tech_id
+                technique_id = str(mitre_tech_id).strip()
                 technique_name = mitre_tech_name
-            else:
-                # Fallback: derive from rule_name or description (best effort)
+            elif str(mitre_tech_id or "").strip() and _MITRE_ID_RE.match(str(mitre_tech_id).strip()):
+                # mapped technique but the alert has no tactic field - keep the technique
+                technique_id = str(mitre_tech_id).strip()
+                technique_name = mitre_tech_name or rule_name
                 tactic = _infer_tactic(rule_name, description)
-                technique_id = rule_id
-                technique_name = rule_name
+            else:
+                # v5.0.8 (bug that): NO valid MITRE id -> do NOT create a technique per rule.
+                # Everything unmapped goes into one bucket so the matrix stays readable and
+                # the operator can still click it to see the exact alerts (see the
+                # /api/mitre/technique/UNMAPPED handler).
+                tactic = _infer_tactic(rule_name, description)
+                technique_id = UNMAPPED_TECHNIQUE_ID
+                technique_name = UNMAPPED_TECHNIQUE_NAME
             
             sev = sev_scores.get(severity, 0)
             if sev > max_sev_score:
@@ -248,8 +267,15 @@ def register_routes(app, core):
                     raw = {}
                 tid = raw.get("mitre_technique_id") or ""
                 rid = r.get("rule_id") or ""
-                if technique_id and (tid == technique_id or rid == technique_id
-                                     or str(technique_id) in json.dumps(raw, default=str)):
+                _valid_tid = bool(_MITRE_ID_RE.match(str(tid).strip())) if tid else False
+                # v5.0.8: the UNMAPPED bucket lists every alert without a real MITRE id
+                if technique_id == UNMAPPED_TECHNIQUE_ID:
+                    _hit = not _valid_tid
+                else:
+                    _hit = bool(technique_id) and (str(tid).strip() == technique_id
+                                                   or rid == technique_id
+                                                   or str(technique_id) in json.dumps(raw, default=str))
+                if _hit:
                     result["alerts"].append({
                         "id": r.get("id"),
                         "status": r.get("status", "new"),

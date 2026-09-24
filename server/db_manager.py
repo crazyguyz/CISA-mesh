@@ -1161,11 +1161,20 @@ class DatabaseManager:
         with self.lock:
             machine_id = data.get("machine_id", "")
             rule_id = data.get("rule_id", "")
-            existing = self.conn.execute(
-                "SELECT id FROM threat_alerts WHERE machine_id=? AND rule_id=? "
-                "AND received_at >= datetime('now', '-10 minutes') ORDER BY id DESC LIMIT 1",
-                (machine_id, rule_id)
-            ).fetchone()
+            # v5.0.8 (P2): the dedup window is now configurable so it matches the
+            # PostgreSQL backend (GIAMSAT_ALERT_DEDUP_MINUTES, default 60, 0 = off) -
+            # before this, SQLite collapsed 10 minutes while PG inserted every repeat.
+            try:
+                _dedup_min = int(os.environ.get("GIAMSAT_ALERT_DEDUP_MINUTES", "60") or 60)
+            except (TypeError, ValueError):
+                _dedup_min = 60
+            existing = None
+            if _dedup_min > 0 and machine_id and rule_id:
+                existing = self.conn.execute(
+                    "SELECT id FROM threat_alerts WHERE machine_id=? AND rule_id=? "
+                    "AND received_at >= datetime('now', ?) ORDER BY id DESC LIMIT 1",
+                    (machine_id, rule_id, "-%d minutes" % _dedup_min)
+                ).fetchone()
             if existing:
                 # v5.0.4 R8 (MEDIUM-1): do NOT refresh received_at on update - the
                 # 10-min dedup window is anchored at the FIRST occurrence, so a

@@ -51,6 +51,14 @@
       if (xhr.status === 200) {
         try {
           var data = JSON.parse(xhr.responseText);
+          // v5.0.8: the server collapses every alert WITHOUT a valid MITRE id into one
+          // UNMAPPED bucket (before this, each one-off rule id - e.g. ANOMALY-12765 -
+          // got its own "technique" cell). Show it with a readable, translated name.
+          (data.techniques || []).forEach(function (tch) {
+            if (tch && tch.technique_id === 'UNMAPPED') {
+              tch.technique_name = t('mitre.unmapped');
+            }
+          });
           renderMatrix(container, data, sinceHours);
         } catch (e) {
           // v4.6.6: surface the REAL error so stale-cache / data-shape problems are

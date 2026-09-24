@@ -515,11 +515,20 @@ class ServerCore:
                             _last_case[mid] = now
                             continue
                         _last_case[mid] = now
-                        self.db.create_case(mid, alerts[0]["hostname"],
-                                            f"Kill-chain cluster: {len(rules)} rules in 1h",
-                                            " | ".join(sorted(rules))[:1900], sev,
-                                            [a["id"] for a in alerts], created_by="auto")
-                        print(f"[CASE] auto-case created for {mid}: {len(rules)} rules in 1h")
+                        # v5.0.8 (bug that): create_case() swallowed its own exception, so the
+                        # old code printed "created" even when NOTHING was inserted (the live
+                        # cases table was empty while the log claimed a case every hour). Only
+                        # report success when an id came back, and let the next cycle retry.
+                        _case_id = self.db.create_case(mid, alerts[0]["hostname"],
+                                                      f"Kill-chain cluster: {len(rules)} rules in 1h",
+                                                      " | ".join(sorted(rules))[:1900], sev,
+                                                      [a["id"] for a in alerts], created_by="auto")
+                        if _case_id:
+                            print(f"[CASE] auto-case created for {mid}: {len(rules)} rules in 1h (id={_case_id})")
+                        else:
+                            _last_case.pop(mid, None)   # retry on the next cycle
+                            print(f"[-] CASE: create_case returned no id for {mid} "
+                                  f"({len(rules)} rules) - not created, will retry")
                 except Exception as e:
                     print(f"[-] Case detector error: {e}")
         threading.Thread(target=case_detector, daemon=True).start()

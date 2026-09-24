@@ -44,6 +44,11 @@ SYSMON_QUERY = f"*[System[Provider[@Name='Microsoft-Windows-Sysmon']]]"
 
 # Check interval
 POLL_INTERVAL = 30  # seconds (v4.10 MED-13: was 5s -> ~720 powershell spawns/hour, CPU + self-noise)
+# v5.0.8 (bug that): bound the Get-WinEvent window. The watermark used to advance
+# only on success, so one timeout left the window growing until EVERY poll timed out
+# (the live host was wedged for a day, re-querying 24h+ every 60s). Never look back
+# further than this many minutes, and on failure jump the watermark to the window end.
+SYSMON_MAX_LOOKBACK_MINUTES = int(os.environ.get("GIAMSAT_SYSMON_MAX_LOOKBACK_MIN", "60") or 60)
 
 # Map Sysmon EventID to GIAM-SAT event type
 EVENT_TYPE_MAP = {
@@ -233,9 +238,33 @@ class SysmonCollector:
     def _query_sysmon_events(self):
         """Query Sysmon events since last timestamp using PowerShell.
         Uses Get-WinEvent with XML filter for efficiency.
+
+        v5.0.8 (bug that): the watermark only advanced when PowerShell SUCCEEDED, so a
+        single timeout (30s) left the window unchanged - and it kept growing. On the
+        live host the collector got wedged for a whole day: every ~60s it re-ran
+        `Get-WinEvent` over a 24h+ window, timed out again ("timed out after 30
+        seconds" forever) and sent no data. Now:
+          * the queried window is BOUNDED (SYSMON_MAX_LOOKBACK_MINUTES, default 60),
+            so a deep backlog can never blow the timeout;
+          * on failure the watermark is advanced to the end of that bounded window
+            (a bounded, LOGGED loss) instead of retrying the same window forever.
         """
+        from datetime import datetime as _dt, timedelta as _td
+        now_utc = _dt.utcnow()
+        start_iso = self.last_timestamp or (now_utc - _td(minutes=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        try:
+            _parsed = _dt.strptime(str(start_iso)[:19], "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            _parsed = now_utc - _td(minutes=5)
+        min_start = now_utc - _td(minutes=SYSMON_MAX_LOOKBACK_MINUTES)
+        if _parsed < min_start:
+            start_iso = min_start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            print(f"[!] Sysmon Collector: window bounded to the last "
+                  f"{SYSMON_MAX_LOOKBACK_MINUTES} min (backlog skipped: {self.last_timestamp})")
+        window_end_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
         ps_script = f'''
-$start = [datetime]::Parse('{self.last_timestamp}')
+$start = [datetime]::Parse('{start_iso}')
 $end = [datetime]::UtcNow
 $all = New-Object System.Collections.ArrayList
 while ($true) {{
@@ -296,8 +325,15 @@ ConvertTo-Json -InputObject $all -Depth 5 -Compress
             if self.event_count == 0:
                 print(f"[-] Sysmon JSON decode error: {e} | raw: {r.stdout[:200] if r else 'N/A'}")
         except Exception as e:
-            if self.event_count == 0:
-                print(f"[-] Sysmon query exception: {e}")
+            # v5.0.8 (bug that): ALWAYS move the watermark forward on failure - retrying
+            # the same (growing) window is what wedged the collector permanently. The
+            # window was bounded above, so the skipped range is bounded and logged.
+            print(f"[-] Sysmon query exception: {e} - advancing watermark to "
+                  f"{window_end_iso} (skipped at most {SYSMON_MAX_LOOKBACK_MINUTES} min)")
+            try:
+                self.last_timestamp = window_end_iso
+            except Exception:
+                pass
         return []
 
     def _convert_to_giamsat(self, sysmon_event):

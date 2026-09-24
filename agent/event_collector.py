@@ -36,6 +36,19 @@ _SELF_NOISE_PROCESSES = {
 MAX_EVENTS_PER_POLL = 20000
 RESET_ALERT_MIN_INTERVAL_S = 1800
 
+# v5.0.8 (P2 - event volume): when Sysmon is installed its EID 1 carries the same
+# process-creation data as Security 4688 (with more fields) and the agent already runs a
+# dedicated Sysmon collector, so the 4688 stream is redundant - on the live server 4688 +
+# 4689 + 4670 + 4673 were 74% of ALL stored events (44k of 59.6k rows). 4688 is dropped
+# (set GIAMSAT_KEEP_4688_WITH_SYSMON=1 to keep it) and the chatty privilege/permission
+# IDs are folded to at most one event per THROTTLE_WINDOW_S per channel.
+THROTTLE_EVENT_IDS = set(
+    x.strip() for x in (os.environ.get("GIAMSAT_EVENT_THROTTLE_IDS", "4670,4673") or "").split(",")
+    if x.strip())
+THROTTLE_WINDOW_S = int(os.environ.get("GIAMSAT_EVENT_THROTTLE_WINDOW_S", "60") or 60)
+KEEP_4688_WITH_SYSMON = str(os.environ.get("GIAMSAT_KEEP_4688_WITH_SYSMON", "")).strip().lower() in (
+    "1", "true", "yes", "on")
+
 
 def is_real_log_reset(newest_record, last_seen):
     """True only when a Windows event log was really cleared / reset.
@@ -401,6 +414,11 @@ class EnhancedEventCollector(threading.Thread):
         # is_real_log_reset) - a machine that really clears its logs repeatedly
         # must not be able to flood the server with alerts or the log file.
         self._reset_alert_ts = {}
+        # v5.0.8 (P2): event-volume controls (see _should_keep_event)
+        self._sysmon_available = False
+        self._throttle_ts = {}
+        self._throttled = {}
+        self._dropped_4688 = 0
         # v4.6.5: reduce self-inflicted 4688 volume - drop the agent's OWN routine
         # child processes (netstat poll, powershell/conhost from scans) and any
         # configured process (e.g. postgres.exe when the server runs on SQLite).
@@ -449,10 +467,55 @@ class EnhancedEventCollector(threading.Thread):
             except Exception:
                 pass
 
+        # v5.0.8 (P2): is Sysmon installed on this host? Needed to drop the duplicate
+        # 4688 stream (Sysmon EID 1 = process creation with richer fields).
+        try:
+            _h = win32evtlog.OpenEventLog(None, "Microsoft-Windows-Sysmon/Operational")
+            win32evtlog.CloseEventLog(_h)
+            self._sysmon_available = True
+        except Exception:
+            self._sysmon_available = False
+
         print(f"[*] Event Collector: {len(self._active_logs)} channels active")
         for log in self._active_logs:
             cfg = self.log_configs.get(log, {})
             print(f"    - {log} [{cfg.get('category', '?')}]")
+        if self._sysmon_available and not KEEP_4688_WITH_SYSMON:
+            print("[*] Event Collector: Sysmon detected -> dropping Security 4688 "
+                  "(duplicate of Sysmon EID 1); set GIAMSAT_KEEP_4688_WITH_SYSMON=1 to keep")
+        if THROTTLE_EVENT_IDS:
+            print(f"[*] Event Collector: throttling EID {sorted(THROTTLE_EVENT_IDS)} to "
+                  f"1/{THROTTLE_WINDOW_S}s per channel")
+
+    def _should_keep_event(self, event_id, log_name):
+        """v5.0.8 (P2): drop redundant / chatty streams WITHOUT touching detections.
+
+        * Security 4688 (process creation) when Sysmon is installed: Sysmon EID 1 has the
+          same data plus hashes/parents and is already collected in full.
+        * THROTTLE_EVENT_IDS (default 4670 = permissions changed, 4673 = privileged
+          service called): keep the first event per (channel, id) per THROTTLE_WINDOW_S
+          and report how many were folded, so the dashboard shows the signal without the
+          per-second flood. Fully configurable via env (empty list disables).
+        """
+        eid = str(event_id)
+        if self._sysmon_available and eid == "4688" and not KEEP_4688_WITH_SYSMON:
+            self._dropped_4688 += 1
+            if self._dropped_4688 % 500 == 0:
+                print(f"[*] Event Collector: dropped {self._dropped_4688} Security 4688 event(s) "
+                      "(Sysmon EID 1 covers process creation)")
+            return False
+        if eid in THROTTLE_EVENT_IDS:
+            key = (log_name, eid)
+            now = time.time()
+            if now - self._throttle_ts.get(key, 0) < THROTTLE_WINDOW_S:
+                self._throttled[key] = self._throttled.get(key, 0) + 1
+                return False
+            self._throttle_ts[key] = now
+            folded = self._throttled.pop(key, 0)
+            if folded:
+                print(f"[*] Event Collector: folded {folded} '{log_name}' {eid} event(s) "
+                      f"(1/{THROTTLE_WINDOW_S}s window)")
+        return True
 
     def _should_collect_event(self, event_id, log_name, event_type):
         """Filter events: collect high-value events, skip noise."""
@@ -613,6 +676,10 @@ class EnhancedEventCollector(threading.Thread):
 
                 # Noise filtering
                 if not self._should_collect_event(event_id, log_name, event_type):
+                    continue
+                # v5.0.8 (P2): drop redundant/chatty streams (4688 vs Sysmon EID 1,
+                # privilege IDs folded per window) - see _should_keep_event
+                if not self._should_keep_event(event_id, log_name):
                     continue
 
                 # StringInserts

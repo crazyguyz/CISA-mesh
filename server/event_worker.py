@@ -499,12 +499,30 @@ class EventWorkerPool:
         with self._stats_lock:
             self._stats["alerts_processed"] += count
 
+    @staticmethod
+    def _anomaly_rule_id(anomaly_result):
+        """v5.0.8 (bug that): STABLE rule id derived from the anomaly REASON.
+
+        The old code used `ANOMALY-{int(time.time()) % 100000}` - a brand-new id for
+        every single alert, so the live dashboard ended up with 118 one-off
+        "ANOMALY-xxxxx" rules (Threats list diluted, suppression impossible) AND the
+        MITRE matrix showed each of them as its own "technique" (46 of 48 cells were
+        that garbage). A stable id groups the same kind of anomaly, so it can be
+        triaged/suppressed and the matrix stays clean; the timestamp stays in the
+        description/alert time.
+        """
+        import re as _re
+        reasons = (anomaly_result or {}).get("reasons") or []
+        seed = str(reasons[0] if reasons else "generic").lower()
+        slug = _re.sub(r"[^a-z0-9]+", "-", seed).strip("-")[:28]
+        return "ANOMALY-" + (slug.upper() if slug else "GENERIC")
+
     def _handle_anomaly_alert(self, event, anomaly_result):
         """v3.2: Insert anomaly alert with cooldown (5min per machine)."""
         machine_id = event.get("machine_id", "")
         hostname = event.get("hostname", "")
         timestamp = event.get("timestamp", "")
-        rule_id = f"ANOMALY-{int(time.time()) % 100000}"
+        rule_id = self._anomaly_rule_id(anomaly_result)
         reason_text = " | ".join(anomaly_result["reasons"][:3])
         
         # v4.3.4: Cooldown - skip if same machine had an anomaly alert in last 5 min

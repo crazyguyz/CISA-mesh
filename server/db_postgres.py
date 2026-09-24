@@ -1066,22 +1066,53 @@ class PostgresDatabase:
     def insert_threat_alert(self, msg):
         if not self._connected:
             return
+        # v5.0.8 (P2 - alert spam): coalesce repeats of the SAME (machine_id, rule_id) while
+        # the previous alert is still open. The live DB carried 118 one-off ANOMALY-* rows
+        # (ids are now stable) plus repeated HEARTBEAT/THREAT rows that diluted the dashboard
+        # and wasted storage. Window: GIAMSAT_ALERT_DEDUP_MINUTES (default 60, 0 = disabled).
         try:
-            self._execute(
-                """INSERT INTO threat_alerts (machine_id, hostname, rule_id, rule_name, description,
-                   severity, timestamp, raw_data, source_ip, received_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
-                (
-                    msg.get("machine_id", ""), msg.get("hostname", ""),
-                    msg.get("rule_id", ""), msg.get("rule_name", ""),
-                    msg.get("description", "")[:1000], msg.get("severity", "HIGH"),
-                    msg.get("timestamp", ""),
-                    json.dumps(msg, ensure_ascii=False, default=str),
-                    msg.get("source_ip", ""),
+            _dedup_min = int(os.environ.get("GIAMSAT_ALERT_DEDUP_MINUTES", "60") or 60)
+        except (TypeError, ValueError):
+            _dedup_min = 60
+        try:
+            _mid = msg.get("machine_id", "")
+            _rid = msg.get("rule_id", "")
+            _existing = None
+            if _dedup_min > 0 and _mid and _rid:
+                _existing = self._execute(
+                    "SELECT id FROM threat_alerts WHERE machine_id=%s AND rule_id=%s "
+                    "AND received_at >= NOW() - (%s * INTERVAL '1 minute') "
+                    "ORDER BY id DESC LIMIT 1",
+                    (_mid, _rid, _dedup_min), fetch=True)
+            if _existing:
+                # v5.0.8: same semantics as the SQLite backend (db_manager v5.0.4 R8) - refresh
+                # the row but do NOT touch received_at, so the dedup window stays anchored at
+                # the FIRST occurrence and a persistent rule cannot slide it forever.
+                self._execute(
+                    "UPDATE threat_alerts SET hostname=%s, rule_name=%s, description=%s, "
+                    "severity=%s, timestamp=%s, raw_data=%s WHERE id=%s",
+                    (msg.get("hostname", ""), msg.get("rule_name", ""),
+                     msg.get("description", "")[:1000], msg.get("severity", "HIGH"),
+                     msg.get("timestamp", ""),
+                     json.dumps(msg, ensure_ascii=False, default=str),
+                     _existing["id"]))
+            else:
+                self._execute(
+                    """INSERT INTO threat_alerts (machine_id, hostname, rule_id, rule_name, description,
+                       severity, timestamp, raw_data, source_ip, received_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                    (
+                        _mid, msg.get("hostname", ""),
+                        _rid, msg.get("rule_name", ""),
+                        msg.get("description", "")[:1000], msg.get("severity", "HIGH"),
+                        msg.get("timestamp", ""),
+                        json.dumps(msg, ensure_ascii=False, default=str),
+                        msg.get("source_ip", ""),
+                    )
                 )
-            )
-        except Exception:
-            pass
+        except Exception as e:
+            # v5.0.8: was `except Exception: pass` - a broken alert write was invisible
+            print(f"[-] insert_threat_alert failed: {e}")
 
     def insert_vuln_alert(self, msg):
         if not self._connected:
@@ -2909,7 +2940,7 @@ class PostgresDatabase:
                 "VALUES (%s,%s,%s,%s,1,%s,%s,%s) "
                 "ON CONFLICT(indicator) DO NOTHING RETURNING id",
                 (indicator, type, label[:200], severity.upper(), source[:32], created_by[:64], note[:500]),
-                fetchone=True)
+                fetch=True)
             if r:
                 return r["id"], True
             # v5.0.5 (MEDIUM-6): indicator đã tồn tại -> cập nhật và trả created=False.
@@ -2918,9 +2949,14 @@ class PostgresDatabase:
             self._execute(
                 "UPDATE watchlist SET label=%s, severity=%s, note=%s WHERE indicator=%s",
                 (label[:200], severity.upper(), note[:500], indicator))
-            r2 = self._execute("SELECT id FROM watchlist WHERE indicator=%s", (indicator,), fetchone=True)
+            r2 = self._execute("SELECT id FROM watchlist WHERE indicator=%s", (indicator,), fetch=True)
             return (r2 or {}).get("id"), False
-        except Exception:
+        except Exception as e:
+            # v5.0.8 (bug that): this used to be `except Exception: return None, False` and the
+            # method ALSO passed the invalid kwarg `fetchone=` to _execute -> a TypeError was
+            # swallowed and the Watchlist stayed empty forever (0 rows on the live server)
+            # while the UI only said "invalid indicator". Never swallow silently again.
+            print(f"[-] add_watchlist failed ({type(indicator).__name__}): {e}")
             return None, False
 
     def delete_watchlist(self, wl_id):
@@ -2984,9 +3020,11 @@ class PostgresDatabase:
         try:
             r = self._execute(
                 "SELECT machine_id, hostname, ip_address FROM machines WHERE ip_address=%s LIMIT 1",
-                (str(ip),), fetchone=True)
+                (str(ip),), fetch=True)
             return r or None
-        except Exception:
+        except Exception as e:
+            # v5.0.8 (bug that): invalid kwarg `fetchone=` -> TypeError swallowed -> always None
+            print(f"[-] get_machine_by_ip failed for {ip}: {e}")
             return None
 
     def fetch_watch_scan_rows(self, since_sec=45, limit=600):
@@ -3103,9 +3141,13 @@ class PostgresDatabase:
                 "INSERT INTO cases (machine_id,hostname,title,description,severity,alert_ids,status,created_by) "
                 "VALUES (%s,%s,%s,%s,%s,%s,'open',%s) RETURNING id",
                 (machine_id, hostname or machine_id, title[:200], description[:2000], severity,
-                 _j.dumps(alert_ids), created_by), fetchone=True)
+                 _j.dumps(alert_ids), created_by), fetch=True)
             return (r or {}).get("id")
-        except Exception:
+        except Exception as e:
+            # v5.0.8 (bug that): invalid kwarg `fetchone=` -> TypeError swallowed -> the
+            # case detector printed "[CASE] auto-case created" while the `cases` table
+            # stayed EMPTY (the Case dashboard had no data at all). Surface the error.
+            print(f"[-] create_case failed for {machine_id}: {e}")
             return None
 
     def list_cases(self, limit=100, status=None):
@@ -3123,9 +3165,12 @@ class PostgresDatabase:
 
     def get_case(self, case_id):
         try:
-            r = self._execute("SELECT * FROM cases WHERE id=%s", (int(case_id),), fetchone=True)
+            r = self._execute("SELECT * FROM cases WHERE id=%s", (int(case_id),), fetch=True)
             return r or None
-        except Exception:
+        except Exception as e:
+            # v5.0.8 (bug that): invalid kwarg `fetchone=` -> TypeError swallowed -> the case
+            # detail endpoint always answered 404 even for cases that existed.
+            print(f"[-] get_case failed for #{case_id}: {e}")
             return None
 
     def get_threat_alerts_by_ids(self, ids):

@@ -23,6 +23,39 @@ CREATE_NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
 
 # Cache paths
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+
+def _writable_cache_dir():
+    """v5.0.8 (bug that): the CVE / KEV caches must live in a WRITABLE, PERSISTENT dir.
+
+    In the packaged agent `os.path.dirname(__file__)` points INSIDE the PyInstaller
+    one-file temp dir (_MEIPASS), which is deleted on every exit - so the caches were
+    never reused: the agent re-downloaded the NVD feed every hour, kept only ~861 CVEs
+    and therefore found (almost) no vulnerabilities: the "Lỗ hổng" dashboard stayed
+    empty even though the scanner ran correctly. Use %PROGRAMDATA%\\GIAM-SAT\\Agent\\data
+    (or GIAMSAT_DATA_DIR) when frozen.
+    """
+    candidates = []
+    if getattr(sys, "frozen", False):
+        base = os.environ.get("GIAMSAT_DATA_DIR") or os.environ.get("PROGRAMDATA") or ""
+        if base:
+            candidates.append(os.path.join(base, "data") if base.lower().endswith("agent")
+                              else os.path.join(base, "GIAM-SAT", "Agent", "data"))
+    candidates.append(CACHE_DIR)
+    for path in candidates:
+        try:
+            os.makedirs(path, exist_ok=True)
+            probe = os.path.join(path, ".write_test")
+            with open(probe, "w") as _f:
+                _f.write("1")
+            os.remove(probe)
+            return path
+        except Exception:
+            continue
+    return CACHE_DIR
+
+
+CACHE_DIR = _writable_cache_dir()
 CVE_CACHE_FILE = os.path.join(CACHE_DIR, "nvd_cve_cache.json")
 CVE_LAST_UPDATE_FILE = os.path.join(CACHE_DIR, "nvd_last_update.txt")
 CISA_KEV_CACHE = os.path.join(CACHE_DIR, "cisa_kev_cache.json")
