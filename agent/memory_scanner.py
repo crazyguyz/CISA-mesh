@@ -74,12 +74,34 @@ _CRITICAL_SYSTEM_NAMES = frozenset({
     "winlogon", "fontdrvhost", "sihost", "dllhost", "wmiprvse", "runtimebroker",
 })
 _LEGIT_SYSTEM_DIRS = ("\\windows\\system32\\", "\\windows\\syswow64\\", "\\windows\\")
-_LEGIT_NUMERIC_NAMES = (
-    "python", "java", "node", "sqlserv", "msdtc", "dwminit", "fontdrvhost",
-    "searchindexer", "runtimebroker", "conhost", "svchost", "lsass", "csrss",
-    "winlogon", "wmiprvse", "dllhost", "vcredist", "userinit", "wininit",
-    "services", "smss", "taskhost", "spoolsv", "explorer", "dwm", "lsm", "sihost",
-)
+
+# v5.0.8 (bug that): "process name contains numbers" flagged LEGITIMATE software. The live
+# server had 632 of 662 sysmon_events rows (96% - filling the Memory/Sysmon/Attack
+# dashboards) that were exactly this: RtkAudUService64, Sysmon64, uv_x64,
+# vmware-usbarbitrator64, splwow64... Real name spoofing is a SYSTEM binary whose name was
+# tweaked with look-alike digits (svch0st.exe, exp1orer.exe) - so a digit-laden name is
+# flagged only when collapsing digits back to letters yields a critical system binary name.
+_DIGIT_TO_LETTER = {"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b"}
+
+
+def _spoofed_system_name(proc_name):
+    """Return the critical system binary a digit-masked name imitates, or None.
+
+    'svch0st.exe' -> 'svchost' (flag), 'Sysmon64.exe' -> 'sysmonba' (no flag).
+    """
+    name = str(proc_name or "").lower().strip()
+    if not name or not any(ch.isdigit() for ch in name):
+        return None
+    if "." not in name:
+        name += ".exe"
+    collapsed = name
+    for digit, letter in _DIGIT_TO_LETTER.items():
+        collapsed = collapsed.replace(digit, letter)
+    stem = collapsed.rsplit(".", 1)[0]
+    for crit in _CRITICAL_SYSTEM_NAMES:
+        if stem == crit or stem.startswith(crit + "-") or stem.startswith(crit + "_"):
+            return crit
+    return None
 
 
 def _check_name_spoofing(proc):
@@ -89,10 +111,14 @@ def _check_name_spoofing(proc):
         if not proc_name:
             return None
         proc_path = str(proc.get("Path", "") or "").lower()
-        has_digits = any(ch.isdigit() for ch in proc_name)
 
-        # (a) name matches a critical system binary -> must live in a system dir
-        if proc_name in _CRITICAL_SYSTEM_NAMES:
+        # (a) name matches a critical system binary -> must live in a system dir.
+        # v5.0.8 (bug that): _CRITICAL_SYSTEM_NAMES holds BARE stems ("svchost") while
+        # psutil reports "svchost.exe", so this comparison never matched and the classic
+        # "fake system binary in a user directory" detection was silently DEAD. Compare
+        # the stem instead.
+        _stem = proc_name.rsplit(".", 1)[0]
+        if _stem in _CRITICAL_SYSTEM_NAMES:
             if proc_path and not any(d in proc_path for d in _LEGIT_SYSTEM_DIRS):
                 return {
                     "process_name": proc.get("ProcessName", ""),
@@ -103,13 +129,19 @@ def _check_name_spoofing(proc):
                 }
             return None  # legit system location (or path hidden) -> no flag
 
-        # (b) numeric name that is not a known legit numeric-named process
-        if has_digits and not any(legit in proc_name for legit in _LEGIT_NUMERIC_NAMES):
+        # (b) v5.0.8: digit-masked imitation of a system binary (the real spoofing case).
+        #     A name that merely CONTAINS digits (Sysmon64, RtkAudUService64, uv_x64) is
+        #     normal vendor naming - flagging it produced 632 FALSE POSITIVES on the live
+        #     server, one HIGH finding per legit process per hourly scan.
+        _spoof_of = _spoofed_system_name(proc_name)
+        if _spoof_of:
             return {
                 "process_name": proc.get("ProcessName", ""),
                 "pid": proc.get("Id", 0),
                 "path": proc.get("Path", ""),
-                "description": "Possible name spoofing: process name contains numbers",
+                "description": (f"Possible name spoofing: '{proc.get('ProcessName', '')}' "
+                                f"imitates the system binary '{_spoof_of}.exe' "
+                                "(digit-masked name)"),
             }
     except Exception:
         pass

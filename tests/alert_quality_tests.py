@@ -233,6 +233,34 @@ def test_vuln_cache_dir():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_name_spoofing_heuristic():
+    """Audit: 'process name contains numbers' = 632 false positives (96% of sysmon_events)."""
+    print("\n-- agent: name-spoofing heuristic (false positives) --")
+    import memory_scanner as ms
+
+    for name in ("Sysmon64.exe", "RtkAudUService64.exe", "uv_x64.exe",
+                 "vmware-usbarbitrator64.exe", "splwow64.exe", "msedgewebview2.exe",
+                 "python3.11.exe", "7z.exe"):
+        f = ms._check_name_spoofing({"ProcessName": name, "Id": 1,
+                                     "Path": "c:\\program files\\vendor\\" + name})
+        check("legit vendor name '%s' is NOT flagged" % name, f is None, f)
+
+    for name, expect in (("svch0st.exe", "svchost"), ("exp1orer.exe", "explorer"),
+                         ("1sass.exe", "lsass"), ("sp00lsv.exe", "spoolsv"),
+                         ("win10gon.exe", "winlogon")):
+        hit = ms._spoofed_system_name(name)
+        check("digit-masked '%s' -> %s" % (name, expect), hit == expect, hit)
+
+    f = ms._check_name_spoofing({"ProcessName": "svchost.exe", "Id": 9,
+                                 "Path": "c:\\users\\public\\svchost.exe"})
+    check("system binary from a non-system path is STILL flagged (rule a)",
+          bool(f) and "non-system path" in f.get("description", ""), f)
+    f2 = ms._check_name_spoofing({"ProcessName": "svchost.exe", "Id": 9,
+                                  "Path": "c:\\windows\\system32\\svchost.exe"})
+    check("system binary inside System32 is not flagged", f2 is None, f2)
+    check("legacy digit-name allowlist removed", not hasattr(ms, "_LEGIT_NUMERIC_NAMES"))
+
+
 def main():
     print("=" * 68)
     print("  GIAM-SAT alert-quality / silent-failure tests - v5.0.8")
@@ -245,6 +273,7 @@ def main():
     test_agent_noise_controls()
     test_sysmon_window_bound()
     test_vuln_cache_dir()
+    test_name_spoofing_heuristic()
     failed = [n for n, ok in RESULTS if not ok]
     print("\n" + "=" * 68)
     print("  %d/%d checks passed" % (len(RESULTS) - len(failed), len(RESULTS)))
