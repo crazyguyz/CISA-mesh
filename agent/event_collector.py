@@ -48,6 +48,12 @@ THROTTLE_EVENT_IDS = set(
 THROTTLE_WINDOW_S = int(os.environ.get("GIAMSAT_EVENT_THROTTLE_WINDOW_S", "60") or 60)
 KEEP_4688_WITH_SYSMON = str(os.environ.get("GIAMSAT_KEEP_4688_WITH_SYSMON", "")).strip().lower() in (
     "1", "true", "yes", "on")
+# v5.0.8 (P2): the process-create/terminate PAIR is fully covered by Sysmon when it is
+# installed (EID 1 = process create, EID 5 = process terminate): live measurement right
+# after dropping 4688 showed 4689 immediately becoming the top stream (28% of events).
+PROCESS_IDS_WITH_SYSMON = set(
+    x.strip() for x in (os.environ.get("GIAMSAT_PROCESS_IDS_WITH_SYSMON", "4688,4689") or "").split(",")
+    if x.strip())
 
 
 def is_real_log_reset(newest_record, last_seen):
@@ -481,8 +487,9 @@ class EnhancedEventCollector(threading.Thread):
             cfg = self.log_configs.get(log, {})
             print(f"    - {log} [{cfg.get('category', '?')}]")
         if self._sysmon_available and not KEEP_4688_WITH_SYSMON:
-            print("[*] Event Collector: Sysmon detected -> dropping Security 4688 "
-                  "(duplicate of Sysmon EID 1); set GIAMSAT_KEEP_4688_WITH_SYSMON=1 to keep")
+            print(f"[*] Event Collector: Sysmon detected -> dropping Security "
+                  f"{sorted(PROCESS_IDS_WITH_SYSMON)} (covered by Sysmon EID 1/5); "
+                  "set GIAMSAT_KEEP_4688_WITH_SYSMON=1 to keep")
         if THROTTLE_EVENT_IDS:
             print(f"[*] Event Collector: throttling EID {sorted(THROTTLE_EVENT_IDS)} to "
                   f"1/{THROTTLE_WINDOW_S}s per channel")
@@ -498,11 +505,11 @@ class EnhancedEventCollector(threading.Thread):
           per-second flood. Fully configurable via env (empty list disables).
         """
         eid = str(event_id)
-        if self._sysmon_available and eid == "4688" and not KEEP_4688_WITH_SYSMON:
+        if self._sysmon_available and eid in PROCESS_IDS_WITH_SYSMON and not KEEP_4688_WITH_SYSMON:
             self._dropped_4688 += 1
             if self._dropped_4688 % 500 == 0:
-                print(f"[*] Event Collector: dropped {self._dropped_4688} Security 4688 event(s) "
-                      "(Sysmon EID 1 covers process creation)")
+                print(f"[*] Event Collector: dropped {self._dropped_4688} Security process "
+                      "create/exit event(s) (4688/4689 - Sysmon EID 1/5 cover them)")
             return False
         if eid in THROTTLE_EVENT_IDS:
             key = (log_name, eid)

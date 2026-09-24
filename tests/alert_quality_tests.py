@@ -163,8 +163,12 @@ def test_agent_noise_controls():
     c = fake(True)
     check("4688 dropped when Sysmon is installed",
           c._should_keep_event("4688", "Security") is False)
-    check("dropped 4688 counter increments", c._dropped_4688 == 1, c._dropped_4688)
+    check("4689 (process exit) dropped too (Sysmon EID 5)",
+          c._should_keep_event("4689", "Security") is False)
+    check("dropped process-event counter increments", c._dropped_4688 == 2, c._dropped_4688)
     check("other Security events unaffected", c._should_keep_event("4624", "Security") is True)
+    check("process-id list is configurable",
+          ec.PROCESS_IDS_WITH_SYSMON == {"4688", "4689"}, ec.PROCESS_IDS_WITH_SYSMON)
 
     c2 = fake(False)
     check("4688 kept when Sysmon is absent", c2._should_keep_event("4688", "Security") is True)
