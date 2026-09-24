@@ -245,6 +245,22 @@
   var mitreModal = null;
   var mitreModalEl = null;
 
+  // v5.0.8: alert list of the technique currently shown in the modal. Rows reference
+  // an alert by INDEX (the alert JSON is never embedded into an onclick attribute ->
+  // no quoting/XSS risk) and clicking the event/rule name opens THAT exact alert via
+  // showAlertRowDetail() from dashboard.js.
+  var _mitreAlerts = [];
+
+  window.openMitreAlert = function (index) {
+    var a = _mitreAlerts[index];
+    if (!a) return;
+    if (window.showAlertRowDetail) {
+      window.showAlertRowDetail(a, 'MITRE Alert');
+    } else if (window.showToast) {
+      showToast(a.rule_name || a.rule_id || '');
+    }
+  };
+
   function ensureMitreModal() {
     var modal = document.getElementById('mitre-detail-modal');
     var body = document.getElementById('mitre-detail-body');
@@ -285,18 +301,26 @@
             // v4.6.6: per-alert Resolve button - marking handled removes it from the
             // matrix (API filters status resolved/false_positive), but future identical
             // alerts still appear (this is NOT a suppression rule).
+            _mitreAlerts = (data.alerts || []);
+            html += '<div class="text-muted mb-2" style="font-size:11px;">' + t('mitre.alertClickHint') + '</div>';
             html += '<table class="table table-sm table-dark table-hover"><thead><tr><th>Time</th><th>Host</th><th>Rule</th><th>Severity</th><th>Description</th><th>Action</th></tr></thead><tbody>';
             for (var i = 0; i < data.alerts.length; i++) {
               var a = data.alerts[i];
               var sevColor = SEV_COLORS[a.severity] || '#999';
               html += '<tr><td style="font-size:11px;white-space:nowrap;">' + esc(a.timestamp) + '</td>';
               html += '<td>' + esc(a.hostname || a.machine_id || '') + '</td>';
-              html += '<td>' + esc(a.rule_name || '') + '</td>';
+              // v5.0.8: tên sự kiện/rule bấm được -> mở ĐÚNG cảnh báo đó (vd ANOMALY-12765)
+              html += '<td><a href="#" style="color:#4fc3f7;text-decoration:underline;" onclick="openMitreAlert(' + i + ');return false;" title="' + escAttr(t('mitre.openAlertHint')) + '">' + esc(a.rule_name || a.rule_id || '(?)') + '</a>';
+              if (a.rule_id && a.rule_id !== a.rule_name) {
+                html += '<br><span class="text-muted" style="font-size:10px;">' + esc(a.rule_id) + '</span>';
+              }
+              html += '</td>';
               html += '<td><span style="color:' + sevColor + ';">' + esc(a.severity) + '</span></td>';
               html += '<td style="font-size:11px;">' + esc(a.description || '').substring(0, 150) + '</td>';
               // v4.6.6: button only renders once the server returns the alert id
               // (needs server >= d05653d - older servers have no id field yet).
               if (a.id) {
+                html += '<td><button class="btn btn-sm btn-outline-info me-1" style="font-size:10px;padding:0 6px;" onclick="openThreatsByRule(\'' + escJs(a.rule_id || a.rule_name || techniqueId) + '\')">🔎 ' + t('mitre.openInThreats') + '</button>';
                 html += '<td><button class="btn btn-sm btn-outline-success" style="font-size:10px;padding:0 6px;" onclick="resolveMitreAlert(' + a.id + ', \'' + escJs(techniqueId) + '\')">✓ ' + t('tr.resolve') + '</button></td>';
               } else {
                 html += '<td></td>';
@@ -327,7 +351,10 @@
 
   window.showTechniqueDetail = function (techniqueId) {
     ensureMitreModal();
-    document.getElementById('mitre-detail-title').textContent = techniqueId;
+    // v5.0.8: tiêu đề bấm được -> nhảy sang tab Đe dọa và lọc theo chính rule/technique này
+    document.getElementById('mitre-detail-title').innerHTML =
+      '<a href="#" style="color:#4fc3f7;text-decoration:underline;" title="' + escAttr(t('mitre.openInThreats')) +
+      '" onclick="openThreatsByRule(\'' + escJs(techniqueId) + '\');return false;">' + esc(techniqueId) + '</a>';
     loadTechniqueBody(techniqueId);
     mitreModal.show(); // cached instance -> idempotent, never stacks a 2nd backdrop
   };

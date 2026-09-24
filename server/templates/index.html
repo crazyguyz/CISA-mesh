@@ -794,6 +794,9 @@ body.compact-mode .btn{font-size:11px !important;}
 
         <!-- v3.2: IOC Sweep View -->
         <div id="viewIoc" style="display:none;">
+            <div class="mb-2"><span class="panel-tab active" data-tab-ioc="scan" onclick="switchIocTab('scan')"><i class="bi bi-bullseye"></i> <span data-i18n="ioc.tabScan">Quét IOC</span></span><span class="panel-tab" data-tab-ioc="guide" onclick="switchIocTab('guide')"><i class="bi bi-question-circle"></i> <span data-i18n="ioc.tabGuide">Hướng dẫn</span></span></div>
+            <div class="tab-ioc-content" id="tabIocScan">
+
             <div class="card mb-3"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-bullseye"></i> <span data-i18n="nav.ioc">Quét IOC</span></span><button class="btn btn-sm export-btn" onclick="loadIoc()"><i class="bi bi-arrow-clockwise"></i> <span data-i18n="btn.reload">Tải lại</span></button></div>
                 <div class="card-body">
                     <div class="row g-2 mb-2">
@@ -806,6 +809,112 @@ body.compact-mode .btn{font-size:11px !important;}
             <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><span><i class="bi bi-list-ul"></i> <span data-i18n="ioc.results">Kết quả quét</span></span><span id="iocStats" class="text-muted" style="font-size:10px;"></span></div>
                 <div class="card-body p-0" id="iocResults" style="max-height:500px;overflow-y:auto;"><div class="text-center text-muted py-3"><span data-i18n="ioc.hint">Nhập IOC và bấm "Quét" để bắt đầu.</span></div></div>
             </div>
+                        
+            </div>
+<div class="tab-ioc-content" id="tabIocGuide" style="display:none;">
+                <div class="card">
+                    <div class="card-header"><i class="bi bi-question-circle"></i> <span data-i18n="ioc.guide.title">Hướng dẫn Quét IOC (retro-hunt)</span></div>
+                    <div class="card-body" style="font-size:12px;">
+                        <h6 class="text-info" data-i18n="ioc.guide.purposeH">1. Công dụng</h6>
+                        <p class="text-muted" data-i18n="ioc.guide.purpose">Quét hồi tố dữ liệu lịch sử để tìm dấu hiệu xâm nhập (IOC: IP, domain, hash) đã từng xuất hiện trên hệ thống.</p>
+                        <ul class="text-muted" style="font-size:11px;">
+                            <li data-i18n="ioc.guide.p1">Quét 4 bảng: <code>events</code>, <code>network_traffic</code>, <code>sysmon_events</code>, <code>fim_events</code> (có thể giới hạn bảng bằng tham số <code>tables</code>).</li>
+                            <li data-i18n="ioc.guide.p2">Mỗi dòng khớp trả về: bảng, cột, giá trị khớp, host, thời gian, nguồn và độ tin cậy của IOC.</li>
+                            <li data-i18n="ioc.guide.p3">Cần quyền <b>operator trở lên</b>; mọi lần quét đều được ghi nhật ký kiểm toán (<code>ioc_sweep</code>).</li>
+                        </ul>
+
+                        <h6 class="text-info mt-3" data-i18n="ioc.guide.inputH">2. Cấu trúc dữ liệu đầu vào</h6>
+                        <div class="text-muted" style="font-size:11px;" data-i18n="ioc.guide.jsonH">JSON (dán vào ô "JSON IOCs" hoặc gửi trong body API): mảng các đối tượng IOC</div>
+                        <pre style="background:#0a0f14;color:#9fe8b0;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto;">[
+  {"type": "ip",     "value": "185.220.101.100",                "source": "OTX",  "confidence": 90},
+  {"type": "domain", "value": "evil.example.com",               "source": "MISP", "confidence": 80},
+  {"type": "hash",   "value": "44d88612fea8a8f36de82e1278abb02f","source": "VT",   "confidence": 95}
+]</pre>
+                        <div class="text-muted" style="font-size:11px;" data-i18n="ioc.guide.csvH">CSV (upload file .csv, hoặc .json) - mỗi dòng là một IOC:</div>
+                        <pre style="background:#0a0f14;color:#9fe8b0;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto;">type,value,source,confidence
+ip,185.220.101.100,OTX,90
+domain,evil.example.com,manual,70
+hash,44d88612fea8a8f36de82e1278abb02f,VT,95</pre>
+                        <div class="text-muted" style="font-size:11px;" data-i18n="ioc.guide.csvAlias">Tên cột tương đương khi đọc CSV: <code>type</code> | <code>ioc_type</code>, <code>value</code> | <code>ioc</code> | <code>indicator</code>; <code>type</code> luôn được chuyển thành chữ thường.</div>
+                        <table class="table table-sm table-dark">
+                            <thead><tr><th data-i18n="ioc.guide.fField">Field</th><th data-i18n="ioc.guide.fVal">Giá trị</th><th data-i18n="ioc.guide.fReq">Bắt buộc</th><th data-i18n="ioc.guide.fDef">Mặc định</th><th data-i18n="ioc.guide.fUse">Công dụng</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>type</code></td><td>ip / domain / hash</td><td data-i18n="ioc.guide.yes">Có</td><td><code>ip</code></td><td data-i18n="ioc.guide.fTypeUse">Quyết định cột nào trong mỗi bảng sẽ được đối chiếu (xem mục 3).</td></tr>
+                                <tr><td><code>value</code></td><td>chuỗi</td><td data-i18n="ioc.guide.yes">Có</td><td>—</td><td data-i18n="ioc.guide.fValUse">Giá trị IOC; so khớp chuỗi con (LIKE %value%), không phân biệt hoa/thường.</td></tr>
+                                <tr><td><code>source</code></td><td>chuỗi</td><td data-i18n="ioc.guide.no">Không</td><td><code>manual</code></td><td data-i18n="ioc.guide.fSrcUse">Nguồn IOC (OTX/MISP/manual…) - chỉ để hiển thị trong kết quả.</td></tr>
+                                <tr><td><code>confidence</code></td><td>0-100</td><td data-i18n="ioc.guide.no">Không</td><td><code>70</code></td><td data-i18n="ioc.guide.fConfUse">Độ tin cậy - dùng để tô màu và ưu tiên trong kết quả.</td></tr>
+                                <tr><td><code>iocs[]</code></td><td>mảng</td><td data-i18n="ioc.guide.yes">Có</td><td>—</td><td data-i18n="ioc.guide.fIocsUse">Danh sách IOC trong body API: <code>{"iocs":[…]}</code>.</td></tr>
+                                <tr><td><code>tables[]</code></td><td>mảng</td><td data-i18n="ioc.guide.no">Không</td><td>4 bảng</td><td data-i18n="ioc.guide.fTablesUse">Giới hạn bảng cần quét để chạy nhanh hơn.</td></tr>
+                            </tbody>
+                        </table>
+<h6 class="text-info mt-3" data-i18n="ioc.guide.matrixH">3. Bảng và cột được quét theo từng loại IOC</h6>
+                        <table class="table table-sm table-dark">
+                            <thead><tr><th data-i18n="ioc.guide.mTable">Bảng</th><th>ip</th><th>domain</th><th>hash</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>events</code></td><td><code>raw_data</code>, <code>description</code></td><td><code>raw_data</code>, <code>description</code></td><td><code>raw_data</code></td></tr>
+                                <tr><td><code>network_traffic</code></td><td><code>src_ip</code>, <code>dst_ip</code></td><td><code>raw_data</code></td><td data-i18n="ioc.guide.mNone">— (không quét)</td></tr>
+                                <tr><td><code>sysmon_events</code></td><td><code>src_ip</code>, <code>dst_ip</code>, <code>raw_data</code></td><td><code>dns_query</code>, <code>raw_data</code></td><td><code>hashes</code>, <code>raw_data</code></td></tr>
+                                <tr><td><code>fim_events</code></td><td><code>raw_data</code></td><td><code>raw_data</code></td><td><code>file_hash</code>, <code>raw_data</code></td></tr>
+                            </tbody>
+                        </table>
+
+
+            
+
+<h6 class="text-info mt-3" data-i18n="ioc.guide.cmdH">4. Danh sách lệnh và công dụng</h6>
+                        <table class="table table-sm table-dark">
+                            <thead><tr><th style="width:30px;">#</th><th data-i18n="ioc.guide.cCmd">Lệnh (API / tiến trình)</th><th data-i18n="ioc.guide.cWhat">Công dụng</th><th data-i18n="ioc.guide.cRole">Quyền</th></tr></thead>
+                            <tbody>
+                                <tr><td>1</td><td><code>POST /api/ioc/sweep</code><br><span class="text-muted">{"iocs":[…], "tables":[…]}</span></td><td data-i18n="ioc.guide.c1">Quét hồi tố danh sách IOC trên 4 bảng dữ liệu, trả về các dòng khớp (tối đa 500) + thống kê; ghi nhật ký <code>ioc_sweep</code>.</td><td>operator+</td></tr>
+                                <tr><td>2</td><td><code>POST /api/ioc/sweep</code><br><span class="text-muted">multipart file (.csv/.json)</span></td><td data-i18n="ioc.guide.c2">Nhập IOC từ file rồi quét ngay - chính là nút "Upload file + Quét IOC" trên giao diện.</td><td>operator+</td></tr>
+                                <tr><td>3</td><td><code>POST /api/watchlist</code><br><span class="text-muted">{"indicator","type","label","severity","source","note"}</span></td><td data-i18n="ioc.guide.c3">Thêm/cập nhật 1 IOC vào Watchlist để agent tự phát hiện (cảnh báo <code>IOC-WATCH-001</code>) và tự chặn nếu bật phản hồi.</td><td>operator+</td></tr>
+                                <tr><td>4</td><td><code>POST /api/watchlist/import</code><br><span class="text-muted">{"items":[…]} hoặc {"text":"mỗi dòng 1 IOC"}</span></td><td data-i18n="ioc.guide.c4">Nhập hàng loạt IOC (tự đoán loại nếu bỏ trống); trả về số thêm mới / cập nhật / bỏ qua.</td><td>operator+</td></tr>
+                                <tr><td>5</td><td><code>GET /api/watchlist?enabled=true</code></td><td data-i18n="ioc.guide.c5">Xem danh sách IOC đang theo dõi kèm trạng thái bật/tắt.</td><td>viewer+</td></tr>
+                                <tr><td>6</td><td><code>POST /api/watchlist/&lt;id&gt;/toggle</code></td><td data-i18n="ioc.guide.c6">Bật/tắt một IOC - tắt là giữ lại nhưng không sinh cảnh báo và không đẩy sang intel.</td><td>operator+</td></tr>
+                                <tr><td>7</td><td><code>DELETE /api/watchlist/&lt;id&gt;</code></td><td data-i18n="ioc.guide.c7">Xoá hẳn một IOC khỏi Watchlist (có ghi audit).</td><td>operator+</td></tr>
+                                <tr><td>8</td><td><code>POST /api/watchlist/push-intel</code></td><td data-i18n="ioc.guide.c8">Xuất IOC ip/domain đang bật sang file threat-intel cục bộ để cảnh báo khớp được gắn nhãn <code>LOCAL:…</code> (cần <code>GIAMSAT_INTEL_FILE</code> trong <code>server/.env</code>).</td><td>operator+</td></tr>
+                                <tr><td>9</td><td><span class="text-muted" data-i18n="ioc.guide.c9b">Tiến trình nền của server (không cần bấm)</span></td><td data-i18n="ioc.guide.c9">Quét hồi tố tự động mỗi 60 phút trên dữ liệu 30 ngày bằng IOC lấy từ cache MISP → tự sinh cảnh báo.</td><td data-i18n="ioc.guide.auto">tự động</td></tr>
+                                <tr><td>10</td><td><code>threat_hunting.search_ioc</code><br><span class="text-muted" data-i18n="ioc.guide.c10b">tab "Săn tìm đe dọa"</span></td><td data-i18n="ioc.guide.c10">Tìm chi tiết quanh một IOC (tự nhận dạng loại) để điều tra sâu từng trường hợp.</td><td>operator+</td></tr>
+                                <tr><td>11</td><td><span class="text-muted" data-i18n="ioc.guide.c11b">tab "Chặn cảnh báo giả"</span></td><td data-i18n="ioc.guide.c11">Tạo luật chặn cho IOC/rule gây dương tính giả - dùng khi kết quả quét là nhiễu.</td><td>admin</td></tr>
+                                <tr><td>12</td><td><span class="text-muted" data-i18n="ioc.guide.c12b">tab "Đe dọa" → nhật ký</span></td><td data-i18n="ioc.guide.c12">Xem cảnh báo thật do IOC sinh ra trong vận hành để đối chiếu với kết quả quét.</td><td>viewer+</td></tr>
+                            </tbody>
+                        </table>
+
+
+                        
+
+<h6 class="text-info mt-3" data-i18n="ioc.guide.resultH">5. Cấu trúc kết quả trả về</h6>
+                        <pre style="background:#0a0f14;color:#9fe8b0;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto;">{
+  "status": "ok",
+  "matches": 1,
+  "results": [
+    { "ioc_type": "ip", "ioc_value": "185.220.101.100",
+      "table": "network_traffic", "column": "dst_ip",
+      "matched_value": "185.220.101.100", "event_id": 12345,
+      "timestamp": "2026-09-23 14:02:11", "hostname": "IT-YSNT",
+      "machine_id": "f196aff3", "ioc_source": "OTX", "ioc_confidence": 90 }
+  ],
+  "stats": { "scans_run": 4, "total_matches": 12 }
+}</pre>
+                        <ul class="text-muted" style="font-size:11px;">
+                            <li data-i18n="ioc.guide.r1"><code>matches</code> = tổng số dòng khớp; <code>results</code> chỉ trả tối đa 500 dòng đầu (giới hạn kích thước phản hồi).</li>
+                            <li data-i18n="ioc.guide.r2">Mỗi dòng cho biết bảng + cột nào khớp, giá trị khớp (cắt 200 ký tự), id bản ghi, thời gian, host, machine_id.</li>
+                            <li data-i18n="ioc.guide.r3"><code>ioc_source</code>/<code>ioc_confidence</code> lấy từ chính IOC bạn nhập; <code>stats</code> là số liệu tích luỹ của phiên server hiện tại.</li>
+                        </ul>
+
+                        <h6 class="text-info mt-3" data-i18n="ioc.guide.tipsH">6. Ghi chú &amp; giới hạn</h6>
+                        <ul class="text-muted" style="font-size:11px;">
+                            <li data-i18n="ioc.guide.tip1">So khớp là <b>chuỗi con, không phân biệt hoa/thường</b> (LIKE %value%) - nhập ngắn (vd <code>evil.com</code>) sẽ khớp rộng và dễ dương tính giả.</li>
+                            <li data-i18n="ioc.guide.tip2">Mỗi cột quét tối đa 1.000 dòng (LIMIT 1000) nên kết quả là mẫu, không phải toàn bộ lịch sử.</li>
+                            <li data-i18n="ioc.guide.tip3">Nên dùng hash SHA256 cho file, IP/domain cho mạng; hash không được quét ở bảng <code>network_traffic</code>.</li>
+                            <li data-i18n="ioc.guide.tip4">Muốn agent TỰ phát hiện/chặn khi IOC xuất hiện: thêm IOC vào <b>Watchlist</b> (nút Watchlist ở tab Đe dọa) - watchlist_matcher sinh cảnh báo <code>IOC-WATCH-001</code>.</li>
+                            <li data-i18n="ioc.guide.tip5">Nếu IOC là dương tính giả, dùng tab <b>Chặn cảnh báo giả</b> để tắt cảnh báo lặp lại.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+                        
         </div>
 
         <!-- v3.9.3: MITRE ATT&CK Matrix -->

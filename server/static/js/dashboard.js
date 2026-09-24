@@ -712,6 +712,24 @@ function setThreatStatus(id, status) {
         }).catch(function() { showToast('❌ ' + t('ui.connErrShort')); });
 }
 
+// ===== v5.0.8: drill-down từ ma trận MITRE -> cảnh báo cụ thể =====
+// mitre-matrix.js gọi openThreatsByRule('ANOMALY-12765') khi người dùng bấm vào
+// tên sự kiện/rule trong modal chi tiết -> nhảy sang tab Đe dọa và lọc đúng rule đó.
+var _threatRuleFilter = '';
+
+function openThreatsByRule(ruleId) {
+    _threatRuleFilter = String(ruleId == null ? '' : ruleId).trim();
+    showView('threats');   // nav click -> viewMap.threats.load() -> loadThreats() (đã áp filter)
+    if (window.showToast && _threatRuleFilter) {
+        showToast('🔎 ' + t('tr.filterRule') + ': ' + _threatRuleFilter);
+    }
+}
+
+function clearThreatRuleFilter() {
+    _threatRuleFilter = '';
+    loadThreats();
+}
+
 function loadThreats() {
     const el = document.getElementById('threatList');
     // v5.0.4 (Phase1 B3): optional grouping by (rule, window) to cut noise
@@ -735,6 +753,19 @@ function loadThreats() {
         if (_threatAssigneeFilter === '__none__') rows = rowsAll.filter(function(e) { return !e.assignee; });
         else if (_threatAssigneeFilter === '__me__') rows = rowsAll.filter(function(e) { return e.assignee && currentUser && e.assignee === currentUser.username; });
         else if (_threatAssigneeFilter) rows = rowsAll.filter(function(e) { return e.assignee === _threatAssigneeFilter; });
+        // v5.0.8: lọc theo rule/cảnh báo cụ thể (được đặt từ ma trận MITRE hoặc
+        // bởi chính người dùng) - khớp rule_id hoặc rule_name, chính xác trước.
+        if (_threatRuleFilter) {
+            const _rf = _threatRuleFilter.toLowerCase();
+            const _exact = rows.filter(function(e) {
+                return String(e.rule_id || '').toLowerCase() === _rf
+                    || String(e.rule_name || '').toLowerCase() === _rf;
+            });
+            rows = _exact.length ? _exact : rows.filter(function(e) {
+                return String(e.rule_id || '').toLowerCase().indexOf(_rf) >= 0
+                    || String(e.rule_name || '').toLowerCase().indexOf(_rf) >= 0;
+            });
+        }
         const selOpts = '<select id="threatAssigneeFilter" class="form-select form-select-sm d-inline-block" style="width:auto;background:var(--bg-dark);color:#d0d8e0;border-color:var(--border-color);font-size:11px;" onchange="setThreatAssignee(this.value)">' +
             '<option value="">🧑 Tất cả người xử lý</option>' +
             (currentUser && currentUser.username ? '<option value="__me__"' + (_threatAssigneeFilter === '__me__' ? ' selected' : '') + '>⭐ Của tôi (' + escapeHtml(currentUser.username) + ')</option>' : '') +
@@ -744,6 +775,7 @@ function loadThreats() {
             '<option value="__none__"' + (_threatAssigneeFilter === '__none__' ? ' selected' : '') + '>Chưa gán (' + unassigned + ')</option></select>';
         const toolbar = '<div class="p-2 d-flex justify-content-between align-items-center" style="font-size:11px;color:#8892a4;gap:8px;flex-wrap:wrap;">' +
             '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' + selOpts +
+            (_threatRuleFilter ? '<span class="badge bg-info text-dark" style="font-size:10px;">🔎 ' + t('tr.filterRule') + ': ' + escapeHtml(_threatRuleFilter) + ' <a href="#" onclick="clearThreatRuleFilter();return false;" style="color:#000;text-decoration:none;">✕</a></span>' : '') +
             '<label><input type="checkbox" id="threatGroupByRule" onchange="loadThreats()"> 📊 Nhóm theo rule</label>' +
             '<label><input type="checkbox" id="threatShowHandled" onchange="loadThreats()"' + (showHandled ? ' checked' : '') + '> ' + t('tr.showHandled') + '</label></div>' +
             '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;" id="threatQueueChips">' +
@@ -4567,6 +4599,16 @@ function loadAnomaly() {
 }
 
 // ===== v3.2: IOC SWEEP =====
+// v5.0.8: tab con trong màn Quét IOC (Quét IOC | Hướng dẫn)
+function switchIocTab(name) {
+    document.querySelectorAll('[data-tab-ioc]').forEach(function (el) {
+        el.classList.toggle('active', el.getAttribute('data-tab-ioc') === name);
+    });
+    document.querySelectorAll('.tab-ioc-content').forEach(function (c) { c.style.display = 'none'; });
+    const target = document.getElementById('tabIoc' + name.charAt(0).toUpperCase() + name.slice(1));
+    if (target) target.style.display = 'block';
+}
+
 function loadIoc() {
     // Reload button: restore the default empty state (no scan history API)
     const res = document.getElementById('iocResults');
