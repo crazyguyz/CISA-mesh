@@ -791,6 +791,17 @@ body.compact-mode .btn{font-size:11px !important;}
                 </div>
             </div>
             <div id="invEntityPanel" style="display:none;" class="mt-2"></div>
+            <div class="card mt-2">
+                <div class="card-header py-1 d-flex justify-content-between align-items-center" style="font-size:12px;">
+                    <span><i class="bi bi-folder2-open"></i> <b data-i18n="inv.evidenceList">Hồ sơ bằng chứng đã lưu</b>
+                        <span class="text-muted" style="font-size:10.5px;" data-i18n="inv.evidenceListHint">Bấm 📄 trên một kết quả để tạo hồ sơ ±15 phút (ảnh chụp toàn bộ bằng chứng + cây tiến trình), rồi tải 1 file HTML để trình bày</span>
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="investigate.loadEvidence()" style="font-size:10px;">⟳</button>
+                </div>
+                <div class="card-body p-2" id="invEvidence" style="font-size:11.5px;max-height:240px;overflow-y:auto;">
+                    <div class="text-muted" data-i18n="ui.loading">Đang tải...</div>
+                </div>
+            </div>
         </div>
 
         <div id="viewIncident" style="display:none;">

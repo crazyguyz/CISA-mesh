@@ -124,6 +124,108 @@
       r.path || r.file || r.cve || r.dns_query || r.http_host || '';
   }
 
+  // Opened the view but nobody typed a query yet: the dashboard framework has
+  // already put a spinner in #invResults, so we MUST render something here or the
+  // page spins forever (that was the reported bug). Shows what the tool is for,
+  // six clickable examples and the field hints from /api/investigate/fields.
+  // Six examples - all verified against the live database, one per syntax feature,
+  // so a first-time user always sees rows instead of an empty result.
+  var EXAMPLES = [
+    'hostname:IT-YSNT',
+    'user:SYSTEM -hostname:ADMINZ',
+    'sev:HIGH hours:168',
+    'event_id:4625',
+    'dst_ip:8.8.8.8 OR dst_ip:1.1.1.1',
+    '"powershell"'
+  ];
+
+  function renderWelcome() {
+    var box = el('invResults');
+    if (!box) { return; }
+    var chips = EXAMPLES.map(function (q) {
+      return '<span class="badge bg-dark inv-use" role="button" style="cursor:pointer;font-weight:400;"' +
+        ' data-use="' + esc(q) + '">' + esc(q) + '</span>';
+    }).join(' ');
+    box.innerHTML =
+      '<div class="p-3" style="font-size:12px;">' +
+      '<div class="mb-1"><b>' + esc(T('inv.welcomeTitle', 'Điều tra hợp nhất là gì?')) + '</b></div>' +
+      '<div class="text-muted mb-2">' + esc(T('inv.welcomeBody',
+        'Một ô tìm kiếm chạy trên TẤT CẢ nguồn (cảnh báo, sự kiện Windows, Sysmon, lưu lượng mạng, NetFlow, syslog, FIM, SCA, YARA, lỗ hổng, case). Gõ truy vấn, Enter để chạy; bấm vào bất kỳ giá trị nào để mở Entity 360 (mọi thứ về máy/IP/user/hash đó); nút 🌳 mở cây tiến trình, 📄 tạo hồ sơ bằng chứng.')) + '</div>' +
+      '<div class="mb-1"><b>' + esc(T('inv.syntax', 'Cú pháp')) + '</b> <span class="text-muted">' +
+      esc(T('inv.syntaxBody', 'trường:giá trị · -trường:giá trị (loại trừ) · "cụm từ" · OR · * (thay thế) · trường:>N')) +
+      '</span></div>' +
+      '<div class="mb-2"><b>' + esc(T('inv.examples', 'Thử ngay')) + '</b> ' + chips + '</div>' +
+      '<div id="invFields" class="text-muted" style="font-size:11px;"></div>' +
+      '</div>';
+    getJson('/api/investigate/fields').then(function (d) {
+      var box2 = el('invFields');
+      if (!box2 || !d) { return; }
+      var names = Object.keys(d.fields || {});
+      box2.innerHTML = '<b>' + esc(T('inv.availableFields', 'Trường dùng được')) + ':</b> ' +
+        esc(names.slice(0, 60).join(', ')) +
+        ' <br><b>' + esc(T('inv.scopes', 'Nguồn')) + ':</b> ' +
+        esc(Object.keys(d.scopes || {}).join(', '));
+    }).catch(function () {});
+  }
+
+  // The same card is in index.html, but a long-running server may still serve a
+  // cached template; mounting it from JS guarantees the panel always appears.
+  function ensureEvidenceCard() {
+    if (el('invEvidence')) { return; }
+    var anchor = el('invEntityPanel');
+    if (!anchor || !anchor.parentNode) { return; }
+    var card = document.createElement('div');
+    card.className = 'card mt-2';
+    card.innerHTML =
+      '<div class="card-header py-1 d-flex justify-content-between align-items-center" style="font-size:12px;">' +
+      '<span><i class="bi bi-folder2-open"></i> <b>' +
+      esc(T('inv.evidenceList', 'Hồ sơ bằng chứng đã lưu')) + '</b> <span class="text-muted" ' +
+      'style="font-size:10.5px;">' + esc(T('inv.evidenceListHint', '')) + '</span></span>' +
+      '<button class="btn btn-sm btn-outline-secondary" onclick="investigate.loadEvidence()" ' +
+      'style="font-size:10px;">⟳</button></div>' +
+      '<div class="card-body p-2" id="invEvidence" style="font-size:11.5px;max-height:240px;' +
+      'overflow-y:auto;"><div class="text-muted">' +
+      esc(T('ui.loading', 'Đang tải...')) + '</div></div>';
+    anchor.parentNode.insertBefore(card, anchor.nextSibling);
+  }
+
+  function loadEvidence() {
+    ensureEvidenceCard();
+    var box = el('invEvidence');
+    if (!box) { return Promise.resolve(); }
+    return getJson('/api/forensics/evidence?limit=20').then(function (d) {
+      var items = (d && d.items) || [];
+      if (!items.length) {
+        box.innerHTML = '<div class="text-muted">' +
+          esc(T('inv.evidenceEmpty', 'Chưa có hồ sơ nào. Bấm 📄 trên một kết quả để tạo.')) + '</div>';
+        return;
+      }
+      box.innerHTML = '<table class="table table-sm mb-0" style="font-size:11.5px;"><thead><tr>' +
+        '<th>#</th><th>Máy</th><th>Mốc</th><th>±</th><th>Tạo lúc</th><th></th></tr></thead><tbody>' +
+        items.map(function (e) {
+          return '<tr><td>' + esc(String(e.id)) + '</td><td>' + esc(e.hostname || e.machine_id) +
+            '</td><td>' + esc(e.anchor_time || '') + '</td><td>' + esc(String(e.window_minutes)) +
+            'p</td><td>' + esc(e.created_at || '') + '</td><td>' +
+            '<button class="btn btn-sm btn-outline-info" onclick="window.open(\'/api/forensics/evidence/' +
+            esc(String(e.id)) + '?fmt=html\',\'_blank\')">HTML</button> ' +
+            '<button class="btn btn-sm btn-outline-secondary" onclick="window.open(\'/api/forensics/evidence/' +
+            esc(String(e.id)) + '\',\'_blank\')">JSON</button> ' +
+            '<button class="btn btn-sm btn-outline-danger" onclick="investigate.delEvidence(' +
+            esc(String(e.id)) + ')">✕</button></td></tr>';
+        }).join('') + '</tbody></table>';
+    }).catch(function () {});
+  }
+
+  function delEvidence(id) {
+    return fetch('/api/forensics/evidence/' + id, { method: 'DELETE', credentials: 'same-origin' })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.success) {
+          if (typeof showToast === 'function') { showToast(T('inv.evidenceDeleted', 'Đã xoá hồ sơ')); }
+        }
+        loadEvidence();
+      }).catch(function () {});
+  }
+
   function renderResults(d) {
     var box = el('invResults');
     if (!box) { return; }
@@ -445,15 +547,35 @@
   }
 
   function init() {
-    if (state.inited) { loadSaved(); return; }
+    var box = el('invResults');
+    if (state.inited) {
+      loadSaved();
+      loadEvidence();
+      if (state.query && box) { run(); }
+      return;
+    }
     state.inited = true;
     renderScopes();
     loadSaved();
+    loadEvidence();
+    // NEVER leave the framework spinner in place: with no query we render the
+    // welcome/help panel (this was the "quay hoài không hiện gì" bug).
+    if (state.query) { run(); } else { renderWelcome(); }
     document.addEventListener('click', onScopeClick);
     document.addEventListener('click', onPivotClick);
     document.addEventListener('click', onAddClick);
     document.addEventListener('click', onSavedClick);
     document.addEventListener('click', onForensicClick);
+    document.addEventListener('click', onUseClick);
+  }
+
+  function onUseClick(ev) {
+    var chip = ev.target.closest ? ev.target.closest('.inv-use') : null;
+    if (!chip) { return; }
+    ev.preventDefault();
+    var box = el('invQuery');
+    if (box) { box.value = chip.getAttribute('data-use') || ''; }
+    run();
   }
 
   window.investigate = {
@@ -463,6 +585,9 @@
     closeEntity: closeEntity,
     tree: tree,
     evidence: evidence,
+    loadEvidence: loadEvidence,
+    delEvidence: delEvidence,
+    welcome: renderWelcome,
     save: save,
     del: del,
     exportFmt: exportFmt,

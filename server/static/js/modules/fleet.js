@@ -158,6 +158,155 @@
     return getJson('/api/health/fleet').then(renderHealth).catch(function () {});
   }
 
+  function renderStorage(d) {
+    var box = el('fleetStorage');
+    if (!box || !d) { return; }
+    var need = d.partitions_needed || [];
+    var html = '<div class="text-muted mb-1" style="font-size:11px;">' +
+      esc(T('fleet.storageHint', 'Retention trên bảng lớn = DROP cả tháng (tức thì) thay vì DELETE từng dòng. Rollup giữ số liệu ngày/máy để hỏi dài hạn mà không quét bảng thô.')) +
+      '</div><table class="table table-sm mb-1" style="font-size:11.5px;"><thead><tr>' +
+      '<th>Bảng</th><th>Dung lượng</th><th>Dòng</th><th>Partition</th></tr></thead><tbody>';
+    (d.tables || []).forEach(function (t) {
+      html += '<tr><td>' + esc(t.table) + '</td><td>' + esc(t.size) + '</td><td>' +
+        esc(String(t.rows)) + '</td><td>' +
+        (t.partitioned ? badge(t.partitions + ' tháng', 'bg-success') : badge('chưa', 'bg-secondary')) +
+        '</td></tr>';
+    });
+    html += '</tbody></table>';
+    if (need.length) {
+      html += '<div class="text-warning" style="font-size:11px;">⚠ ' +
+        esc(T('fleet.needPartition', 'Chưa partition')) + ': ' + esc(need.join(', ')) + '<br>' +
+        esc(T('fleet.partitionHow', 'Chuyển bằng: python tools/partition_events.py --table <bảng> --apply')) +
+        '</div>';
+    }
+    html += '<div class="mt-1">' +
+      '<button class="btn btn-sm btn-outline-info me-1" onclick="fleet.rollup()">' +
+      esc(T('fleet.rollup', 'Rollup ngay (daily_stats)')) + '</button>' +
+      '<button class="btn btn-sm btn-outline-danger" onclick="fleet.dropOld()">' +
+      esc(T('fleet.dropOld', 'Xoá dữ liệu quá hạn (DROP partition)')) + '</button></div>';
+    box.innerHTML = html;
+  }
+
+  function loadStorage() {
+    return getJson('/api/health/storage').then(renderStorage).catch(function () {});
+  }
+
+  function rollup() {
+    return postJson('/api/health/storage/rollup', { days: 30 }).then(function (d) {
+      toast(d && d.ok ? (T('fleet.rollupDone', 'Đã rollup') + ' (' + d.rows_in_table + ' dòng)')
+                      : ((d && d.error) || 'Error'));
+      loadStorage();
+      return d;
+    }).catch(function () {});
+  }
+
+  function dropOld() {
+    if (!window.confirm(T('fleet.dropOldConfirm',
+        'Xoá các tháng dữ liệu cũ hơn 30 ngày? Chỉ áp dụng cho bảng ĐÃ partition và không thể hoàn tác.'))) {
+      return;
+    }
+    return postJson('/api/health/storage/drop-old', { retention_days: 30 }).then(function (d) {
+      toast(T('fleet.dropDone', 'Đã xoá partition cũ') + ' (' + (((d && d.dropped) || []).length) + ')');
+      loadStorage();
+      return d;
+    }).catch(function () {});
+  }
+
+  function renderPolicyPreview(p) {
+    if (!p || !p.ok) {
+      return '<div class="text-danger" style="font-size:11.5px;">' + esc((p && p.error) || 'Error') +
+        '</div>';
+    }
+    var html = '<div style="font-size:11.5px;">' +
+      badge('ảnh hưởng ' + esc(String(p.affected)), 'bg-info text-dark') + ' ' +
+      badge('đã áp ' + esc(String((p.applied || []).length)), 'bg-success') + ' ' +
+      badge('chờ ' + esc(String((p.pending || []).length)), 'bg-secondary') + ' ' +
+      badge('lỗi ' + esc(String((p.failed || []).length)), 'bg-danger') + ' ' +
+      badge('offline ' + esc(String((p.offline || []).length)), 'bg-dark') + '</div>';
+    (p.warnings || []).forEach(function (w) {
+      html += '<div class="text-warning" style="font-size:11px;">⚠ ' + esc(w) + '</div>';
+    });
+    html += '<div class="text-muted" style="font-size:11px;">' +
+      esc(T('fleet.policyWaves', 'Đợt')) + ': ' + (p.waves || []).map(function (w) {
+        return esc(String(w.index) + '(' + (w.machines || []).length + ')');
+      }).join(' → ') + '</div>';
+    return html;
+  }
+
+  function renderPolicies(d, preview) {
+    var box = el('fleetPolicyList');
+    if (!box) { return; }
+    var items = (d && (d.policies || d.items)) || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="text-muted" style="font-size:11.5px;">' +
+        esc(T('fleet.noPolicy', 'Chưa có chính sách nhóm nào (tạo ở menu Nhóm & Chính sách).')) + '</div>';
+      return;
+    }
+    var html = '<div class="d-flex flex-wrap gap-1 align-items-center mb-1" style="font-size:11.5px;">' +
+      '<select id="fleetPolicy" class="form-select form-select-sm" style="width:auto;font-size:11.5px;">' +
+      items.map(function (p) {
+        return '<option value="' + esc(String(p.id)) + '">' + esc(p.policy_name || p.policy_type) +
+          ' (' + esc(p.policy_type || '') + (p.enabled ? '' : ', TẮT') + ')</option>';
+      }).join('') + '</select>' +
+      '<button class="btn btn-sm btn-outline-info" onclick="fleet.policyPreview()">' +
+      esc(T('fleet.policyPreview', 'Xem trước (không gửi)')) + '</button>' +
+      '<button class="btn btn-sm btn-success" onclick="fleet.policyWave(0)">' +
+      esc(T('fleet.policyCanary', 'Áp đợt canary')) + '</button>' +
+      '<button class="btn btn-sm btn-outline-success" onclick="fleet.policyNext()">' +
+      esc(T('fleet.policyNext', 'Sang đợt kế')) + '</button></div>' +
+      '<div id="fleetPolicyPreview"></div>';
+    box.innerHTML = html;
+    if (preview) {
+      var holder = el('fleetPolicyPreview');
+      if (holder) { holder.innerHTML = renderPolicyPreview(preview); }
+    }
+  }
+
+  function loadPolicies() {
+    return getJson('/api/policies/list').then(function (d) { renderPolicies(d, null); })
+      .catch(function () {});
+  }
+
+  function policyId() {
+    var sel = el('fleetPolicy');
+    return sel ? parseInt(sel.value, 10) : null;
+  }
+
+  function policyPreview() {
+    var id = policyId();
+    if (!id) { return; }
+    return postJson('/api/policies/preview', { policy_id: id }).then(function (p) {
+      var holder = el('fleetPolicyPreview');
+      if (holder) { holder.innerHTML = renderPolicyPreview(p); }
+      return p;
+    }).catch(function () {});
+  }
+
+  function policyWave(index) {
+    var id = policyId();
+    if (!id) { return; }
+    return postJson('/api/policies/wave-apply', { policy_id: id, wave_index: index })
+      .then(function (d) {
+        toast(d && d.success
+          ? (T('fleet.policyApplied', 'Đã chào đợt') + ' ' + (d.wave + 1) + ': ' + d.count + ' máy')
+          : ((d && d.error) || 'Error'));
+        return policyPreview();
+      }).catch(function () {});
+  }
+
+  function policyNext() {
+    var id = policyId();
+    if (!id) { return; }
+    return postJson('/api/policies/wave-advance', { policy_id: id, wave_index: 0 })
+      .then(function (d) {
+        toast(d && d.success
+          ? (d.done ? T('fleet.policyDone', 'Đã ở đợt cuối')
+                    : T('fleet.advanced', 'Đã sang đợt tiếp'))
+          : (T('fleet.blocked', 'Bị chặn: ') + ((d && d.reason) || '')));
+        return policyPreview();
+      }).catch(function () {});
+  }
+
   function loadRollout(id) {
     return getJson(id ? ('/api/fleet/rollout/' + id) : '/api/fleet/rollouts')
       .then(function (d) {
@@ -228,6 +377,21 @@
     }).catch(function () {});
   }
 
+  function loadRolloutList() {
+    return getJson('/api/fleet/rollouts').then(function (d) {
+      var sel = el('fleetRolloutPick');
+      if (!sel) { return; }
+      var items = (d && d.items) || [];
+      sel.innerHTML = items.length
+        ? items.map(function (r) {
+            return '<option value="' + esc(String(r.id)) + '"' +
+              (state.rolloutId === r.id ? ' selected' : '') + '>#' + esc(String(r.id)) + ' ' +
+              esc(r.target_version || '') + ' [' + esc(r.state || '') + ']</option>';
+          }).join('')
+        : '<option value="">--</option>';
+    }).catch(function () {});
+  }
+
   function init() {
     var host = el('fleetPanel');
     if (!host) { return; }
@@ -239,12 +403,17 @@
       esc(T('fleet.subtitle', 'canary → 10% → 100%, tự chặn khi đợt chưa khỏe')) + '</span>' +
       '<button class="btn btn-sm btn-outline-secondary float-end" onclick="fleet.reload()">⟳</button></div>' +
       '<div class="card-body p-2">' +
+      '<div class="text-muted mb-2" style="font-size:11px;">' +
+      esc(T('fleet.rolloutHint', 'Nâng cấp agent theo từng đợt: đợt 1 là canary (1 máy). Máy báo đúng phiên bản đích mới tính là xong; đợt chưa đạt 90% hoặc có máy lỗi thì nút "Sang đợt tiếp" sẽ bị chặn.')) +
+      '</div>' +
       '<div class="row g-2 align-items-center mb-2">' +
-      '<div class="col-md-3"><input id="fleetWaves" class="form-control form-control-sm" value="' +
+      '<div class="col-md-2"><input id="fleetWaves" class="form-control form-control-sm" value="' +
       esc(waves) + '" placeholder="1,10,100"></div>' +
-      '<div class="col-md-4"><input id="fleetTarget" class="form-control form-control-sm" placeholder="' +
+      '<div class="col-md-3"><input id="fleetTarget" class="form-control form-control-sm" placeholder="' +
       esc(T('fleet.targetVersion', 'phiên bản đích (trống = bản server đang phát)')) + '"></div>' +
-      '<div class="col-md-5">' +
+      '<div class="col-md-3"><select id="fleetRolloutPick" class="form-select form-select-sm" ' +
+      'onchange="fleet.loadRollout(this.value)"><option value="">--</option></select></div>' +
+      '<div class="col-md-4">' +
       '<button class="btn btn-sm btn-outline-info me-1" onclick="fleet.plan()">' +
       esc(T('fleet.plan', 'Xem kế hoạch')) + '</button>' +
       '<button class="btn btn-sm btn-success" onclick="fleet.start()">' +
@@ -252,22 +421,45 @@
       '<div id="fleetPlan"></div><div id="fleetRollout"></div>' +
       '<hr style="border-color:#24313d;">' +
       '<div style="font-size:12px;"><i class="bi bi-activity"></i> <b>' +
-      esc(T('fleet.health', 'Sức khỏe đội máy')) + '</b></div>' +
-      '<div id="fleetHealth" class="mt-2" style="font-size:11.5px;max-height:340px;overflow-y:auto;"></div>' +
+      esc(T('fleet.health', 'Sức khỏe đội máy')) + '</b> <span class="text-muted" style="font-size:10.5px;">' +
+      esc(T('fleet.healthHint', 'Máy nào im lặng, máy nào phiên bản cũ, thiếu Sysmon/auditpol, và nguồn nào bị server TỪ CHỐI (dữ liệu không vào được).')) +
+      '</span></div>' +
+      '<div id="fleetHealth" class="mt-2" style="font-size:11.5px;max-height:300px;overflow-y:auto;"></div>' +
+      '<hr style="border-color:#24313d;">' +
+      '<div style="font-size:12px;"><i class="bi bi-hdd-stack"></i> <b>' +
+      esc(T('fleet.storage', 'Dung lượng & partition')) + '</b></div>' +
+      '<div id="fleetStorage" class="mt-2"></div>' +
+      '<hr style="border-color:#24313d;">' +
+      '<div style="font-size:12px;"><i class="bi bi-shield-check"></i> <b>' +
+      esc(T('fleet.policy', 'Chính sách theo đợt')) + '</b> <span class="text-muted" style="font-size:10.5px;">' +
+      esc(T('fleet.policyHint', 'Áp một chính sách nhóm cho từng đợt máy: chỉ đợt đang chọn được agent nhận, các máy khác tạm bị chặn. "Xem trước" không gửi gì.')) +
+      '</span></div>' +
+      '<div id="fleetPolicyList" class="mt-2" style="font-size:11.5px;"></div>' +
       '</div></div>';
-    return Promise.all([loadHealth(), loadRollout(null), plan()]);
+    return Promise.all([loadHealth(), loadRolloutList(), loadRollout(null), plan(),
+                        loadStorage(), loadPolicies()]);
   }
 
   window.fleet = {
     init: init,
-    reload: function () { return Promise.all([loadHealth(), loadRollout(state.rolloutId), plan()]); },
+    reload: function () {
+      return Promise.all([loadHealth(), loadRolloutList(), loadRollout(state.rolloutId), plan(),
+                          loadStorage(), loadPolicies()]);
+    },
     plan: plan,
     start: start,
     advance: advance,
     rollback: rollback,
     ack: ack,
+    rollup: rollup,
+    dropOld: dropOld,
+    policyPreview: policyPreview,
+    policyWave: policyWave,
+    policyNext: policyNext,
     loadHealth: loadHealth,
     loadRollout: loadRollout,
+    loadStorage: loadStorage,
+    loadPolicies: loadPolicies,
     state: state
   };
 })();
