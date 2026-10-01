@@ -28,6 +28,13 @@ import shutil
 import sys
 import tempfile
 
+# v5.0.8: this suite drives the Windows AGENT modules (pywin32/win32evtlog,
+# encrypted cache with DPAPI). Skip cleanly on other platforms so CI can still run
+# every suite (Windows gets the real coverage).
+if os.name != "nt":
+    print("SKIP: Windows-only suite (needs pywin32/win32evtlog) - run on a Windows host")
+    sys.exit(0)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "agent"))
 

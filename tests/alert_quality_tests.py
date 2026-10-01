@@ -40,6 +40,13 @@ AGENT = os.path.join(ROOT, "agent")
 sys.path.insert(0, SERVER)
 sys.path.insert(0, AGENT)
 
+# v5.0.8: the agent-side checks in this suite import event_collector /
+# sysmon_collector / vuln_scanner, which import pywin32 at module level on Windows.
+# Skip cleanly on other platforms so CI can run every suite.
+if os.name != "nt":
+    print("SKIP: Windows-only suite (agent modules need pywin32) - run on a Windows host")
+    sys.exit(0)
+
 RESULTS = []
 
 
