@@ -15,6 +15,7 @@ UI simply shows "-" (no crash, no agent changes).
 import os
 import ipaddress
 import threading
+import time
 
 try:
     import maxminddb as _maxminddb
@@ -34,6 +35,12 @@ _lock = threading.Lock()
 _readers = {"asn": None, "city": None}
 _cache = {}
 _loaded = False
+# v5.0.8: the .mmdb files are optional and can be installed WHILE the server runs
+# (tools/setup_geolite2.ps1). `_loaded` used to latch True on the first lookup even
+# when both files were missing, so the running server never picked them up until a
+# restart. We now keep retrying (at most once a minute) until both are readable.
+_next_retry = 0.0
+_RETRY_SECONDS = 60
 
 
 def _get_reader(kind):
@@ -48,16 +55,29 @@ def _get_reader(kind):
 
 
 def _ensure_loaded():
-    global _loaded
+    global _loaded, _next_retry
     if _loaded or not _HAS_MMDB:
+        return
+    now = time.time()
+    if _next_retry and now < _next_retry:
         return
     with _lock:
         if _loaded:
             return
+        gained = []
         for k in ("asn", "city"):
             if _readers[k] is None:
                 _readers[k] = _get_reader(k)
-        _loaded = True
+                if _readers[k] is not None:
+                    gained.append(k)
+        if _readers["asn"] is not None and _readers["city"] is not None:
+            _loaded = True
+        else:
+            # keep the door open: the files may be installed while we run
+            _next_retry = time.time() + _RETRY_SECONDS
+        if gained:
+            print("[*] GeoIP: loaded %s database(s) from %s"
+                  % (", ".join(gained), _DEFAULT_DIR))
 
 
 def is_private(ip_str):

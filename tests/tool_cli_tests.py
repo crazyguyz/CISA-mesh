@@ -63,8 +63,12 @@ def file_digest(path):
     return h.hexdigest()
 
 
-def run(args, cwd=None, timeout=120):
-    proc = subprocess.run([sys.executable] + args, cwd=cwd or ROOT, timeout=timeout,
+def run(args, cwd=None, timeout=120, env=None):
+    return run_raw([sys.executable] + args, cwd=cwd, timeout=timeout, env=env)
+
+
+def run_raw(argv, cwd=None, timeout=120, env=None):
+    proc = subprocess.run(argv, cwd=cwd or ROOT, timeout=timeout, env=env,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return proc.returncode, proc.stdout.decode("utf-8", "replace")
 
@@ -123,10 +127,75 @@ def test_reset_admin_pw_is_dry_run_by_default():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def run_raw(argv, cwd=None, timeout=120):
-    proc = subprocess.run(argv, cwd=cwd or ROOT, timeout=timeout,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return proc.returncode, proc.stdout.decode("utf-8", "replace")
+GEOIP_PROBE = '''
+import os, shutil, sys
+root = sys.argv[1]
+sys.path.insert(0, os.path.join(root, "server"))
+import geoip_lookup as g
+
+assert not g._loaded
+g._ensure_loaded()
+if g._loaded or g._readers["asn"] is not None:
+    print("RESULT: fail (latched as loaded with missing files)")
+    sys.exit(1)
+
+data = os.path.join(root, "server", "data")
+asn_src = os.path.join(data, "dbip-asn-lite.mmdb")
+city_src = os.path.join(data, "dbip-city-lite.mmdb")
+if not (os.path.exists(asn_src) and os.path.exists(city_src)):
+    print("SKIP no real .mmdb in server/data to test with")
+    sys.exit(0)
+
+# simulate tools/setup_geolite2.ps1 finishing WHILE the server runs
+shutil.copy(asn_src, os.environ["GIAMSAT_GEOIP_ASN_DB"])
+shutil.copy(city_src, os.environ["GIAMSAT_GEOIP_CITY_DB"])
+g._next_retry = 0
+g._ensure_loaded()
+ok = g._loaded and g._readers["asn"] is not None
+
+from network_baseline import NetworkBaseline
+nb = NetworkBaseline(None)
+country = nb._lookup_country("8.8.8.8")
+private = nb._lookup_country("192.168.1.10")
+asn = nb._extract_asn_from_ip("8.8.8.8")
+nb_ok = len(str(country)) == 2 and str(country).isalpha() and private == "PRIVATE" and asn
+if ok and nb_ok:
+    print("RESULT: ok (country=%s, asn=%s)" % (country, asn))
+else:
+    print("RESULT: fail (loaded=%s country=%s private=%s asn=%s)" % (ok, country, private, asn))
+sys.exit(0 if (ok and nb_ok) else 1)
+'''
+
+
+def test_geolite2_and_geoip_reload():
+    """tools/setup_geolite2.ps1 used to build one URL from the CURRENT month only,
+    which 404s until db-ip publishes (so server\\data stayed empty), and the server
+    latched `_loaded` on the first lookup so a running server never picked up the
+    files it fetched later."""
+    print("\n-- GeoIP: monthly fallback + server picks files up while running --")
+    ps = open(os.path.join(TOOLS, "setup_geolite2.ps1"), encoding="utf-8").read()
+    check("geolite2 walks back through months", "AddMonths" in ps)
+    check("geolite2 survives the 404 of an unpublished month",
+          "catch" in ps and "continue" in ps and "exit 1" in ps)
+    src = open(os.path.join(ROOT, "server", "geoip_lookup.py"), encoding="utf-8").read()
+    check("geoip lookup retries instead of latching", "_next_retry" in src)
+
+    tmp = tempfile.mkdtemp(prefix="giamsat_geoip_")
+    try:
+        asn = os.path.join(tmp, "asn.mmdb")
+        city = os.path.join(tmp, "city.mmdb")
+        child = os.path.join(tmp, "probe.py")
+        with open(child, "w", encoding="utf-8") as f:
+            f.write(GEOIP_PROBE)
+        env = dict(os.environ, GIAMSAT_GEOIP_ASN_DB=asn, GIAMSAT_GEOIP_CITY_DB=city)
+        code, out = run([child, ROOT], env=env)
+        if "SKIP" in out:
+            print("SKIP  no .mmdb in server/data (run tools/setup_geolite2.ps1 first)")
+        else:
+            check("mmdb installed while the server runs is picked up",
+                  code == 0 and "RESULT: ok" in out, "code=%s out=%s" % (code, out[-300:]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def test_rule_replay_supports_postgres():
@@ -200,6 +269,7 @@ def main():
     test_every_tool_has_safe_help()
     test_reset_admin_pw_is_dry_run_by_default()
     test_rule_replay_supports_postgres()
+    test_geolite2_and_geoip_reload()
     test_powershell_tools_parse()
     passed = sum(1 for _, ok in RESULTS if ok)
     print("\n" + "=" * 68)

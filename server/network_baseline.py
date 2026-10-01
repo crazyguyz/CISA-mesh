@@ -58,21 +58,42 @@ class NetworkBaseline:
 
     def _lookup_country(self, ip):
         """Look up country code for an IP address.
-        Returns country code (e.g., 'US', 'VN') or 'UNKNOWN'.
+        Returns country code (e.g., 'US', 'VN'), 'PRIVATE'/'LOCALHOST' or 'UNKNOWN'.
+
+        v5.0.8: falls back to server/geoip_lookup.py, i.e. the free db-ip .mmdb
+        files installed by tools/setup_geolite2.ps1. Before this the class needed
+        the optional `geoip2` package AND a separate MaxMind GeoLite2-Country.mmdb
+        (neither is installed by default), so every destination resolved to
+        UNKNOWN and the NW-005 "New Country" rule could never fire.
         """
         if self.geo_reader:
             try:
                 response = self.geo_reader.country(ip)
-                return response.country.iso_code or "UNKNOWN"
+                if response.country.iso_code:
+                    return response.country.iso_code
             except Exception:
                 pass
-        # Fallback: simple private IP detection
-        if ip.startswith(("192.168.", "10.", "172.")) and any(
-            ip.startswith(f"172.{i}.") for i in range(16, 32)
-        ):
-            return "PRIVATE"
-        if ip.startswith("127."):
-            return "LOCALHOST"
+
+        try:
+            from geoip_lookup import is_private, lookup
+            if is_private(ip):
+                return "LOCALHOST" if str(ip).startswith("127.") else "PRIVATE"
+            info = lookup(ip)
+            if info and info.get("country_iso"):
+                return info["country_iso"]
+        except Exception:
+            pass
+
+        # last resort: RFC1918 / loopback detection without any GeoIP data
+        try:
+            import ipaddress
+            addr = ipaddress.ip_address(ip)
+            if addr.is_loopback:
+                return "LOCALHOST"
+            if addr.is_private:
+                return "PRIVATE"
+        except Exception:
+            pass
         return "UNKNOWN"
 
     def _extract_asn_from_ip(self, ip):
@@ -80,9 +101,18 @@ class NetworkBaseline:
         if self.geo_reader:
             try:
                 response = self.geo_reader.asn(ip)
-                return response.autonomous_system_number
+                if response.autonomous_system_number:
+                    return response.autonomous_system_number
             except Exception:
                 pass
+        # v5.0.8: same db-ip fallback as _lookup_country
+        try:
+            from geoip_lookup import lookup
+            info = lookup(ip)
+            if info and info.get("asn"):
+                return info["asn"]
+        except Exception:
+            pass
         return None
 
     def build_baseline(self):
