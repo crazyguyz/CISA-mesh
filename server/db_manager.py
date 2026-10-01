@@ -2619,9 +2619,15 @@ class DatabaseManager:
         v5.0.4 (HIGH-1): prefer dist/agent_version.txt (the version SHIPPED next to
         the real binary that /api/agent/download serves) so a hand-edited
         server/version.txt can never drift from the actual exe again; falls back to
-        version.txt when the dist file is missing."""
+        version.txt when the dist file is missing.
+
+        v5.0.8 (bug that): the dist path used "..", ".." - one level TOO HIGH (for a repo
+        at D:\\test\\server\\ it resolved to D:\\dist = the version of the agent installed
+        on THIS host, not the build being served), so the server advertised the agent's own
+        version and auto-update never triggered ("Up to date" forever).
+        """
         try:
-            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "dist", "agent_version.txt")
+            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dist", "agent_version.txt")
             if os.path.exists(dist_v):
                 with open(dist_v, "r", encoding="utf-8") as f:
                     v = f.read().strip()

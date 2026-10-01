@@ -268,6 +268,44 @@ def test_name_spoofing_heuristic():
     check("legacy digit-name allowlist removed", not hasattr(ms, "_LEGIT_NUMERIC_NAMES"))
 
 
+def test_server_agent_version_path():
+    """Bug: get_server_agent_version() read ../../dist (= the agent version installed on
+    THIS host) instead of the repo dist the server actually serves -> 'Up to date' forever."""
+    print("\n-- server: advertised agent version path --")
+    import db_postgres as dp
+
+    for name, path in (("db_postgres", os.path.join(SERVER, "db_postgres.py")),
+                       ("db_manager", os.path.join(SERVER, "db_manager.py"))):
+        src = read(path)
+        check("%s: dist path is ONE level up (repo/dist)" % name,
+              '"..", "dist", "agent_version.txt"' in src)
+        check("%s: no leftover ../../dist path" % name,
+              '"..", "..", "dist", "agent_version.txt"' not in src)
+
+    # Both sides must point at the SAME folder: the EXE the server serves and the
+    # version it advertises. api_agent_update defines _AGENT_BUILD_DIR inside
+    # register(), so compare the resolved paths instead of importing it.
+    src_api = read(os.path.join(SERVER, "api", "api_agent_update.py"))
+    check("api_agent_update serves the repo dist (server/api/../../dist)",
+          '"..", "..", "dist"' in src_api)
+    served = os.path.normpath(os.path.join(SERVER, "api", "..", "..", "dist"))
+    advertised_dir = os.path.normpath(os.path.join(SERVER, "..", "dist"))
+    check("EXE download dir resolves to repo/dist",
+          served == os.path.normpath(os.path.join(ROOT, "dist")), served)
+    check("advertised version dir == served EXE dir", advertised_dir == served,
+          "%s vs %s" % (advertised_dir, served))
+
+    inst = object.__new__(dp.PostgresDatabase)
+    got = dp.PostgresDatabase.get_server_agent_version(inst)
+    dist_file = os.path.join(ROOT, "dist", "agent_version.txt")
+    expected = ""
+    if os.path.exists(dist_file):
+        with open(dist_file, encoding="utf-8") as fh:
+            expected = fh.read().strip()
+    check("advertised version comes from repo/dist/agent_version.txt (%s)" % (expected or "missing"),
+          (not expected) or got == expected, "got '%s'" % got)
+
+
 def main():
     print("=" * 68)
     print("  GIAM-SAT alert-quality / silent-failure tests - v5.0.8")
@@ -281,6 +319,7 @@ def main():
     test_sysmon_window_bound()
     test_vuln_cache_dir()
     test_name_spoofing_heuristic()
+    test_server_agent_version_path()
     failed = [n for n, ok in RESULTS if not ok]
     print("\n" + "=" * 68)
     print("  %d/%d checks passed" % (len(RESULTS) - len(failed), len(RESULTS)))

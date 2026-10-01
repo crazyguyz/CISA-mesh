@@ -2186,9 +2186,17 @@ class PostgresDatabase:
     def get_server_agent_version(self):
         """Get current server-side agent version - prefers dist/agent_version.txt
         (matches the binary actually served) then falls back to version.txt.
-        v5.0.4 (HIGH-1): prevents hand-edited version.txt drifting from the real exe."""
+
+        v5.0.8 (bug that): the path used "..", "..", "dist" - one level TOO HIGH.
+        For a repo checked out at D:\\test\\server\\ that resolved to D:\\dist, i.e. the
+        version file of the agent INSTALLED ON THIS MACHINE, not the build the server
+        serves (server/api/api_agent_update._AGENT_BUILD_DIR = repo\\dist). Result: the
+        server advertised the agent's own old version -> POST /api/agent/version always
+        answered update_available=false -> "Up to date" forever and the dashboard kept
+        showing the old version even after building a new one.
+        """
         try:
-            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "dist", "agent_version.txt")
+            dist_v = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dist", "agent_version.txt")
             if os.path.exists(dist_v):
                 with open(dist_v, "r", encoding="utf-8") as f:
                     v = f.read().strip()
