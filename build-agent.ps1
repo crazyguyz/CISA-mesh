@@ -34,18 +34,47 @@ param(
     # auto-restart the agent from dist\ while PyInstaller is overwriting the EXE
     # (that race produced a half-written bundle missing _ssl.pyd -> agent crashed
     # with "No module named '_ssl'" at startup, boots 11x/12x at 16:37:52).
-    [switch]$RestartAgent
+    [switch]$RestartAgent,
+
+    # v5.0.8: cho phep nguoi quan tri DIEN version khi chay tay, nhung KHONG lam treo
+    # automation: chi hoi khi console tuong tac va khong co -NoPrompt.
+    [switch]$NoPrompt
 )
 
-# v5.0.8: resolve version - nguon su that la server\version.txt
-if (-not $Version -or $Version.Trim() -eq "") {
-    $verFile = Join-Path $PSScriptRoot "server\version.txt"
-    if (Test-Path $verFile) { $Version = (Get-Content $verFile -Raw -ErrorAction SilentlyContinue).Trim() }
-    if (-not $Version) {
-        Write-Host "[FAIL] Khong xac dinh duoc version: truyen -Version <x.y.z> hoac tao server\version.txt" -ForegroundColor Red
-        exit 1
+# v5.0.8: resolve version.
+#   1) -Version <x.y.z>                      -> dung ngay (automation nhu cu)
+#   2) khong truyen + console tuong tac      -> HOI nguoi quan tri (Enter = giu nguyen)
+#   3) khong truyen + automation/stdin pipe  -> dung server\version.txt
+$verFile = Join-Path $PSScriptRoot "server\version.txt"
+$currentVersion = ""
+if (Test-Path $verFile) {
+    $currentVersion = (Get-Content $verFile -Raw -ErrorAction SilentlyContinue).Trim()
+}
+if ($Version) { $Version = $Version.Trim() }
+if (-not $Version) {
+    $interactive = $false
+    try { $interactive = -not [Console]::IsInputRedirected } catch { $interactive = $false }
+    if ($interactive -and -not $NoPrompt) {
+        Write-Host "[*] Version hien tai (server\version.txt): $currentVersion" -ForegroundColor Cyan
+        try {
+            $typed = Read-Host "Nhap version moi cho agent (Enter = giu nguyen $currentVersion)"
+            if ($typed -and $typed.Trim()) { $Version = $typed.Trim() }
+        } catch { }
     }
-    Write-Host "[*] Khong truyen -Version -> dung version hien tai trong server\version.txt: $Version" -ForegroundColor Cyan
+    if (-not $Version -and $currentVersion) {
+        $Version = $currentVersion
+        Write-Host "[*] Dung version hien tai trong server\version.txt: $Version" -ForegroundColor Cyan
+    }
+}
+if (-not $Version) {
+    Write-Host "[FAIL] Khong xac dinh duoc version: truyen -Version <x.y.z>, nhap khi duoc hoi, hoac tao server\version.txt" -ForegroundColor Red
+    exit 1
+}
+# v5.0.8: validate format. Mot version sai (vd "6.0.0 " hay "v6") tung lam agent bao
+# version khac server => vong lap update vo han.
+if ($Version -notmatch '^\d+(\.\d+){1,3}$') {
+    Write-Host "[FAIL] Version '$Version' khong hop le - dung dang x.y.z (vi du 6.0.1)" -ForegroundColor Red
+    exit 1
 }
 
 $ErrorActionPreference = "Continue"
