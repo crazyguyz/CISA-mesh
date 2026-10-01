@@ -150,6 +150,7 @@ body.compact-mode .btn{font-size:11px !important;}
                 <a class="nav-link" href="#" data-view="memory"><i class="bi bi-memory"></i> <span data-i18n="nav.memory">Bộ nhớ</span></a>
                 <hr style="border-color:var(--border-color);margin:4px 8px;">
                 <small class="text-muted px-2" data-i18n="group.analysis">PHÂN TÍCH & ĐIỀU TRA</small>
+                <a class="nav-link" href="#" data-view="investigate"><i class="bi bi-search"></i> <span data-i18n="nav.investigate">Điều tra hợp nhất</span> <span class="badge bg-success ms-1" style="font-size:9px;" data-i18n="common.new">MỚI</span></a>
                 <a class="nav-link" href="#" data-view="incident"><i class="bi bi-zoom-in"></i> <span data-i18n="nav.incident">Điều tra</span> <span class="badge bg-danger ms-1" style="font-size:9px;" data-i18n="common.new">MỚI</span></a>
                 <a class="nav-link" href="#" data-view="attack"><i class="bi bi-crosshair"></i> <span data-i18n="nav.attack">Tổng quan tấn công</span></a>
                 <a class="nav-link" href="#" data-view="hunting"><i class="bi bi-search"></i> <span data-i18n="nav.hunting">Săn tìm đe dọa</span></a>
@@ -729,6 +730,69 @@ body.compact-mode .btn{font-size:11px !important;}
         </div>
 
         <!-- v3.7.0: Incident Investigation Workspace -->
+        <div id="viewInvestigate" style="display:none;">
+            <div class="card mb-2">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" id="invQuery" class="form-control form-control-sm"
+                                   placeholder="host:PC01 user:it-admin cmd:certutil OR dst_ip:8.8.8.8"
+                                   data-i18n-placeholder="inv.placeholder"
+                                   onkeydown="if(event.key==='Enter'){investigate.run();}">
+                        </div>
+                        <div class="col-md-2">
+                            <select id="invHours" class="form-select form-select-sm">
+                                <option value="1">1h</option>
+                                <option value="24" selected>24h</option>
+                                <option value="168">7d</option>
+                                <option value="720">30d</option>
+                                <option value="2160">90d</option>
+                                <option value="0">Tất cả</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <div id="invScopes" class="d-flex flex-wrap gap-1"></div>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button class="btn btn-sm btn-success" onclick="investigate.run()" data-i18n="inv.search">Tìm</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="investigate.save()" data-i18n="inv.save">Lưu</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="investigate.exportFmt('csv')" data-i18n="inv.csv">CSV</button>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <div id="invSaved" class="d-flex flex-wrap gap-1"></div>
+                        <div class="text-muted" style="font-size:11px;" data-i18n="inv.hint">
+                            Dùng field:giá trị, -field:giá trị (loại trừ), "cụm từ", OR, wildcard * ; bấm vào giá trị để mở Entity 360.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-header py-1" style="font-size:12px;"><i class="bi bi-funnel"></i> <span data-i18n="inv.facets">Bộ lọc nhanh</span></div>
+                        <div class="card-body p-2" id="invFacets" style="font-size:12px;max-height:600px;overflow-y:auto;">
+                            <div class="text-muted" data-i18n="inv.loading">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-9">
+                    <div class="card">
+                        <div class="card-header py-1 d-flex justify-content-between" style="font-size:12px;">
+                            <span id="invSummary" data-i18n="inv.results">Kết quả</span>
+                            <span>
+                                <button class="btn btn-sm export-btn" onclick="investigate.exportFmt('json')">JSON</button>
+                            </span>
+                        </div>
+                        <div class="card-body p-0" id="invResults" style="max-height:640px;overflow-y:auto;">
+                            <div class="text-center text-muted py-4" data-i18n="inv.emptyHint">Nhập truy vấn rồi bấm Tìm (hoặc Ctrl+K)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="invEntityPanel" style="display:none;" class="mt-2"></div>
+        </div>
+
         <div id="viewIncident" style="display:none;">
             <div class="row g-2">
                 <div class="col-md-3">
@@ -1112,6 +1176,7 @@ hash,44d88612fea8a8f36de82e1278abb02f,VT,95</pre>
 <script src="/static/js/modules/mitre-matrix.js"></script>
 <script src="/static/js/modules/machine-control.js"></script>
 <script src="/static/js/modules/assets.js"></script>
+<script src="/static/js/modules/investigate.js"></script>
 
 <!-- v5.0.4 (Phase3 B4): Ctrl+K global search overlay -->
 <div id="globalSearchOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(5,10,16,0.92);z-index:99999;padding:10vh 20vw;">

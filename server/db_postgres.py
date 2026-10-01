@@ -577,6 +577,13 @@ class PostgresDatabase:
                 created_by TEXT DEFAULT '', note TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.8 (Phase A): saved investigation searches (shared by the team)
+            "saved_searches": """CREATE TABLE IF NOT EXISTS saved_searches (
+                id SERIAL PRIMARY KEY, name TEXT UNIQUE, query TEXT DEFAULT '',
+                scopes TEXT DEFAULT '', hours INTEGER DEFAULT 24,
+                created_by TEXT DEFAULT '', shared INTEGER DEFAULT 1,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
             "syslog_sources": """CREATE TABLE IF NOT EXISTS syslog_sources (
                 source_ip TEXT PRIMARY KEY, hostname TEXT DEFAULT '',
                 device_type TEXT DEFAULT '', machine_id TEXT DEFAULT '',
@@ -643,6 +650,32 @@ class PostgresDatabase:
                 self._execute(sql)
             except Exception as e:
                 print(f"[-] PG Create index: {e}")
+
+        # v5.0.8 (Phase A - "điều tra 1 chạm"): trigram GIN indexes so the unified
+        # search's `%substring%` predicates stop scanning whole tables. pg_trgm is a
+        # TRUSTED extension on PG13+, so the app role can install it; if that fails
+        # (older server / restricted role) search still works, just slower.
+        try:
+            self._execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+            trgm_indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_events_desc_trgm ON events USING gin (description gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_events_user_trgm ON events USING gin (\"user\" gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_sysmon_cmd_trgm ON sysmon_events USING gin (command_line gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_sysmon_path_trgm ON sysmon_events USING gin (process_path gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_sysmon_parentcmd_trgm ON sysmon_events USING gin (parent_command_line gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_threats_desc_trgm ON threat_alerts USING gin (description gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_traffic_dns_trgm ON network_traffic USING gin (dns_query gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_traffic_http_trgm ON network_traffic USING gin (http_host gin_trgm_ops)",
+                "CREATE INDEX IF NOT EXISTS idx_syslog_msg_trgm ON syslog USING gin (message gin_trgm_ops)",
+            ]
+            for sql in trgm_indexes:
+                try:
+                    self._execute(sql)
+                except Exception as e:
+                    print(f"[-] PG trgm index: {str(e)[:120]}")
+        except Exception as e:
+            print(f"[!] pg_trgm unavailable ({str(e)[:100]}) - investigation search "
+                  f"will work without index acceleration")
 
         # Migration: add missing columns
         alt_cols = [

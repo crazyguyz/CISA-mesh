@@ -516,6 +516,16 @@ class DatabaseManager:
                 c.execute("CREATE INDEX IF NOT EXISTS idx_syslog_sources_machine ON syslog_sources(machine_id)")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.8 (Phase A): saved investigation searches (SQLite/dev installs)
+            try:
+                c.execute("""CREATE TABLE IF NOT EXISTS saved_searches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE, query TEXT DEFAULT '', scopes TEXT DEFAULT '',
+                    hours INTEGER DEFAULT 24, created_by TEXT DEFAULT '',
+                    shared INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+            except sqlite3.OperationalError:
+                pass
 
             self.conn.commit()
 

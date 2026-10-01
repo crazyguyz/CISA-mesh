@@ -55,6 +55,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
             anomaly: { el: 'viewAnomaly', container: 'anomalyList', load: function() { loadAnomaly(); } },
             ioc: { el: 'viewIoc', container: null, load: function() {} },
             incident: { el: 'viewIncident', container: 'incidentSidebar', load: function() { loadIncidentView(); } },
+            investigate: { el: 'viewInvestigate', container: 'invResults', load: function() { if (window.investigate) investigate.init(); } },
             mitre: { el: 'viewMitre', container: 'mitre-matrix-container', load: function() { if (window.loadMITREMatrix) loadMITREMatrix('mitre-matrix-container'); } },
             cleanup: { el: 'viewCleanup', container: 'cleanupContent', load: function() { loadCleanupSummary(); } },
             audit: { el: 'viewAudit', container: 'auditList', load: function() { loadAudit(); } },
@@ -80,7 +81,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         if (view === "agentupdate") { document.getElementById("viewAgentUpdate").style.display = ""; loadAgentUpdateView(); }
         if (view === "messages") { document.getElementById("viewMessages").style.display = ""; if (window.messageChat) messageChat.init(); }
         currentView = view;
-        const iconMap = {'overview':'speedometer2','report-asset':'clipboard-data','report-summary':'bar-chart','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','suppression':'funnel','audit':'journal-text','cluster':'diagram-2','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','cleanup':'trash3','users':'person-gear'};
+        const iconMap = {'overview':'speedometer2','report-asset':'clipboard-data','report-summary':'bar-chart','events':'list-ul','fim':'folder2-open','syslog':'router','response':'arrow-return-right','network':'diagram-3','threats':'shield-exclamation','vulns':'bug','yara':'virus','sca':'clipboard-check','agentless':'wifi','assistant':'robot','groups':'people','fimbaseline':'shield-check','rules':'file-earmark-code','suppression':'funnel','audit':'journal-text','cluster':'diagram-2','agentupdate':'cloud-download','attack':'crosshair','messages':'chat-dots','hunting':'search','anomaly':'activity','ioc':'bullseye','incident':'zoom-in','investigate':'search','cleanup':'trash3','users':'person-gear'};
         document.getElementById('pageTitle').innerHTML = `<i class="bi bi-${iconMap[view]||'speedometer2'}"></i> ${this.textContent.trim()}`;
     });
 });
@@ -2039,6 +2040,21 @@ function showAlertRowDetail(data, titlePrefix) {
     show('Machine', (data.hostname || data.machine_id || '-'));
     show('Time', data.timestamp || data.time || data.received_at || '-');
     show('Description', data.description || data.suspicion_reason || '-');
+    // v5.0.8 "điều tra 1 chạm": pivot this alert into the unified Entity-360 view
+    if (window.pivotEntity) {
+        const chip = (kind, val, label) => (val ? '<span class="badge bg-secondary inv-pivot" role="button" ' +
+            'style="cursor:pointer;font-weight:400;" data-pivot="' + escapeHtml(val) + '" ' +
+            'data-pivot-kind="' + kind + '">' + escapeHtml(label) + '</span> ' : '');
+        const pivots = chip('host', data.hostname || data.machine_id, 'host') +
+            chip('ip', data.source_ip || data.src_ip, 'ip') + chip('ip', data.dst_ip, 'dst ip') +
+            chip('user', data.user, 'user') + chip('hash', data.hashes, 'hash') +
+            chip('file', data.file || data.path, 'file') + chip('rule', data.rule_id, 'rule');
+        if (pivots.trim()) {
+            rows += '<tr><th style="width:200px;color:#8892a4;white-space:nowrap;">' +
+                escapeHtml(typeof t === 'function' ? t('nav.investigate') : 'Điều tra') +
+                '</th><td>' + pivots + '</td></tr>';
+        }
+    }
     // highlight the interesting identity fields for process/memory alerts
     [['Process', 'process_name'], ['Process path', 'path'], ['Command line', 'command_line'],
      ['Module', 'module_name'], ['Module path', 'module_path'], ['PID', 'pid'],
@@ -5657,6 +5673,23 @@ function doGlobalSearch() {
     const q = document.getElementById('globalSearchInput').value.trim();
     const res = document.getElementById('globalSearchResults');
     if (!q) { res.innerHTML = ''; return; }
+    // v5.0.8: a DSL query (field:value / OR) goes to the unified investigation engine
+    if (/[A-Za-z_]+:/.test(q) || /\sOR\s/i.test(q)) {
+        fetch('/api/investigate/search?q=' + encodeURIComponent(q) + '&limit=40')
+            .then(r => r.json()).then(d => {
+                const rows = d.results || [];
+                let html = '<div style="color:#88ccff;font-size:11px;margin-top:6px;">🔎 ĐIỀU TRA HỢP NHẤT (' +
+                    (d.total || 0) + ' kết quả · ' + (d.took_ms || 0) + 'ms)</div>';
+                html += rows.slice(0, 40).map(r => '<div style="padding:3px 6px;border-bottom:1px solid #1e2a3a;font-size:11px;">' +
+                    '<span class="badge bg-dark">' + escapeHtml(r._scope || '') + '</span> ' +
+                    escapeHtml(r._time || '') + ' · ' +
+                    escapeHtml((r.description || r.command_line || r.rule_name || r.message || '').substring(0, 70)) + '</div>').join('');
+                html += '<div style="padding:6px;"><a href="#" class="gsearch-open" data-q="' + escapeHtml(q) +
+                    '" style="color:#88dd99;">→ Mở trong Điều tra hợp nhất</a></div>';
+                res.innerHTML = html || '<div class="text-muted" style="padding:8px;">Không có kết quả.</div>';
+            }).catch(function() { res.innerHTML = '<div class="text-muted">Lỗi tìm kiếm.</div>'; });
+        return;
+    }
     fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json()).then(d => {
         let html = '';
         if (d.machines && d.machines.length) {
@@ -5683,6 +5716,14 @@ document.addEventListener('keydown', function(ev) {
     if (ev.key === 'Escape') closeGlobalSearch();
 });
 document.addEventListener('input', function(ev) { if (ev.target && ev.target.id === 'globalSearchInput') doGlobalSearch(); });
+// v5.0.8: "→ Mở trong Điều tra hợp nhất" from the Ctrl+K overlay
+document.addEventListener('click', function(ev) {
+    const a = ev.target && ev.target.closest ? ev.target.closest('.gsearch-open') : null;
+    if (!a) return;
+    ev.preventDefault();
+    closeGlobalSearch();
+    if (window.investigate) investigate.open(a.getAttribute('data-q') || '');
+});
 
 
 // v5.0.4 (Phase3 B10): onboarding modal
