@@ -549,6 +549,37 @@ class DatabaseManager:
                           "ON case_evidence(machine_id, id DESC)")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.8 (Phase C): fleet rollout tracking + ingest health counters
+            try:
+                c.execute("""CREATE TABLE IF NOT EXISTS update_rollouts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT DEFAULT '', target_version TEXT DEFAULT '',
+                    previous_version TEXT DEFAULT '', state TEXT DEFAULT 'planned',
+                    wave_index INTEGER DEFAULT 0, waves_json TEXT DEFAULT '[]',
+                    machine_ids_json TEXT DEFAULT '[]', group_id TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '', notes TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                c.execute("""CREATE TABLE IF NOT EXISTS update_rollout_targets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    rollout_id INTEGER, machine_id TEXT, hostname TEXT DEFAULT '',
+                    wave INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+                    from_version TEXT DEFAULT '', to_version TEXT DEFAULT '',
+                    message TEXT DEFAULT '', requested_at TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(rollout_id, machine_id))""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_rollout_targets "
+                          "ON update_rollout_targets(rollout_id, wave)")
+                c.execute("""CREATE TABLE IF NOT EXISTS ingest_anomalies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    bucket TEXT, source_ip TEXT DEFAULT '', reason TEXT DEFAULT '',
+                    msg_type TEXT DEFAULT '', count INTEGER DEFAULT 0,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(bucket, source_ip, reason, msg_type))""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_ingest_anomalies_seen "
+                          "ON ingest_anomalies(last_seen DESC)")
+            except sqlite3.OperationalError:
+                pass
 
             self.conn.commit()
 

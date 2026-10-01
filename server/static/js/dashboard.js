@@ -28,7 +28,7 @@ document.querySelectorAll('.nav-link[data-view]').forEach(el => {
         const loadingVD = '<div class="text-center py-5"><div class="spinner-border text-success" role="status"></div><p class="text-muted mt-2" style="font-size:13px;">' + t('dash.loadingData') + '</p></div>';
         var viewMap = {
             events: { el: 'viewEvents', container: 'allEventList', load: function() { loadAllEvents(); } },
-            coverage: { el: 'viewCoverage', container: 'coverageList', load: function() { loadCoverage(); } },
+            coverage: { el: 'viewCoverage', container: 'coverageList', load: function() { loadCoverage(); if (window.fleet) fleet.init(); } },
             cases: { el: 'viewCases', container: 'casesList', load: function() { loadCases(); } },
             fim: { el: 'viewFim', container: 'allFimList', load: function() { loadAllFim(); } },
             syslog: { el: 'viewSyslog', container: 'syslogList', load: function() { loadSyslog(); } },

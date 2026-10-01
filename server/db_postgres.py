@@ -577,6 +577,29 @@ class PostgresDatabase:
                 created_by TEXT DEFAULT '', note TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.8 (Phase C): fleet rollout tracking + ingest health counters
+            "update_rollouts": """CREATE TABLE IF NOT EXISTS update_rollouts (
+                id SERIAL PRIMARY KEY, name TEXT DEFAULT '', target_version TEXT DEFAULT '',
+                previous_version TEXT DEFAULT '', state TEXT DEFAULT 'planned',
+                wave_index INTEGER DEFAULT 0, waves_json TEXT DEFAULT '[]',
+                machine_ids_json TEXT DEFAULT '[]', group_id TEXT DEFAULT '',
+                created_by TEXT DEFAULT '', notes TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
+            "update_rollout_targets": """CREATE TABLE IF NOT EXISTS update_rollout_targets (
+                id SERIAL PRIMARY KEY, rollout_id INTEGER, machine_id TEXT,
+                hostname TEXT DEFAULT '', wave INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'pending', from_version TEXT DEFAULT '',
+                to_version TEXT DEFAULT '', message TEXT DEFAULT '',
+                requested_at TIMESTAMPTZ, updated_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(rollout_id, machine_id)
+            )""",
+            "ingest_anomalies": """CREATE TABLE IF NOT EXISTS ingest_anomalies (
+                id SERIAL PRIMARY KEY, bucket TEXT, source_ip TEXT DEFAULT '',
+                reason TEXT DEFAULT '', msg_type TEXT DEFAULT '',
+                count INTEGER DEFAULT 0, last_seen TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(bucket, source_ip, reason, msg_type)
+            )""",
             # v5.0.8 (Phase B): forensic stores - agent process-tree edges/snapshots
             # (these messages used to be dropped) + saved evidence packets.
             "process_tree_edges": """CREATE TABLE IF NOT EXISTS process_tree_edges (
@@ -658,6 +681,9 @@ class PostgresDatabase:
             # v5.0.8 (Phase B): forensic lookup paths
             "CREATE INDEX IF NOT EXISTS idx_ptree_machine_time ON process_tree_edges(machine_id, received_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_evidence_machine ON case_evidence(machine_id, id DESC)",
+            # v5.0.8 (Phase C): fleet rollout + ingest health lookup paths
+            "CREATE INDEX IF NOT EXISTS idx_rollout_targets ON update_rollout_targets(rollout_id, wave)",
+            "CREATE INDEX IF NOT EXISTS idx_ingest_anomalies_seen ON ingest_anomalies(last_seen DESC)",
         ]
 
         for name, sql in tables.items():

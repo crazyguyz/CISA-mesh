@@ -44,6 +44,9 @@ class TCPServer(threading.Thread):
         # v3.1: Rate limiter (connection + event flood protection)
         self.rate_limiter = rate_limiter or IPRateLimiter()
         self._rate_limiter_stats_interval = 300  # Log stats every 5 min
+        # v5.0.8 (Phase C): ingest-health counters (rejected/altered messages)
+        self._ingest_anomalies = {}
+        self._ingest_flush_ts = 0.0
         self._rate_limiter_last_log = 0
         self.clients = {}
         self.client_lock = threading.Lock()
@@ -175,6 +178,7 @@ class TCPServer(threading.Thread):
 
                         if authenticated_machine_id is None:
                             print(f"[!] SECURITY: unauthenticated '{msg_type}' from {address[0]} ignored")
+                            self._note_ingest("unauthenticated", address, msg_type)
                             continue
                         if msg_machine_id != authenticated_machine_id:
                             print(f"[!] SECURITY: machine_id mismatch '{msg_machine_id}' vs '{authenticated_machine_id}' from {address[0]} ignored")
@@ -288,6 +292,7 @@ class TCPServer(threading.Thread):
                 self._handle_response(msg)
             else:
                 print(f"[?] Unknown message type: {msg_type} from {address[0]}")
+                self._note_ingest("unknown_type", address, msg_type)
 
         if self.message_callback:
             self.message_callback(msg)
@@ -633,9 +638,46 @@ class TCPServer(threading.Thread):
             try: self.db.insert_sca_event(msg)
             except AttributeError: pass
 
+    # v5.0.8 (Phase C): ingest health - count the messages we REJECT so the
+    # dashboard can show "this machine's data is not being accepted" instead of
+    # hiding it in the log. Flushed to `ingest_anomalies` at most once a minute.
+    def _note_ingest(self, reason, address, msg_type):
+        try:
+            ip = address[0] if isinstance(address, (tuple, list)) else str(address)
+            key = (str(reason), ip, str(msg_type or ""))
+            self._ingest_anomalies[key] = self._ingest_anomalies.get(key, 0) + 1
+            now = time.time()
+            if now - self._ingest_flush_ts < 60:
+                return
+            self._ingest_flush_ts = now
+            self._flush_ingest_anomalies()
+        except Exception:
+            pass
+
+    def _flush_ingest_anomalies(self):
+        """Persist pending counters (best effort; the API also reads memory)."""
+        if not self._ingest_anomalies:
+            return
+        try:
+            import fleet_store
+        except Exception:
+            return
+        bucket = time.strftime("%Y-%m-%d %H:%M")
+        for (reason, ip, msg_type), count in list(self._ingest_anomalies.items()):
+            try:
+                fleet_store.upsert_ingest_anomaly(self.db, bucket, ip, reason, msg_type, count)
+                self._ingest_anomalies.pop((reason, ip, msg_type), None)
+            except Exception:
+                pass
+
+    def ingest_anomalies_snapshot(self):
+        """In-memory counters (not yet flushed) for /api/health/fleet."""
+        return [{"source_ip": ip, "reason": reason, "msg_type": msg_type, "count": count}
+                for (reason, ip, msg_type), count in
+                sorted(self._ingest_anomalies.items(), key=lambda kv: -kv[1])]
+
     def _handle_process_tree(self, msg):
         """v5.0.8 (Phase B): store LOTL process chains + 60s snapshots.
-
         `process_tree_edge` carries one enriched parent->child edge (sent when a
         chain reaches depth 3 or matches a LOTL pattern); `process_tree_snapshot`
         carries the agent's top chains every 60s. Both are metadata only (names,

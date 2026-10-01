@@ -39,6 +39,7 @@ from . import api_syslog
 from . import api_tailscale
 from . import api_investigate
 from . import api_forensics
+from . import api_fleet
 
 def register_all_routes(app, core):
     """Register all API route modules on the Flask app."""
@@ -79,3 +80,4 @@ def register_all_routes(app, core):
     api_tailscale.register(app, core)
     api_investigate.register(app, core)
     api_forensics.register(app, core)
+    api_fleet.register(app, core)
