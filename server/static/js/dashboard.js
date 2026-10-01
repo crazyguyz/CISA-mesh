@@ -2049,10 +2049,19 @@ function showAlertRowDetail(data, titlePrefix) {
             chip('ip', data.source_ip || data.src_ip, 'ip') + chip('ip', data.dst_ip, 'dst ip') +
             chip('user', data.user, 'user') + chip('hash', data.hashes, 'hash') +
             chip('file', data.file || data.path, 'file') + chip('rule', data.rule_id, 'rule');
-        if (pivots.trim()) {
+        if (pivots.trim() || data.machine_id || data.hostname) {
+            const mid = data.machine_id || data.hostname || '';
+            const anchor = data.timestamp || data.time || data.received_at || '';
+            const actions = mid ? ('<div class="mt-1">' +
+                '<span class="badge bg-dark inv-tree" role="button" style="cursor:pointer;" data-tree="' +
+                escapeHtml(mid) + '">🌳 ' + escapeHtml(typeof t === 'function' ? t('inv.tree') : 'Cây tiến trình') +
+                '</span> ' +
+                '<span class="badge bg-dark inv-evidence" role="button" style="cursor:pointer;" data-evidence="' +
+                escapeHtml(mid) + '" data-anchor="' + escapeHtml(anchor) + '">📄 ' +
+                escapeHtml(typeof t === 'function' ? t('inv.evidence') : 'Hồ sơ ±15p') + '</span></div>') : '';
             rows += '<tr><th style="width:200px;color:#8892a4;white-space:nowrap;">' +
                 escapeHtml(typeof t === 'function' ? t('nav.investigate') : 'Điều tra') +
-                '</th><td>' + pivots + '</td></tr>';
+                '</th><td>' + pivots + actions + '</td></tr>';
         }
     }
     // highlight the interesting identity fields for process/memory alerts

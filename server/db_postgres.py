@@ -577,6 +577,24 @@ class PostgresDatabase:
                 created_by TEXT DEFAULT '', note TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.8 (Phase B): forensic stores - agent process-tree edges/snapshots
+            # (these messages used to be dropped) + saved evidence packets.
+            "process_tree_edges": """CREATE TABLE IF NOT EXISTS process_tree_edges (
+                id SERIAL PRIMARY KEY, machine_id TEXT, hostname TEXT DEFAULT '',
+                kind TEXT DEFAULT 'edge', ts TEXT DEFAULT '', pid TEXT DEFAULT '',
+                parent_pid TEXT DEFAULT '', process_name TEXT DEFAULT '',
+                parent_name TEXT DEFAULT '', chain_json TEXT DEFAULT '',
+                categories TEXT DEFAULT '', suspicious INTEGER DEFAULT 0,
+                depth INTEGER DEFAULT 0, received_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
+            "case_evidence": """CREATE TABLE IF NOT EXISTS case_evidence (
+                id SERIAL PRIMARY KEY, machine_id TEXT, hostname TEXT DEFAULT '',
+                title TEXT DEFAULT '', anchor_time TEXT DEFAULT '',
+                window_minutes INTEGER DEFAULT 15, created_by TEXT DEFAULT '',
+                sha256 TEXT DEFAULT '', payload_json TEXT DEFAULT '',
+                case_id INTEGER, alert_id INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
             # v5.0.8 (Phase A): saved investigation searches (shared by the team)
             "saved_searches": """CREATE TABLE IF NOT EXISTS saved_searches (
                 id SERIAL PRIMARY KEY, name TEXT UNIQUE, query TEXT DEFAULT '',
@@ -637,6 +655,9 @@ class PostgresDatabase:
             "CREATE INDEX IF NOT EXISTS idx_sysmon_machine_time ON sysmon_events(machine_id, received_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_sysmon_eid ON sysmon_events(sysmon_event_id)",
             "CREATE INDEX IF NOT EXISTS idx_sysmon_severity ON sysmon_events(severity)",
+            # v5.0.8 (Phase B): forensic lookup paths
+            "CREATE INDEX IF NOT EXISTS idx_ptree_machine_time ON process_tree_edges(machine_id, received_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_evidence_machine ON case_evidence(machine_id, id DESC)",
         ]
 
         for name, sql in tables.items():
@@ -3250,6 +3271,30 @@ class PostgresDatabase:
             self._execute("UPDATE cases SET status=%s, updated_at=NOW() WHERE id=%s", (status, case_id))
         except Exception:
             pass
+
+    def insert_process_tree_edge(self, machine_id, hostname="", kind="edge", ts="", pid="",
+                                 parent_pid="", process_name="", parent_name="",
+                                 chain=None, categories=None, suspicious=False, depth=0):
+        """v5.0.8 (Phase B): store an agent process_tree_edge / snapshot chain row.
+
+        The agent has been sending these since v3.6 but the server answered
+        "Unknown message type" and dropped them.
+        """
+        import json as _json
+        try:
+            self._execute(
+                """INSERT INTO process_tree_edges (machine_id, hostname, kind, ts, pid,
+                   parent_pid, process_name, parent_name, chain_json, categories,
+                   suspicious, depth, received_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                (machine_id, hostname, kind, str(ts), str(pid), str(parent_pid),
+                 process_name, parent_name,
+                 _json.dumps(chain or [], ensure_ascii=False),
+                 ",".join(categories or []) if not isinstance(categories, str) else categories,
+                 1 if suspicious else 0, int(depth or 0)))
+            return True
+        except Exception:
+            return False
 
     def search_all(self, q, limit=25):
         out = {"machines": [], "alerts": [], "events": []}

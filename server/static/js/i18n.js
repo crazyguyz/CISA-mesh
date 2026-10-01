@@ -1265,6 +1265,11 @@
       'inv.emptyHint': 'Nhập truy vấn rồi bấm Tìm (hoặc Ctrl+K)',
       'inv.loading': 'Đang tải...',
       'inv.pivotHint': 'Mở Entity 360',
+      'inv.tree': 'Cây tiến trình',
+      'inv.evidence': 'Hồ sơ ±15p',
+      'inv.evidenceCreated': 'Đã tạo hồ sơ #',
+      'inv.treeEmpty': 'Chưa có dữ liệu tạo tiến trình (cần bật Audit 4688 hoặc Sysmon).',
+      'inv.treeFlagged': 'Tiến trình bị gắn cờ',
     },
     en: {
       'tr.fp': 'False positive',
@@ -2517,6 +2522,11 @@
       'inv.emptyHint': 'Type a query and hit Search (or Ctrl+K)',
       'inv.loading': 'Loading...',
       'inv.pivotHint': 'Open Entity 360',
+      'inv.tree': 'Process tree',
+      'inv.evidence': 'Evidence ±15m',
+      'inv.evidenceCreated': 'Evidence packet created #',
+      'inv.treeEmpty': 'No process-creation data yet (enable Audit 4688 or Sysmon).',
+      'inv.treeFlagged': 'Flagged processes',
     }
   };
 

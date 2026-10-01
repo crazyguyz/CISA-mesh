@@ -526,6 +526,29 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
             except sqlite3.OperationalError:
                 pass
+            # v5.0.8 (Phase B): forensic stores (process-tree edges + evidence packets)
+            try:
+                c.execute("""CREATE TABLE IF NOT EXISTS process_tree_edges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    machine_id TEXT, hostname TEXT DEFAULT '', kind TEXT DEFAULT 'edge',
+                    ts TEXT DEFAULT '', pid TEXT DEFAULT '', parent_pid TEXT DEFAULT '',
+                    process_name TEXT DEFAULT '', parent_name TEXT DEFAULT '',
+                    chain_json TEXT DEFAULT '', categories TEXT DEFAULT '',
+                    suspicious INTEGER DEFAULT 0, depth INTEGER DEFAULT 0,
+                    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_ptree_machine_time "
+                          "ON process_tree_edges(machine_id, received_at DESC)")
+                c.execute("""CREATE TABLE IF NOT EXISTS case_evidence (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    machine_id TEXT, hostname TEXT DEFAULT '', title TEXT DEFAULT '',
+                    anchor_time TEXT DEFAULT '', window_minutes INTEGER DEFAULT 15,
+                    created_by TEXT DEFAULT '', sha256 TEXT DEFAULT '',
+                    payload_json TEXT DEFAULT '', case_id INTEGER, alert_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_evidence_machine "
+                          "ON case_evidence(machine_id, id DESC)")
+            except sqlite3.OperationalError:
+                pass
 
             self.conn.commit()
 
@@ -1619,6 +1642,28 @@ class DatabaseManager:
                 "UPDATE cases SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (status, case_id))
             self.conn.commit()
+
+    def insert_process_tree_edge(self, machine_id, hostname="", kind="edge", ts="", pid="",
+                                 parent_pid="", process_name="", parent_name="",
+                                 chain=None, categories=None, suspicious=False, depth=0):
+        """v5.0.8 (Phase B): agent process_tree_edge / snapshot chain (SQLite)."""
+        import json as _json
+        try:
+            with self.lock:
+                self.conn.execute(
+                    """INSERT INTO process_tree_edges (machine_id, hostname, kind, ts, pid,
+                       parent_pid, process_name, parent_name, chain_json, categories,
+                       suspicious, depth, received_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                    (machine_id, hostname, kind, str(ts), str(pid), str(parent_pid),
+                     process_name, parent_name,
+                     _json.dumps(chain or [], ensure_ascii=False),
+                     ",".join(categories or []) if not isinstance(categories, str) else categories,
+                     1 if suspicious else 0, int(depth or 0)))
+                self.conn.commit()
+            return True
+        except Exception:
+            return False
 
     def search_all(self, q, limit=25):
         """Phase3 B4: global search across machines, alerts, events (best-effort)."""

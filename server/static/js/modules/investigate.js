@@ -149,10 +149,18 @@
         pivotChip('cve', r.cve, 'cve')
       ].filter(Boolean).join(' ');
       var badge = r.severity ? '<span class="badge bg-danger">' + esc(r.severity) + '</span> ' : '';
+      var target = r.machine_id || r.hostname || '';
+      var actions = target
+        ? '<div class="mt-1"><span class="badge bg-dark inv-tree" role="button" style="cursor:pointer;" data-tree="' +
+          esc(target) + '">🌳 ' + esc(T('inv.tree', 'Cây tiến trình')) + '</span> ' +
+          '<span class="badge bg-dark inv-evidence" role="button" style="cursor:pointer;" data-evidence="' +
+          esc(target) + '" data-anchor="' + esc(r._time || '') + '">📄 ' +
+          esc(T('inv.evidence', 'Hồ sơ ±15p')) + '</span></div>'
+        : '';
       html += '<tr><td style="white-space:nowrap;width:150px;">' + esc(r._time || '') +
         '<div><span class="badge bg-dark">' + esc(r._scope || '') + '</span></div></td>' +
         '<td>' + badge + esc(clip(rowTitle(r), 180)) +
-        '<div class="mt-1 d-flex flex-wrap gap-1">' + chips + '</div>' +
+        '<div class="mt-1 d-flex flex-wrap gap-1">' + chips + '</div>' + actions +
         '</td></tr>';
     });
     html += '</tbody></table>';
@@ -219,6 +227,108 @@
     try { if (typeof showView === 'function') { showView(name); return; } } catch (e) { /* ignore */ }
     var link = document.querySelector('.nav-link[data-view="' + name + '"]');
     if (link) { link.click(); }
+  }
+
+  // ------------------------------------------------- process tree (Phase B)
+  function treeNodeHtml(node, depth) {
+    var tags = (node.tags || []).map(function (x) {
+      return '<span class="badge bg-danger" style="font-size:9px;">' + esc(x) + '</span>';
+    }).join(' ');
+    var pad = 'style="margin-left:' + (depth * 16) + 'px;"';
+    var html = '<div ' + pad + ' class="py-0">' +
+      '<b>' + esc(node.name || '?') + '</b> ' +
+      '<span class="text-muted">(PID ' + esc(node.pid) +
+      (node.parent_pid ? ', cha ' + esc(node.parent_pid) : '') +
+      ', ' + esc(node.source || '') + ', ×' + esc(String(node.count || 0)) + ')</span> ' + tags +
+      (node.cmdline ? '<div class="text-muted" style="font-size:10.5px;margin-left:14px;">' +
+        esc(clip(node.cmdline, 160)) + '</div>' : '') +
+      (node.user ? '<div class="text-muted" style="font-size:10px;margin-left:14px;">user: ' +
+        esc(node.user) + '</div>' : '') +
+      (node.truncated_children ? '<div class="text-muted" style="font-size:10px;margin-left:14px;">… ' +
+        esc(String(node.truncated_children)) + ' tiến trình con bị lược bớt</div>' : '') +
+      '</div>';
+    (node.children || []).forEach(function (child) { html += treeNodeHtml(child, depth + 1); });
+    return html;
+  }
+
+  function tree(machineId, opts) {
+    opts = opts || {};
+    switchView('investigate');
+    var panel = el('invEntityPanel');
+    if (panel) {
+      panel.style.display = '';
+      panel.innerHTML = '<div class="card"><div class="card-body text-muted">' +
+        esc(T('inv.loading', 'Đang tải...')) + '</div></div>';
+    }
+    var hours = opts.hours != null ? opts.hours : state.hours;
+    var url = '/api/forensics/process-tree/' + encodeURIComponent(machineId) +
+      '?hours=' + hours + '&limit=2000';
+    return getJson(url).then(function (d) {
+      if (!panel) { return d; }
+      var s = d.stats || {};
+      var head = '<div class="card-header py-1 d-flex justify-content-between" style="font-size:12px;">' +
+        '<span><i class="bi bi-diagram-3"></i> ' + esc(T('inv.tree', 'Cây tiến trình')) + ': ' +
+        esc(machineId) + ' — ' + esc(String(hours)) + 'h</span>' +
+        '<span><span class="text-muted">' + esc(String(s.nodes || 0)) + ' node / ' +
+        esc(String(s.edges || 0)) + ' cạnh / sâu ' + esc(String(s.max_depth || 0)) + ' / ' +
+        esc(String(s.implied_parents || 0)) + ' cha suy diễn</span> ' +
+        '<button class="btn btn-sm btn-outline-secondary" onclick="investigate.closeEntity()">✕</button></span></div>';
+      var flagged = (d.flat || []).filter(function (n) { return (n.tags || []).length; });
+      var body = '<div class="card-body p-2" style="font-size:12px;max-height:420px;overflow-y:auto;">';
+      if (!(d.roots || []).length) {
+        body += '<div class="text-muted">' + esc(T('inv.treeEmpty',
+          'Chưa có dữ liệu tạo tiến trình (cần bật Audit 4688 hoặc Sysmon).')) + '</div>';
+      } else {
+        (d.roots || []).forEach(function (root) { body += treeNodeHtml(root, 0); });
+      }
+      body += '</div>';
+      if (flagged.length) {
+        body += '<div class="card-body p-2 pt-0" style="font-size:11.5px;">' +
+          '<b>' + esc(T('inv.treeFlagged', 'Tiến trình bị gắn cờ')) + ' (' + flagged.length + ')</b>' +
+          flagged.slice(0, 12).map(function (n) {
+            return '<div>• <b>' + esc(n.name) + '</b> (PID ' + esc(n.pid) + ') ' +
+              (n.tags || []).map(function (x) {
+                return '<span class="badge bg-danger" style="font-size:9px;">' + esc(x) + '</span>';
+              }).join(' ') + '</div>';
+          }).join('') + '</div>';
+      }
+      panel.innerHTML = '<div class="card">' + head + body + '</div>';
+      return d;
+    });
+  }
+
+  // ------------------------------------------------- evidence packet (Phase B)
+  function evidence(machineId, opts) {
+    opts = opts || {};
+    var minutes = opts.minutes || 15;
+    var body = {
+      machine_id: machineId, anchor: opts.anchor || null, window_minutes: minutes,
+      title: opts.title || '', case_id: opts.case_id || null, alert_id: opts.alert_id || null
+    };
+    return postJson('/api/forensics/evidence', body).then(function (d) {
+      if (d && d.success) {
+        if (typeof showToast === 'function') {
+          showToast(T('inv.evidenceCreated', 'Đã tạo hồ sơ #') + d.id + ' ('
+            + (d.counts ? Object.keys(d.counts).length : 0) + ' nguồn)');
+        }
+        window.open('/api/forensics/evidence/' + d.id + '?fmt=html', '_blank');
+      } else {
+        if (typeof showToast === 'function') { showToast((d && d.error) || 'Error'); }
+      }
+      return d;
+    });
+  }
+
+  function evidencePreview(machineId, opts) {
+    opts = opts || {};
+    var win = window.open('', '_blank');
+    postJson('/api/forensics/render?fmt=html', {
+      machine_id: machineId, anchor: (opts && opts.anchor) || null,
+      window_minutes: (opts && opts.minutes) || 15
+    }).catch(function () { return null; });
+    // POST cannot be opened directly, so fall back to a stored packet
+    if (win) { win.close(); }
+    return evidence(machineId, opts);
   }
 
   // ------------------------------------------------- saved searches + export
@@ -301,6 +411,23 @@
     run();
   }
 
+  function onForensicClick(ev) {
+    var t = ev.target.closest ? ev.target.closest('.inv-tree') : null;
+    if (t) {
+      ev.preventDefault();
+      return tree(t.getAttribute('data-tree'));
+    }
+    var e = ev.target.closest ? ev.target.closest('.inv-evidence') : null;
+    if (e) {
+      ev.preventDefault();
+      var anchor = e.getAttribute('data-anchor') || '';
+      return evidence(e.getAttribute('data-evidence'), {
+        anchor: /^\d{4}-\d{2}-\d{2}/.test(anchor) ? anchor : null,
+        title: T('inv.evidence', 'Hồ sơ điều tra') + ' ' + (anchor || '')
+      });
+    }
+  }
+
   function onSavedClick(ev) {
     var load = ev.target.closest ? ev.target.closest('.inv-load') : null;
     if (load) {
@@ -326,6 +453,7 @@
     document.addEventListener('click', onPivotClick);
     document.addEventListener('click', onAddClick);
     document.addEventListener('click', onSavedClick);
+    document.addEventListener('click', onForensicClick);
   }
 
   window.investigate = {
@@ -333,6 +461,8 @@
     run: run,
     entity: entity,
     closeEntity: closeEntity,
+    tree: tree,
+    evidence: evidence,
     save: save,
     del: del,
     exportFmt: exportFmt,

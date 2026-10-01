@@ -266,6 +266,10 @@ class TCPServer(threading.Thread):
             self._handle_baseline_report(msg)
         elif msg_type == "user_info":
             self._handle_user_info(msg)
+        # v5.0.8 (Phase B): the agent has been sending process-tree intelligence
+        # since v3.6 but it fell through to "Unknown message type" and was dropped.
+        elif msg_type in ("process_tree_edge", "process_tree_snapshot"):
+            self._handle_process_tree(msg)
         # v2.6.2: Sysmon event types from SysmonCollector
         # v4.6.4: + service_state_change (EID4 tampering), process_terminate (EID5),
         # driver_load (EID6 BYOVD), config_change (EID16/255), pipe_created/connected
@@ -628,6 +632,46 @@ class TCPServer(threading.Thread):
         elif self.db:
             try: self.db.insert_sca_event(msg)
             except AttributeError: pass
+
+    def _handle_process_tree(self, msg):
+        """v5.0.8 (Phase B): store LOTL process chains + 60s snapshots.
+
+        `process_tree_edge` carries one enriched parent->child edge (sent when a
+        chain reaches depth 3 or matches a LOTL pattern); `process_tree_snapshot`
+        carries the agent's top chains every 60s. Both are metadata only (names,
+        categories, depth) - never command lines.
+        """
+        if not self.db:
+            return
+        machine_id = str(msg.get("machine_id", "") or "").strip()
+        if not machine_id:
+            return
+        hostname = str(msg.get("hostname", "") or "")
+        try:
+            if msg.get("type") == "process_tree_snapshot":
+                for chain in (msg.get("top_chains") or [])[:40]:
+                    names = chain.get("chain") or []
+                    self.db.insert_process_tree_edge(
+                        machine_id, hostname, kind="chain",
+                        ts=chain.get("timestamp") or msg.get("timestamp", ""),
+                        pid=chain.get("root_pid", ""),
+                        process_name=(names[0] if names else ""),
+                        chain=names, categories=chain.get("categories"),
+                        suspicious=bool(chain.get("suspicious")),
+                        depth=int(chain.get("depth") or 0))
+            else:
+                self.db.insert_process_tree_edge(
+                    machine_id, hostname, kind="edge", ts=msg.get("timestamp", ""),
+                    pid=msg.get("pid", ""), parent_pid=msg.get("parent_pid", ""),
+                    process_name=msg.get("process_name", ""),
+                    parent_name=msg.get("parent_process", "") or msg.get("parent_name", ""),
+                    chain=msg.get("process_chain"), categories=msg.get("categories"),
+                    suspicious=bool(msg.get("lotl_detected") or msg.get("suspicious")),
+                    depth=int(msg.get("depth") or 0))
+        except AttributeError:
+            pass
+        except Exception:
+            pass
 
     def _handle_baseline_report(self, msg):
         """Handle adaptive baseline report from agent."""
