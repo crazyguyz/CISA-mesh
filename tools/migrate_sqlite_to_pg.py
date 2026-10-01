@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-SQLite -> PostgreSQL migration for GIAM-SAT (v5.0.4).
+SQLite -> PostgreSQL migration for GIAM-SAT (v5.0.8).
 
 Usage:
-    python tools/migrate_sqlite_to_pg.py --dry          # counts only
+    python tools/migrate_sqlite_to_pg.py --help         # in tro giup (an toan)
+    python tools/migrate_sqlite_to_pg.py                # dry run: chi dem (mac dinh)
     python tools/migrate_sqlite_to_pg.py --run          # migrate everything
     python tools/migrate_sqlite_to_pg.py --run --only events,syslog
+    python tools/migrate_sqlite_to_pg.py --env D:/test/server/.env --sqlite server/giamsat_data.db
 
 - Ensures the PG schema first via PostgresDatabase._init_db (creates missing
   tables/columns/indexes, incl. the v5.0.4 `status` triage columns).
@@ -15,26 +17,44 @@ Usage:
 - commands: skips 'pending' rows (never re-execute stale commands on agents).
 - Natural-key ON CONFLICT where the PG table has one; setval() after each table.
 - Credentials: read from server/.env (GIAMSAT_PG_*), else the process env.
-"""
-import os, sys, sqlite3, json
 
-def load_pg_config():
+v5.0.8: this tool used to have NO argparse (so `--help` started a real dry run)
+and looked for .env in the hardcoded paths E:\\giamsat\\server and
+D:\\test\\server, which silently fell back to default creds on any other host.
+It now discovers <repo>/server/.env (or --env) like the other tools.
+"""
+import argparse
+import json
+import os
+import sqlite3
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_env(explicit=None):
+    """Locate server/.env: --env, else <repo>/server/.env, else ./server/.env."""
+    for c in (explicit, os.path.join(ROOT, "server", ".env"),
+              os.path.join(os.getcwd(), "server", ".env")):
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def load_pg_config(env_path=None):
     env = {}
-    for base in (r"E:\giamsat\server", r"D:\test\server"):
-        p = os.path.join(base, ".env")
-        if os.path.exists(p):
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#") or "=" not in line:
-                            continue
-                        k, _, v = line.partition("=")
-                        env[k.strip()] = v.strip().strip('"').strip("'")
-                if env.get("GIAMSAT_PG_PASSWORD"):
-                    break
-            except Exception:
-                pass
+    if env_path:
+        try:
+            with open(env_path, "r", encoding="utf-8-sig") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, _, v = line.partition("=")
+                    env[k.strip()] = v.strip().strip('"').strip("'")
+        except Exception:
+            pass
+
     def g(k, d=""):
         return os.environ.get(k) or env.get(k) or d
     return dict(
@@ -45,11 +65,29 @@ def load_pg_config():
         password=g("GIAMSAT_PG_PASSWORD", ""),
     )
 
-PG = load_pg_config()
-SQLITE = os.environ.get("GIAMSAT_SQLITE_DB", r"server\giamsat_data.db")
+
+ap = argparse.ArgumentParser(
+    description="Migrate a GIAM-SAT SQLite database into PostgreSQL "
+                "(dry run by default: only counts rows).")
+ap.add_argument("--run", action="store_true", help="thuc su migrate (mac dinh chi dem)")
+ap.add_argument("--dry", action="store_true", help="chi dem (mac dinh, giu cho script cu)")
+ap.add_argument("--only", help="chi migrate cac bang nay, phan cach bang dau phay")
+ap.add_argument("--env", help="duong dan server/.env (mac dinh: <repo>/server/.env)")
+ap.add_argument("--sqlite", help="duong dan file SQLite nguon")
+args = ap.parse_args()
+
+ENV_PATH = find_env(args.env)
+PG = load_pg_config(ENV_PATH)
+SQLITE = args.sqlite or os.environ.get("GIAMSAT_SQLITE_DB") or "server/giamsat_data.db"
 if not os.path.isabs(SQLITE):
-    SQLITE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", SQLITE)
-MODE = "--run" in sys.argv
+    SQLITE = os.path.join(ROOT, SQLITE)
+MODE = args.run
+if not os.path.exists(SQLITE):
+    print("[-] SQLite source not found: %s" % SQLITE)
+    print("    Pass --sqlite <file> (this tool only migrates FROM SQLite).")
+    raise SystemExit(2)
+print("[*] SQLite  : %s" % SQLITE)
+print("[*] PG .env : %s" % (ENV_PATH or "(default credentials)"))
 
 # --- ensure PG schema via the real adapter (creates tables/columns/indexes) ---
 os.environ.update({
@@ -70,9 +108,7 @@ pg = psycopg2.connect(**PG)
 pg.autocommit = True
 pc = pg.cursor()
 
-ONLY = None
-if "--only" in sys.argv:
-    ONLY = set(sys.argv[sys.argv.index("--only") + 1].split(","))
+ONLY = set(args.only.split(",")) if args.only else None
 
 
 # --- natural unique keys for ON CONFLICT ---
