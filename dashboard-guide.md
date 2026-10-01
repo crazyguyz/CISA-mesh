@@ -922,7 +922,9 @@ nhớ **Ctrl+F5** để nạp lại JavaScript.
 2. Bấm một chip mẫu **hoặc** gõ truy vấn rồi **Enter**.
 3. Kết quả trả về kèm **facet** (số lượng theo nguồn/mức/máy) — nhìn facet trước để biết nên khoanh vùng ở đâu.
 4. Bấm vào **giá trị** trong kết quả (hostname, IP, user, hash…) ⇒ mở **Entity 360**.
-5. Trong Entity 360: nút **🌳** = cây tiến trình, **📄** = tạo **gói bằng chứng ±15 phút**.
+5. Trong Entity 360: nút **🌳** = cây tiến trình, **📄** = tạo **gói bằng chứng ±15 phút**,
+   **👁** = **xem trước gói bằng chứng mà KHÔNG lưu** (gọi `POST /api/forensics/render?fmt=html`
+   và mở HTML trong tab mới) — hãy xem trước để chắc chắn gói có đủ bằng chứng rồi mới bấm 📄 để tạo hồ sơ.
 6. Muốn dùng lại truy vấn: **Lưu** (hiện thành chip) hoặc **Xuất CSV/JSON** để đưa ra ngoài.
 
 **Cú pháp (đủ để bạn điều tra mọi thứ):**

@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  var state = { rolloutId: null, plan: null };
+  var state = { rolloutId: null, plan: null, policyWave: 0 };
 
   function T(key, fallback) {
     try { return (typeof t === 'function') ? t(key) : (fallback || key); } catch (e) { return fallback || key; }
@@ -287,6 +287,11 @@
     if (!id) { return; }
     return postJson('/api/policies/wave-apply', { policy_id: id, wave_index: index })
       .then(function (d) {
+        if (d && d.success) {
+          // Remember which wave is open: wave-advance expects the CURRENT index,
+          // so a hard-coded 0 would re-offer wave 1 forever.
+          state.policyWave = index;
+        }
         toast(d && d.success
           ? (T('fleet.policyApplied', 'Đã chào đợt') + ' ' + (d.wave + 1) + ': ' + d.count + ' máy')
           : ((d && d.error) || 'Error'));
@@ -297,8 +302,10 @@
   function policyNext() {
     var id = policyId();
     if (!id) { return; }
-    return postJson('/api/policies/wave-advance', { policy_id: id, wave_index: 0 })
+    return postJson('/api/policies/wave-advance',
+                    { policy_id: id, wave_index: state.policyWave })
       .then(function (d) {
+        if (d && d.success && d.wave != null) { state.policyWave = d.wave; }
         toast(d && d.success
           ? (d.done ? T('fleet.policyDone', 'Đã ở đợt cuối')
                     : T('fleet.advanced', 'Đã sang đợt tiếp'))
@@ -329,8 +336,16 @@
     var version = (el('fleetTarget') || {}).value || '';
     return postJson('/api/fleet/rollout', { waves: waves, target_version: version })
       .then(function (d) {
-        toast(d.success ? (T('fleet.started', 'Đã bắt đầu đợt canary') + ' #' + d.id)
-                        : (d.error || 'Error'));
+        if (d.success) {
+          // The canary machine can be offline: the rollout still opens (success)
+          // but nobody received the build yet - the operator must be told.
+          var failed = (d.canary_failed || []).length;
+          toast(T('fleet.started', 'Đã bắt đầu đợt canary') + ' #' + d.id +
+                (failed ? ' — ' + failed + ' ' + esc(T('fleet.canaryFailed',
+                  'máy đang offline, chưa nhận được bản mới')) : ''));
+        } else {
+          toast(d.error || 'Error');
+        }
         if (d.id) { loadRollout(d.id); }
         return d;
       }).catch(function () {});
@@ -340,8 +355,18 @@
     if (!state.rolloutId) { return; }
     return postJson('/api/fleet/rollout/' + state.rolloutId + '/advance', { force: !!force })
       .then(function (d) {
-        toast(d.success ? T('fleet.advanced', 'Đã sang đợt tiếp')
-                        : (T('fleet.blocked', 'Bị chặn: ') + (d.reason || '')));
+        if (!d) { return d; }
+        if (d.success && d.state === 'done') {
+          // The API answers {"success":true,"state":"done"} on the LAST wave - say
+          // "finished", not "advanced" (the old text lied to the operator).
+          toast(d.message || T('fleet.rolloutDone', 'Đã hoàn tất đợt cuối'));
+        } else if (d.success) {
+          toast(T('fleet.advanced', 'Đã sang đợt tiếp') + ' → ' +
+                esc(T('fleet.wave', 'đợt')) + ' ' + ((d.wave || 0) + 1) +
+                ' (' + (d.sent || 0) + ' ' + esc(T('fleet.machines', 'máy')) + ')');
+        } else {
+          toast(T('fleet.blocked', 'Bị chặn: ') + (d.reason || ''));
+        }
         loadRollout(state.rolloutId);
         return d;
       }).catch(function () {});

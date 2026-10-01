@@ -1301,6 +1301,7 @@
       'inv.evidenceListHint': 'Bấm 📄 trên một kết quả để tạo hồ sơ ±15 phút (ảnh chụp toàn bộ bằng chứng + cây tiến trình), rồi tải 1 file HTML để trình bày',
       'inv.evidenceEmpty': 'Chưa có hồ sơ nào. Bấm 📄 trên một kết quả để tạo.',
       'inv.evidenceDeleted': 'Đã xoá hồ sơ',
+      'inv.preview': 'Xem trước (không lưu)',
       'fleet.rolloutHint': 'Nâng cấp agent theo từng đợt: đợt 1 là canary (1 máy). Máy báo đúng phiên bản đích mới tính là xong; đợt chưa đạt 90% hoặc có máy lỗi thì nút "Sang đợt tiếp" sẽ bị chặn.',
       'fleet.healthHint': 'Máy nào im lặng, máy nào phiên bản cũ, thiếu Sysmon/auditpol, và nguồn nào bị server TỪ CHỐI (dữ liệu không vào được).',
       'fleet.storage': 'Dung lượng & partition',
@@ -1321,6 +1322,10 @@
       'fleet.policyApplied': 'Đã chào đợt',
       'fleet.policyDone': 'Đã ở đợt cuối',
       'fleet.noPolicy': 'Chưa có chính sách nhóm nào (tạo ở menu Nhóm & Chính sách).',
+      'fleet.rolloutDone': 'Đã hoàn tất đợt cuối',
+      'fleet.canaryFailed': 'máy đang offline, chưa nhận được bản mới',
+      'fleet.wave': 'đợt',
+      'fleet.machines': 'máy',
     },
     en: {
       'tr.fp': 'False positive',
@@ -2609,6 +2614,7 @@
       'inv.evidenceListHint': 'Press 📄 on a result to create a ±15 minute packet (all evidence + process tree), then download one HTML file to present it',
       'inv.evidenceEmpty': 'No packets yet. Press 📄 on a result to create one.',
       'inv.evidenceDeleted': 'Packet deleted',
+      'inv.preview': 'Preview (does not save)',
       'fleet.rolloutHint': 'Upgrade agents in waves: wave 1 is the canary (1 machine). A machine only counts as done once it reports the exact target version; if the wave is under 90% or any machine failed, "Next wave" is blocked.',
       'fleet.healthHint': 'Which machines went silent, which run an old build, which lack Sysmon/auditpol, and which sources the server REJECTED (their data never landed).',
       'fleet.storage': 'Storage & partitions',
@@ -2629,6 +2635,10 @@
       'fleet.policyApplied': 'Wave opened',
       'fleet.policyDone': 'Already at the last wave',
       'fleet.noPolicy': 'No group policies yet (create one under Groups & Policies).',
+      'fleet.rolloutDone': 'Last wave finished',
+      'fleet.canaryFailed': 'machine(s) offline, did not receive the new build',
+      'fleet.wave': 'wave',
+      'fleet.machines': 'machine(s)',
     }
   };
 

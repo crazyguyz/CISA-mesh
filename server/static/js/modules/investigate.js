@@ -50,6 +50,16 @@
     }).then(function (r) { return r.json(); });
   }
 
+  // Some endpoints answer with HTML (the printable evidence packet), not JSON.
+  function postText(url, body) {
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : null
+    }).then(function (r) { return r.text(); });
+  }
+
   function pivotChip(kind, value, label) {
     if (!value) { return ''; }
     return '<span class="badge bg-secondary inv-pivot" role="button" style="cursor:pointer;font-weight:400;"' +
@@ -257,7 +267,10 @@
           esc(target) + '">🌳 ' + esc(T('inv.tree', 'Cây tiến trình')) + '</span> ' +
           '<span class="badge bg-dark inv-evidence" role="button" style="cursor:pointer;" data-evidence="' +
           esc(target) + '" data-anchor="' + esc(r._time || '') + '">📄 ' +
-          esc(T('inv.evidence', 'Hồ sơ ±15p')) + '</span></div>'
+          esc(T('inv.evidence', 'Hồ sơ ±15p')) + '</span> ' +
+          '<span class="badge bg-dark inv-preview" role="button" style="cursor:pointer;" data-preview="' +
+          esc(target) + '" data-anchor="' + esc(r._time || '') + '">👁 ' +
+          esc(T('inv.preview', 'Xem trước (không lưu)')) + '</span></div>'
         : '';
       html += '<tr><td style="white-space:nowrap;width:150px;">' + esc(r._time || '') +
         '<div><span class="badge bg-dark">' + esc(r._scope || '') + '</span></div></td>' +
@@ -421,16 +434,30 @@
     });
   }
 
+  // Preview the packet WITHOUT storing it: /api/forensics/render returns exactly the
+  // HTML a saved packet would print. The tab is opened inside the click handler so
+  // the popup blocker does not stop it, and it is used as a real "look first" step
+  // before creating a stored packet (this helper used to open+close a blank tab and
+  // silently save a packet instead).
   function evidencePreview(machineId, opts) {
     opts = opts || {};
     var win = window.open('', '_blank');
-    postJson('/api/forensics/render?fmt=html', {
-      machine_id: machineId, anchor: (opts && opts.anchor) || null,
-      window_minutes: (opts && opts.minutes) || 15
-    }).catch(function () { return null; });
-    // POST cannot be opened directly, so fall back to a stored packet
-    if (win) { win.close(); }
-    return evidence(machineId, opts);
+    if (win) {
+      try {
+        win.document.write('<p style="font-family:sans-serif">' +
+          esc(T('inv.loading', 'Đang tải...')) + '</p>');
+      } catch (e) { /* cross-tab guard */ }
+    }
+    return postText('/api/forensics/render?fmt=html', {
+      machine_id: machineId, anchor: opts.anchor || null,
+      window_minutes: opts.minutes || 15
+    }).then(function (html) {
+      if (win && html) { win.document.open(); win.document.write(html); win.document.close(); }
+      else if (win) { win.close(); }
+      return html;
+    }).catch(function () {
+      if (win) { win.close(); }
+    });
   }
 
   // ------------------------------------------------- saved searches + export
@@ -519,6 +546,14 @@
       ev.preventDefault();
       return tree(t.getAttribute('data-tree'));
     }
+    var p = ev.target.closest ? ev.target.closest('.inv-preview') : null;
+    if (p) {
+      ev.preventDefault();
+      var panchor = p.getAttribute('data-anchor') || '';
+      return evidencePreview(p.getAttribute('data-preview'), {
+        anchor: /^\d{4}-\d{2}-\d{2}/.test(panchor) ? panchor : null
+      });
+    }
     var e = ev.target.closest ? ev.target.closest('.inv-evidence') : null;
     if (e) {
       ev.preventDefault();
@@ -551,7 +586,10 @@
     if (state.inited) {
       loadSaved();
       loadEvidence();
-      if (state.query && box) { run(); }
+      // The dashboard framework injects a FRESH spinner into #invResults on every
+      // visit, so the re-open path must settle the container too - otherwise the
+      // view spins forever from the second visit onwards.
+      if (state.query && box) { run(); } else { renderWelcome(); }
       return;
     }
     state.inited = true;
@@ -585,6 +623,7 @@
     closeEntity: closeEntity,
     tree: tree,
     evidence: evidence,
+    previewEvidence: evidencePreview,
     loadEvidence: loadEvidence,
     delEvidence: delEvidence,
     welcome: renderWelcome,

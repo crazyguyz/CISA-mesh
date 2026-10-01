@@ -66,6 +66,21 @@ def count_key(i18n_text, key):
     return len(re.findall(r"'%s':" % re.escape(key), i18n_text))
 
 
+def dict_keys(i18n_text, name):
+    """All keys of the `vi` / `en` dictionary (block-scoped, not a global count)."""
+    match = re.search(name + r"\s*:\s*\{", i18n_text)
+    if not match:
+        return set()
+    i, depth = match.end(), 1
+    while i < len(i18n_text) and depth:
+        if i18n_text[i] == "{":
+            depth += 1
+        elif i18n_text[i] == "}":
+            depth -= 1
+        i += 1
+    return set(re.findall(r"'([\w.\-]+)':", i18n_text[match.end():i]))
+
+
 # Every route added in phases A-D and the UI artefact that has to consume it.
 ROUTES = [
     ("/api/investigate/search", "unified search box"),
@@ -178,6 +193,11 @@ def main():
           "onUseClick" in inv and "data-use" in inv)
     check("welcome documents purpose + syntax",
           "inv.welcomeTitle" in inv and "inv.syntaxBody" in inv)
+    check("init() settles the container on RE-OPEN too (spinner regression)",
+          init_body.count("renderWelcome()") >= 2 and init_body.count("run()") >= 2)
+    check("packet preview is wired, not dead code (render route has a real caller)",
+          "previewEvidence: evidencePreview" in inv and "inv-preview" in inv and
+          "postText(" in inv and "/api/forensics/render" in inv)
 
     print("\n=== 3. every new API route has a UI caller (no dead features) ===")
     missing = ["%s (%s)" % (n, l) for n, l in ROUTES if n not in ui_sources]
@@ -195,7 +215,13 @@ def main():
           all(x in fleet for x in ("fleet.policyPreview()", "fleet.policyWave(0)",
                                    "fleet.policyNext()")))
     check("fleet.js has a rollout history picker",
-          "fleetRolloutPick" in fleet and "function loadRolloutList" in fleet)
+          "fleetRolloutPicker" in fleet or "fleetRolloutPick" in fleet)
+    check("staged-policy next-wave sends the TRACKED wave (not hard-coded 0)",
+          "wave_index: state.policyWave" in fleet and "wave_index: 0" not in fleet)
+    check("rollout advance reports the finished state honestly",
+          "state === 'done'" in fleet)
+    check("rollout start warns when the canary machine is offline",
+          "canary_failed" in fleet)
     check("investigate.js lists stored evidence packets",
           "function loadEvidence" in inv and "loadEvidence: loadEvidence" in inv)
     check("evidence list offers HTML + JSON download and delete",
@@ -218,7 +244,46 @@ def main():
     check("all new keys defined once per language (%d keys)" % len(NEW_KEYS),
           not bad, bad[:8])
 
-    print("\n=== 7. every served script is valid JavaScript ===")
+    print("\n=== 7. payload keys match the API handler (no silent no-op calls) ===")
+    # A JS payload key that the handler never reads = the button quietly does nothing.
+    CONTRACTS = [
+        ("fleet.js", "swap_server_build", "api_fleet.py", "swap_server_build"),
+        ("fleet.js", "retention_days", "api_fleet.py", "retention_days"),
+        ("fleet.js", "dismiss", "api_fleet.py", "dismiss"),
+        ("fleet.js", "source_ip", "api_fleet.py", "source_ip"),
+        ("fleet.js", "wave_index", "api_policies.py", "wave_index"),
+        ("fleet.js", "policy_id", "api_policies.py", "policy_id"),
+        ("fleet.js", "target_version", "api_fleet.py", "target_version"),
+        ("investigate.js", "window_minutes", "api_forensics.py", "window_minutes"),
+        ("investigate.js", "case_id", "api_forensics.py", "case_id"),
+        ("investigate.js", "alert_id", "api_forensics.py", "alert_id"),
+        ("investigate.js", "hours", "api_investigate.py", "hours"),
+        ("investigate.js", "scopes", "api_investigate.py", "scopes"),
+    ]
+    broken = []
+    for js_name, js_key, api_name, api_key in CONTRACTS:
+        js_txt = {"fleet.js": fleet, "investigate.js": inv}[js_name]
+        api_path = os.path.join(ROOT, "server", "api", api_name)
+        api_txt = read(api_path) if os.path.exists(api_path) else ""
+        if js_key not in js_txt or api_key not in api_txt:
+            broken.append("%s:%s <-> %s" % (js_name, js_key, api_name))
+    check("all %d JS payload keys exist in their API handler" % len(CONTRACTS),
+          not broken, broken)
+
+    print("\n=== 8. i18n: vi/en parity + every used key translated ===")
+    vi = dict_keys(i18n, "vi")
+    en = dict_keys(i18n, "en")
+    check("vi and en define the same key set (%d keys)" % len(vi),
+          vi == en, sorted(vi ^ en)[:6])
+    used_keys = set()
+    for src in (inv, fleet, tpl):
+        used_keys |= set(re.findall(r"T\(\s*'([\w.\-]+)'", src))
+        used_keys |= set(re.findall(r'data-i18n(?:-title)?="([\w.\-]+)"', src))
+    untranslated = sorted(k for k in used_keys if k not in vi or k not in en)
+    check("all %d keys used by the new views are translated" % len(used_keys),
+          not untranslated, untranslated[:8])
+
+    print("\n=== 9. every served script is valid JavaScript ===")
     broken = js_syntax_errors()
     if broken is None:
         print("SKIP  node not found")
