@@ -113,7 +113,7 @@
 | 16 | Điều tra & bằng chứng | `forensics.py` (cây tiến trình, gói bằng chứng), `api/api_forensics.py` | SQL + HTML | Dựng timeline ±15 phút quanh một sự kiện |
 | 17 | Vận hành đội máy | `fleet.py`, `fleet_store.py` | SQL | Rollout theo đợt, sức khỏe, nguồn bị từ chối |
 | 18 | Dung lượng | `partitioning.py`, `tools/partition_events.py` | DDL | Chia bảng theo tháng, DROP nhanh, rollup `daily_stats` |
-| 19 | REST API | `server/api/*.py` (40 file) | HTTP :5000 | Mọi thứ dashboard gọi đều đi qua đây (đều có `check_auth`) |
+| 19 | REST API | `server/api/*.py` (39 file) | HTTP :5000 | Mọi thứ dashboard gọi đều đi qua đây (đều có `check_auth`) |
 | 20 | Giao diện | `server/templates/index.html`, `static/js/dashboard.js`, `static/js/modules/*.js` | Trình duyệt | Vẽ bảng/biểu đồ, SSE realtime, song ngữ `i18n.js` |
 | 21 | Báo cáo & thông báo | `reporting_engine.py`, `daily_digest.py`, `email_alerts.py`, `alerting_engine.py` | SMTP/Telegram | Xuất báo cáo, gửi mail/Telegram theo mức |
 | 22 | Trợ lý AI | `ai_providers.py` (+ `/api/assistant`) | DeepSeek API | Hỏi đáp, tóm tắt sự kiện (tắt bằng `GIAMSAT_DISABLE_AI`) |
