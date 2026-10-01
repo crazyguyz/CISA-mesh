@@ -195,8 +195,11 @@ def aggregate_anomalies(rows):
         key = (str(row.get("source_ip") or "?"), str(row.get("reason") or "?"),
                str(row.get("msg_type") or ""))
         item = grouped.setdefault(key, {"source_ip": key[0], "reason": key[1],
-                                        "msg_type": key[2], "count": 0, "last_seen": ""})
+                                        "msg_type": key[2], "count": 0, "last_seen": "",
+                                        "detail": ""})
         item["count"] += int(row.get("count") or 0)
+        if row.get("detail"):
+            item["detail"] = str(row["detail"])[:120]
         last = str(row.get("last_seen") or "")
         if last > item["last_seen"]:
             item["last_seen"] = last

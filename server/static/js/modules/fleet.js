@@ -77,11 +77,14 @@
         '</b> <span class="text-muted" style="font-size:10.5px;">' +
         esc(T('fleet.ingestHint', 'PSK sai / máy lạ / loại bản tin lạ - các nguồn này KHÔNG được ghi dữ liệu')) +
         '</span><table class="table table-sm" style="font-size:11.5px;"><thead><tr>' +
-        '<th>Nguồn</th><th>Lý do</th><th>Loại</th><th>Số lần</th><th>Lần cuối</th></tr></thead><tbody>';
+        '<th>Nguồn</th><th>Máy</th><th>Lý do</th><th>Loại</th><th>Số lần</th><th>Lần cuối</th>' +
+        '<th></th></tr></thead><tbody>';
       rows.forEach(function (r) {
-        html += '<tr><td>' + esc(r.source_ip) + '</td><td>' + esc(r.reason) + '</td><td>' +
-          esc(r.msg_type) + '</td><td>' + esc(String(r.count)) + '</td><td>' +
-          esc(r.last_seen || '') + '</td></tr>';
+        html += '<tr><td>' + esc(r.source_ip) + '</td><td>' + esc(r.detail || '') + '</td><td>' +
+          esc(r.reason) + '</td><td>' + esc(r.msg_type) + '</td><td>' + esc(String(r.count)) +
+          '</td><td>' + esc(r.last_seen || '') + '</td><td>' +
+          '<button class="btn btn-sm btn-outline-warning" onclick="fleet.ack(\'' +
+          esc(r.source_ip) + '\')">' + esc(T('fleet.ack', 'Xử lý')) + '</button></td></tr>';
       });
       html += '</tbody></table></div>';
     }
@@ -195,6 +198,24 @@
       }).catch(function () {});
   }
 
+  function ack(sourceIp) {
+    return postJson('/api/health/ingest/ack', { source_ip: sourceIp }).then(function (d) {
+      var g = (d && d.guide) || {};
+      var lines = ['Nguồn: ' + sourceIp]
+        .concat((g.hosts || []).length ? ['Máy: ' + (g.hosts || []).join(', ')] : [])
+        .concat(['Lý do: ' + (g.reason || '')])
+        .concat((g.steps || []).map(function (s, i) { return (i + 1) + '. ' + s; }));
+      window.alert(T('fleet.ackTitle', 'Cách khắc phục nguồn bị từ chối') + '\n\n' + lines.join('\n'));
+      if (!window.confirm(T('fleet.ackDismiss', 'Đã xử lý xong, ẩn cảnh báo này?'))) { return d; }
+      return postJson('/api/health/ingest/ack', { source_ip: sourceIp, dismiss: true })
+        .then(function (r2) {
+          toast(T('fleet.ackDone', 'Đã ẩn cảnh báo cho ') + sourceIp);
+          loadHealth();
+          return r2;
+        });
+    }).catch(function () {});
+  }
+
   function rollback() {
     if (!state.rolloutId) { return; }
     var swap = window.confirm(T('fleet.rollbackConfirm',
@@ -244,6 +265,7 @@
     start: start,
     advance: advance,
     rollback: rollback,
+    ack: ack,
     loadHealth: loadHealth,
     loadRollout: loadRollout,
     state: state

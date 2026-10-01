@@ -134,17 +134,20 @@ def heartbeat_map(db):
     return out
 
 
-def upsert_ingest_anomaly(db, bucket, source_ip, reason, msg_type, count=1):
+def upsert_ingest_anomaly(db, bucket, source_ip, reason, msg_type, count=1, detail=""):
     """Add `count` rejects for one (bucket, source, reason, msg_type) key."""
     kind = se.backend_kind(db)
     ph = se.placeholder(kind)
     stamp = "NOW()" if kind == "postgres" else "CURRENT_TIMESTAMP"
-    sql = ("INSERT INTO ingest_anomalies (bucket, source_ip, reason, msg_type, count, "
-           "last_seen) VALUES (" + ", ".join([ph] * 5 + [stamp]) +
+    sql = ("INSERT INTO ingest_anomalies (bucket, source_ip, reason, msg_type, detail, "
+           "count, last_seen) VALUES (" + ", ".join([ph] * 6 + [stamp]) +
            ") ON CONFLICT(bucket, source_ip, reason, msg_type) DO UPDATE SET "
-           "count = ingest_anomalies.count + EXCLUDED.count, last_seen = " + stamp)
+           "count = ingest_anomalies.count + EXCLUDED.count, last_seen = " + stamp +
+           ", detail = CASE WHEN EXCLUDED.detail <> '' THEN EXCLUDED.detail "
+           "ELSE ingest_anomalies.detail END")
     return se.write_sql(db, sql, (str(bucket), str(source_ip or ""), str(reason or ""),
-                                  str(msg_type or ""), int(count)), kind) is not None
+                                  str(msg_type or ""), str(detail or "")[:120],
+                                  int(count)), kind) is not None
 
 
 def list_ingest_anomalies(db, hours=24, limit=200):
@@ -156,6 +159,15 @@ def list_ingest_anomalies(db, hours=24, limit=200):
     else:
         where, args = ("WHERE last_seen >= datetime('now', %s)" % ph, ["-%d hours" % int(hours)])
     args.append(int(limit))
-    sql = ("SELECT bucket, source_ip, reason, msg_type, count, last_seen FROM ingest_anomalies "
-           "%s ORDER BY count DESC LIMIT %s" % (where, ph))
+    sql = ("SELECT bucket, source_ip, reason, msg_type, detail, count, last_seen "
+           "FROM ingest_anomalies %s ORDER BY count DESC LIMIT %s" % (where, ph))
     return [se.normalize_row(r) for r in se.rows(db, sql, tuple(args), kind)]
+
+
+def clear_ingest_anomalies(db, source_ip=None):
+    """Acknowledge/dismiss rejects (all, or just one source)."""
+    kind = se.backend_kind(db)
+    if source_ip:
+        return se.write_sql(db, "DELETE FROM ingest_anomalies WHERE source_ip = %s"
+                            % se.placeholder(kind), (str(source_ip),), kind) is not None
+    return se.write_sql(db, "DELETE FROM ingest_anomalies", None, kind) is not None

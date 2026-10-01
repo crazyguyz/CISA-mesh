@@ -1286,6 +1286,10 @@
       'fleet.advanced': 'Đã sang đợt tiếp',
       'fleet.blocked': 'Bị chặn: ',
       'fleet.targetVersion': 'phiên bản đích (trống = bản server đang phát)',
+      'fleet.ack': 'Xử lý',
+      'fleet.ackTitle': 'Cách khắc phục nguồn bị từ chối',
+      'fleet.ackDismiss': 'Đã xử lý xong, ẩn cảnh báo này?',
+      'fleet.ackDone': 'Đã ẩn cảnh báo cho ',
     },
     en: {
       'tr.fp': 'False positive',
@@ -2559,6 +2563,10 @@
       'fleet.advanced': 'Promoted to the next wave',
       'fleet.blocked': 'Blocked: ',
       'fleet.targetVersion': 'target version (empty = the build the server serves)',
+      'fleet.ack': 'Handle',
+      'fleet.ackTitle': 'How to fix the rejected source',
+      'fleet.ackDismiss': 'Fixed - hide this warning?',
+      'fleet.ackDone': 'Warning hidden for ',
     }
   };
 

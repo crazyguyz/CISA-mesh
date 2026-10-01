@@ -28,6 +28,14 @@ SILENT_MINUTES = 10
 ARCHIVE_DIRS = ("dist_archive", "dist/archive")   # optional archived builds (rollback)
 
 
+def _int(arg, default, lo, hi):
+    try:
+        value = int(arg)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, value))
+
+
 def _machines(core, group_id=None, machine_ids=None):
     """Resolve the target machines (optionally restricted to one group)."""
     machines = core.db.get_machines() or []
@@ -328,6 +336,112 @@ def register(app, core):
                                                      for i in persisted + pending})
         health["summary"]["rejected_messages"] = sum(i["count"] for i in persisted + pending)
         return jsonify(health)
+
+    @app.route("/api/health/ingest/ack", methods=["POST"])
+    def api_health_ingest_ack():
+        """One-click handling of a rejected ingest source.
+
+        Without `dismiss` it only explains WHAT is wrong and WHERE (host name from
+        the registration line, the message types it keeps sending, the fix steps);
+        with `dismiss: true` it also clears the counters for that source once the
+        operator has fixed the machine. The server never returns its PSK.
+        """
+        username, err, code = check_auth("command")
+        if err:
+            return err, code
+        body = request.json or {}
+        source_ip = str(body.get("source_ip") or "").strip()
+        if not source_ip:
+            return jsonify({"success": False, "error": "source_ip là bắt buộc"}), 400
+        machines = core.db.get_machines() or []
+        known = next((m for m in machines
+                      if str(m.get("ip_address") or "") == source_ip), None)
+        try:
+            pending = [i for i in (core.tcp_server.ingest_anomalies_snapshot() or [])
+                       if i.get("source_ip") == source_ip]
+        except Exception:
+            pending = []
+        stored = [i for i in store.list_ingest_anomalies(core.db, hours=24 * 7, limit=500)
+                  if i.get("source_ip") == source_ip]
+        hosts = sorted({str(i.get("detail") or "") for i in pending + stored
+                        if i.get("detail")})
+        guide = {
+            "reason": "PSK của agent sai/trống, hoặc máy này đã bị thu hồi (agent vẫn chạy)",
+            "hosts": hosts,
+            "steps": [
+                "Trên máy nguồn mở C:\\ProgramData\\GIAM-SAT\\Agent\\agent_config.json",
+                "Đặt 'psk' đúng bằng GIAMSAT_AGENT_PSK của server "
+                "(hoặc secret riêng theo máy trong GIAMSAT_PER_MACHINE_PSK[_FILE])",
+                "Khởi động lại service/task GiamSatUpdater để agent nạp lại cấu hình",
+                "Nếu máy KHÔNG còn dùng nữa: gỡ agent (uninstall) để hết dữ liệu rác",
+            ],
+            "server_has_psk": bool(os.environ.get("GIAMSAT_AGENT_PSK")
+                                   or os.environ.get("GIAMSAT_PER_MACHINE_PSK")),
+            "known_machine": {"machine_id": known.get("machine_id"),
+                              "hostname": known.get("hostname"),
+                              "is_revoked": known.get("is_revoked"),
+                              "version": known.get("version")} if known else None,
+        }
+        if not body.get("dismiss"):
+            return jsonify({"success": True, "dismissed": False, "source_ip": source_ip,
+                            "pending": pending, "stored": stored[:20], "guide": guide})
+        memory_removed = 0
+        try:
+            memory_removed = core.tcp_server.drop_ingest_anomalies(source_ip)
+        except Exception:
+            pass
+        cleared = store.clear_ingest_anomalies(core.db, source_ip)
+        if hasattr(core.db, "insert_audit_log"):
+            core.db.insert_audit_log(username, "ingest_ack",
+                                     "ingest rejects của %s đã xử lý (memory=%s, db=%s)"
+                                     % (source_ip, memory_removed, cleared),
+                                     request.remote_addr)
+        return jsonify({"success": True, "dismissed": True, "source_ip": source_ip,
+                        "memory_cleared": memory_removed, "db_cleared": bool(cleared),
+                        "guide": guide})
+
+    @app.route("/api/health/storage")
+    def api_health_storage():
+        """Sizes, partition state and which tables still need partitioning."""
+        _, err, code = check_auth("api")
+        if err:
+            return err, code
+        import partitioning as part
+        report = part.storage_report(core.db,
+                                     retention_days=_int(request.args.get("retention_days"),
+                                                         30, 1, 3650))
+        return jsonify(report)
+
+    @app.route("/api/health/storage/rollup", methods=["POST"])
+    def api_health_storage_rollup():
+        """Refresh the daily_stats rollup now (normally a nightly job)."""
+        username, err, code = check_auth("command")
+        if err:
+            return err, code
+        import partitioning as part
+        days = _int((request.json or {}).get("days"), 30, 1, 3650)
+        result = part.rollup_daily(core.db, days)
+        if result.get("ok") and hasattr(core.db, "insert_audit_log"):
+            core.db.insert_audit_log(username, "storage_rollup",
+                                     "daily_stats rollup %d ngày" % days, request.remote_addr)
+        return jsonify(result)
+
+    @app.route("/api/health/storage/drop-old", methods=["POST"])
+    def api_health_storage_drop_old():
+        """Partition retention: DROP whole months instead of DELETE rows."""
+        username, err, code = check_auth("command")
+        if err:
+            return err, code
+        import partitioning as part
+        days = _int((request.json or {}).get("retention_days"), 30, 1, 3650)
+        results = [part.drop_old_partitions(core.db, table, days) for table in part.HOT_TABLES]
+        dropped = [p for r in results for p in (r.get("dropped") or [])]
+        if hasattr(core.db, "insert_audit_log"):
+            core.db.insert_audit_log(username, "storage_drop_partitions",
+                                     "retention %d ngày, dropped=%s" % (days, dropped),
+                                     request.remote_addr)
+        return jsonify({"success": True, "retention_days": days, "dropped": dropped,
+                        "results": results})
 
     @app.route("/api/policies/preview", methods=["POST"])
     def api_policies_preview():

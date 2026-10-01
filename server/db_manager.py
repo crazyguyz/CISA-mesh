@@ -573,11 +573,24 @@ class DatabaseManager:
                 c.execute("""CREATE TABLE IF NOT EXISTS ingest_anomalies (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bucket TEXT, source_ip TEXT DEFAULT '', reason TEXT DEFAULT '',
-                    msg_type TEXT DEFAULT '', count INTEGER DEFAULT 0,
+                    msg_type TEXT DEFAULT '', detail TEXT DEFAULT '',
+                    count INTEGER DEFAULT 0,
                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(bucket, source_ip, reason, msg_type))""")
                 c.execute("CREATE INDEX IF NOT EXISTS idx_ingest_anomalies_seen "
                           "ON ingest_anomalies(last_seen DESC)")
+                try:  # migration for installs created before Phase D
+                    c.execute("ALTER TABLE ingest_anomalies ADD COLUMN detail TEXT DEFAULT ''")
+                except sqlite3.OperationalError:
+                    pass
+                # v5.0.8 (Phase D): nightly rollup (PostgreSQL does the real work,
+                # the table is created here so the schema is identical)
+                c.execute("""CREATE TABLE IF NOT EXISTS daily_stats (
+                    day DATE, machine_id TEXT, hostname TEXT DEFAULT '',
+                    events INTEGER DEFAULT 0, sysmon INTEGER DEFAULT 0,
+                    alerts INTEGER DEFAULT 0, traffic INTEGER DEFAULT 0,
+                    syslog INTEGER DEFAULT 0, computed_at TIMESTAMP,
+                    PRIMARY KEY (day, machine_id))""")
             except sqlite3.OperationalError:
                 pass
 
@@ -2238,8 +2251,12 @@ class DatabaseManager:
                          SELECT 1 FROM policy_apply_status s
                          WHERE s.policy_id=p.id AND s.machine_id=? AND s.status='applied'
                      )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM policy_apply_status b
+                         WHERE b.policy_id=p.id AND b.machine_id=? AND b.status='blocked'
+                     )
                    ORDER BY p.created_at ASC""",
-                (machine_id, machine_id))
+                (machine_id, machine_id, machine_id))
             return [dict(row) for row in c.fetchall()]
 
     def get_removal_policies_for_machine(self, machine_id):

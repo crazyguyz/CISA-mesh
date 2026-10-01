@@ -167,3 +167,106 @@ def register_routes(app, server_core):
                 p["config"] = {}
             del p["config_json"]
         return jsonify({"success": True, "pending": policies})
+
+    # ------------------------------------------------------------------ #
+    # v5.0.8 (Phase D): canary rollout for GROUP POLICIES.
+    # The agent only receives a policy when `get_pending_policies_for_machine`
+    # returns it, i.e. when its per-machine row is neither 'applied' nor
+    # 'blocked'. So a wave rollout is: mark the current wave 'pending' (offered)
+    # and every other machine 'blocked' (hidden) - no new table needed.
+    # ------------------------------------------------------------------ #
+    def _policy_wave_targets(server_core, policy_id):
+        """(policy, ids, waves_or_None, statuses_by_machine)."""
+        import fleet as fl
+        policy = server_core.db.get_policy(policy_id)
+        if not policy:
+            return None, [], None, {}
+        group = server_core.db.get_agent_group(policy.get("group_id")) or {}
+        ids = sorted(m.get("machine_id") for m in (group.get("members") or [])
+                     if m.get("machine_id"))
+        statuses = server_core.db.get_policy_machine_status(policy_id) or []
+        by_id = {s.get("machine_id"): str(s.get("status") or "").lower() for s in statuses}
+        return policy, ids, fl, by_id
+
+    def _mark_wave(server_core, policy_id, ids, waves, index):
+        """Offer `waves[index]` to its machines and block the rest."""
+        wave_ids = set(waves[index]["machines"])
+        offered, blocked = 0, 0
+        for mid in ids:
+            if mid in wave_ids:
+                server_core.db.set_policy_machine_status(policy_id, mid, "pending",
+                                                         "đợt %d/%d" % (index, len(waves)))
+                offered += 1
+            else:
+                server_core.db.set_policy_machine_status(policy_id, mid, "blocked",
+                                                         "chờ đợt (đang ở đợt %d)" % index)
+                blocked += 1
+        return sorted(wave_ids), offered, blocked
+
+    @app.route("/api/policies/wave-apply", methods=["POST"])
+    def api_policy_wave_apply():
+        """Offer ONE wave of a policy (canary first); the rest stay blocked."""
+        username, err, code = check_auth("delete")
+        if err: return err, code
+        data = request.get_json() or {}
+        policy_id = data.get("policy_id")
+        index = int(data.get("wave_index") or 0)
+        if not policy_id:
+            return jsonify({"success": False, "error": "policy_id is required"}), 400
+        policy, ids, fl, _by_id = _policy_wave_targets(server_core, policy_id)
+        if not policy:
+            return jsonify({"success": False, "error": "Policy not found"}), 404
+        if not ids:
+            return jsonify({"success": False,
+                            "error": "nhóm của chính sách chưa có máy nào"}), 400
+        waves = fl.plan_waves(ids, data.get("waves"))
+        if index < 0 or index >= len(waves):
+            return jsonify({"success": False, "error": "đợt %d không tồn tại (có %d đợt)"
+                            % (index, len(waves))}), 400
+        offered, n_offered, n_blocked = _mark_wave(server_core, policy_id, ids, waves, index)
+        server_core.db.insert_audit_log(
+            username, "policy_wave_apply",
+            "policy %s: đợt %d/%d - %d máy nhận, %d máy chờ"
+            % (policy_id, index, len(waves), n_offered, n_blocked), request.remote_addr)
+        return jsonify({"success": True, "policy_id": policy_id, "wave": index,
+                        "waves": waves, "offered": offered, "count": n_offered,
+                        "blocked": n_blocked})
+
+    @app.route("/api/policies/wave-advance", methods=["POST"])
+    def api_policy_wave_advance():
+        """Advance after the current wave applied the policy (>= 90%, 0 failed)."""
+        username, err, code = check_auth("delete")
+        if err: return err, code
+        data = request.get_json() or {}
+        policy_id = data.get("policy_id")
+        index = int(data.get("wave_index") or 0)
+        force = bool(data.get("force"))
+        if not policy_id:
+            return jsonify({"success": False, "error": "policy_id is required"}), 400
+        policy, ids, fl, by_id = _policy_wave_targets(server_core, policy_id)
+        if not policy or not ids:
+            return jsonify({"success": False, "error": "không tìm thấy chính sách/nhóm"}), 404
+        waves = fl.plan_waves(ids, data.get("waves"))
+        if index < 0 or index >= len(waves):
+            return jsonify({"success": False, "error": "đợt %d không tồn tại" % index}), 400
+        targets = [{"machine_id": mid, "wave": 0,
+                    "status": ("updated" if by_id.get(mid) == "applied"
+                               else ("failed" if by_id.get(mid) == "failed" else "pending"))}
+                   for mid in waves[index]["machines"]]
+        counts = fl.wave_health(targets, 0)
+        ok, reason = fl.health_gate(counts)
+        if not ok and not force:
+            return jsonify({"success": False, "blocked": True, "reason": reason,
+                            "counts": counts, "wave": index})
+        if index + 1 >= len(waves):
+            return jsonify({"success": True, "done": True, "gate": reason,
+                            "message": "đã ở đợt cuối"})
+        offered, n_offered, n_blocked = _mark_wave(server_core, policy_id, ids, waves, index + 1)
+        server_core.db.insert_audit_log(
+            username, "policy_wave_advance",
+            "policy %s: sang đợt %d/%d - %d máy nhận, %d máy chờ (%s)"
+            % (policy_id, index + 1, len(waves), n_offered, n_blocked, reason),
+            request.remote_addr)
+        return jsonify({"success": True, "wave": index + 1, "offered": offered,
+                        "count": n_offered, "blocked": n_blocked, "gate": reason,
+                        "forced": force and not ok})

@@ -577,6 +577,15 @@ class PostgresDatabase:
                 created_by TEXT DEFAULT '', note TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # v5.0.8 (Phase D): nightly rollup (per day + machine) so year-long
+            # questions never scan the raw tables.
+            "daily_stats": """CREATE TABLE IF NOT EXISTS daily_stats (
+                day DATE, machine_id TEXT, hostname TEXT DEFAULT '',
+                events INTEGER DEFAULT 0, sysmon INTEGER DEFAULT 0,
+                alerts INTEGER DEFAULT 0, traffic INTEGER DEFAULT 0,
+                syslog INTEGER DEFAULT 0, computed_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (day, machine_id)
+            )""",
             # v5.0.8 (Phase C): fleet rollout tracking + ingest health counters
             "update_rollouts": """CREATE TABLE IF NOT EXISTS update_rollouts (
                 id SERIAL PRIMARY KEY, name TEXT DEFAULT '', target_version TEXT DEFAULT '',
@@ -596,7 +605,7 @@ class PostgresDatabase:
             )""",
             "ingest_anomalies": """CREATE TABLE IF NOT EXISTS ingest_anomalies (
                 id SERIAL PRIMARY KEY, bucket TEXT, source_ip TEXT DEFAULT '',
-                reason TEXT DEFAULT '', msg_type TEXT DEFAULT '',
+                reason TEXT DEFAULT '', msg_type TEXT DEFAULT '', detail TEXT DEFAULT '',
                 count INTEGER DEFAULT 0, last_seen TIMESTAMPTZ DEFAULT NOW(),
                 UNIQUE(bucket, source_ip, reason, msg_type)
             )""",
@@ -724,6 +733,18 @@ class PostgresDatabase:
             print(f"[!] pg_trgm unavailable ({str(e)[:100]}) - investigation search "
                   f"will work without index acceleration")
 
+        # v5.0.8 (Phase D): keep the monthly partitions of the ALREADY partitioned
+        # hot tables rolling forward (this never converts a plain table - use
+        # tools/partition_events.py for that).
+        try:
+            import partitioning
+            created = partitioning.ensure_partitions(self)
+            if created:
+                print("[*] PG: ensured %d tháng partition (%s)"
+                      % (len(created), ", ".join(created[:3])))
+        except Exception as e:
+            print(f"[-] partition ensure: {str(e)[:120]}")
+
         # Migration: add missing columns
         alt_cols = [
             ("threat_alerts", "source_ip", "TEXT DEFAULT ''"),
@@ -737,6 +758,8 @@ class PostgresDatabase:
             ("machine_users", "branch", "TEXT DEFAULT ''"),
             ("messages", "direction", "TEXT DEFAULT 'server'"),
             ("network_inspection", "ja3", "TEXT DEFAULT ''"),  # v5.0.4: TLS fingerprint
+            # v5.0.8 (Phase D): who was rejected and why (hostname in the detail)
+            ("ingest_anomalies", "detail", "TEXT DEFAULT ''"),
             # v5.0.4 (Phase1 A2/A3b): log-source coverage state
             ("machines", "baseline_hardened", "INTEGER DEFAULT 0"),
             ("machines", "sysmon_present", "INTEGER DEFAULT 0"),
@@ -1022,6 +1045,48 @@ class PostgresDatabase:
         ])
         return hashlib.md5(key.encode("utf-8", errors="ignore")).hexdigest()
 
+    # ---- v5.0.8 (Phase D): events inserts that work on a plain OR partitioned table
+    _EVENT_INSERT_COLS = ("INSERT INTO events (machine_id, hostname, type, subtype, event_id, "
+                          "event_type, source, computer, \"user\", category, time, description, "
+                          "raw_data, received_at, dedup_key) ")
+    _EVENTS_VALUES_SQL = _EVENT_INSERT_COLS + (
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s) "
+        "-- v5.0.4 (CRITICAL-1): the unique index is PARTIAL (WHERE dedup_key IS NOT NULL) -\n"
+        "-- PG requires the index predicate in ON CONFLICT or it fails 42P10 on EVERY insert.\n"
+        "ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING")
+    # A partitioned parent cannot use a partial unique index in ON CONFLICT (same
+    # 42P10), so on a partitioned table we de-duplicate with NOT EXISTS instead and
+    # let the per-partition unique index reject a rare race (caught as a duplicate).
+    _EVENTS_SELECT_SQL = _EVENT_INSERT_COLS + (
+        "SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s "
+        "WHERE NOT EXISTS (SELECT 1 FROM events e2 WHERE e2.dedup_key = %s "
+        "AND e2.dedup_key IS NOT NULL)")
+
+    def is_events_partitioned(self):
+        """True when `events` is RANGE-partitioned (probed once, then cached)."""
+        if getattr(self, "_events_partitioned", None) is None:
+            flag = False
+            try:
+                row = self._execute("SELECT relkind FROM pg_class WHERE relname='events'",
+                                    fetch=True)
+                flag = bool(row) and row.get("relkind") == "p"
+            except Exception:
+                flag = False
+            self._events_partitioned = flag
+        return self._events_partitioned
+
+    def _events_insert_sql(self, values, dedup_key):
+        """(sql, params) for ONE event row."""
+        if self.is_events_partitioned():
+            return self._EVENTS_SELECT_SQL, tuple(values) + (dedup_key,)
+        return self._EVENTS_VALUES_SQL, tuple(values)
+
+    def _events_insert_sql_many(self, rows):
+        """(sql, list_of_params) for a batch (each row already ends with dedup_key)."""
+        if self.is_events_partitioned():
+            return self._EVENTS_SELECT_SQL, [tuple(r) + (r[-1],) for r in rows]
+        return self._EVENTS_VALUES_SQL, [tuple(r) for r in rows]
+
     def insert_event(self, msg):
         if not self._connected:
             return
@@ -1032,25 +1097,17 @@ class PostgresDatabase:
                 _hn = sanitize_hostname(msg.get("hostname", ""))
             except Exception:
                 _hn = msg.get("hostname", "")
-            self._execute(
-                """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
-                   source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
-                   -- v5.0.4 (CRITICAL-1): the unique index is PARTIAL
-                   -- (WHERE dedup_key IS NOT NULL) - PG requires the index predicate
-                   -- in ON CONFLICT or the statement fails 42P10 on EVERY insert.
-                   ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING""",
-                (
-                    msg.get("machine_id", ""), _hn,
-                    msg.get("type", ""), msg.get("subtype", ""),
-                    msg.get("event_id", ""), msg.get("event_type", ""),
-                    msg.get("source", ""), msg.get("computer", ""),
-                    msg.get("user", "SYSTEM"), msg.get("category", ""),
-                    self._normalize_time(msg.get("time", "")), msg.get("description", "")[:1000],
-                    json.dumps(msg, ensure_ascii=False, default=str),
-                    self._dedup_key(msg),
-                )
+            _values = (
+                msg.get("machine_id", ""), _hn,
+                msg.get("type", ""), msg.get("subtype", ""),
+                msg.get("event_id", ""), msg.get("event_type", ""),
+                msg.get("source", ""), msg.get("computer", ""),
+                msg.get("user", "SYSTEM"), msg.get("category", ""),
+                self._normalize_time(msg.get("time", "")), msg.get("description", "")[:1000],
+                json.dumps(msg, ensure_ascii=False, default=str),
             )
+            _sql, _params = self._events_insert_sql(_values, self._dedup_key(msg))
+            self._execute(_sql, _params)
         except Exception as e:
             # v5.0.4 (CRITICAL-1): never swallow insert errors silently - count + log
             # so a broken backend cannot pretend events are being stored.
@@ -1366,11 +1423,7 @@ class PostgresDatabase:
                 _hn = lambda e: sanitize_hostname(e.get("hostname", ""))
             except Exception:
                 _hn = lambda e: e.get("hostname", "")
-            sql = """INSERT INTO events (machine_id, hostname, type, subtype, event_id, event_type,
-                       source, computer, "user", category, time, description, raw_data, received_at, dedup_key)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),%s)
-                       -- v5.0.4 (CRITICAL-1): partial unique index needs the predicate
-                       ON CONFLICT (dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING"""
+            sql = self._EVENTS_VALUES_SQL
             params = [(
                 e.get("machine_id", ""), _hn(e),
                 e.get("type", ""), e.get("subtype", ""),
@@ -1381,6 +1434,7 @@ class PostgresDatabase:
                 json.dumps(e, ensure_ascii=False, default=str),
                 self._dedup_key(e),
             ) for e in events]
+            sql, params = self._events_insert_sql_many(params)
             self._executemany(sql, params)
         except Exception as e:
             # v5.0.4 (CRITICAL-1): log batch failures instead of silent fallback spam
@@ -2811,7 +2865,10 @@ class PostgresDatabase:
             pass
 
     def get_pending_policies_for_machine(self, machine_id):
-        """v5.0.2: per-machine pending - enabled policy the machine has NOT yet applied."""
+        """v5.0.2: per-machine pending - enabled policy the machine has NOT yet applied.
+        v5.0.8 (Phase D): a policy also stays hidden while its per-machine row says
+        'blocked' (wave rollout: only the current wave is offered to the agents).
+        """
         if not self._connected:
             return []
         try:
@@ -2821,8 +2878,12 @@ class PostgresDatabase:
                      AND NOT EXISTS (
                          SELECT 1 FROM policy_apply_status s
                          WHERE s.policy_id=p.id AND s.machine_id=%s AND s.status='applied'
+                     )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM policy_apply_status b
+                         WHERE b.policy_id=p.id AND b.machine_id=%s AND b.status='blocked'
                      )""",
-                (machine_id, machine_id), fetchall=True
+                (machine_id, machine_id, machine_id), fetchall=True
             ) or []
         except Exception:
             return []

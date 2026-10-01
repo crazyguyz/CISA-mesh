@@ -309,6 +309,7 @@ class TCPServer(threading.Thread):
         ip = msg.get("source_ip", "")
         if not validate_machine_id(machine_id):
             print(f"[!] REGISTRATION REJECTED: invalid machine_id '{machine_id[:64]}' from {ip}")
+            self._note_ingest("registration_rejected", ip, "register", "invalid machine_id")
             return False
         if not has_any_psk(machine_id):
             print("[!] REGISTRATION REJECTED: no GIAMSAT_AGENT_PSK configured on server AND no "
@@ -320,6 +321,10 @@ class TCPServer(threading.Thread):
             print(f"[!] REGISTRATION REJECTED: {hostname} from {ip} - "
                   "Invalid/empty PSK. Set the agent's 'psk' (agent_config.json) to match "
                   "GIAMSAT_AGENT_PSK (or the per-machine secret in GIAMSAT_PER_MACHINE_PSK[_FILE]).")
+            # v5.0.8 (Phase D): remember WHICH host was rejected - this is the one line
+            # an operator needs ("LAPTOP-14 from 192.168.1.101: wrong PSK").
+            self._note_ingest("registration_rejected", ip, "register",
+                              "hostname=%s wrong PSK" % (hostname or "?"))
             return False
         # v5.0.3 (LOW-9): strip HTML/control chars from agent-supplied hostname
         hostname = sanitize_hostname(hostname)
@@ -641,11 +646,15 @@ class TCPServer(threading.Thread):
     # v5.0.8 (Phase C): ingest health - count the messages we REJECT so the
     # dashboard can show "this machine's data is not being accepted" instead of
     # hiding it in the log. Flushed to `ingest_anomalies` at most once a minute.
-    def _note_ingest(self, reason, address, msg_type):
+    def _note_ingest(self, reason, address, msg_type, detail=""):
         try:
             ip = address[0] if isinstance(address, (tuple, list)) else str(address)
             key = (str(reason), ip, str(msg_type or ""))
-            self._ingest_anomalies[key] = self._ingest_anomalies.get(key, 0) + 1
+            item = self._ingest_anomalies.get(key) or {"count": 0, "detail": ""}
+            item["count"] += 1
+            if detail:
+                item["detail"] = str(detail)[:120]
+            self._ingest_anomalies[key] = item
             now = time.time()
             if now - self._ingest_flush_ts < 60:
                 return
@@ -663,18 +672,33 @@ class TCPServer(threading.Thread):
         except Exception:
             return
         bucket = time.strftime("%Y-%m-%d %H:%M")
-        for (reason, ip, msg_type), count in list(self._ingest_anomalies.items()):
+        for (reason, ip, msg_type), item in list(self._ingest_anomalies.items()):
             try:
-                fleet_store.upsert_ingest_anomaly(self.db, bucket, ip, reason, msg_type, count)
+                fleet_store.upsert_ingest_anomaly(self.db, bucket, ip, reason, msg_type,
+                                                  int(item.get("count") or 1),
+                                                  detail=item.get("detail") or "")
                 self._ingest_anomalies.pop((reason, ip, msg_type), None)
             except Exception:
                 pass
 
     def ingest_anomalies_snapshot(self):
         """In-memory counters (not yet flushed) for /api/health/fleet."""
-        return [{"source_ip": ip, "reason": reason, "msg_type": msg_type, "count": count}
-                for (reason, ip, msg_type), count in
-                sorted(self._ingest_anomalies.items(), key=lambda kv: -kv[1])]
+        return [{"source_ip": ip, "reason": reason, "msg_type": msg_type,
+                 "count": item.get("count", 0), "detail": item.get("detail", "")}
+                for (reason, ip, msg_type), item in
+                sorted(self._ingest_anomalies.items(),
+                       key=lambda kv: -(kv[1].get("count") or 0))]
+
+    def drop_ingest_anomalies(self, source_ip):
+        """Forget the in-memory counters of one source (after it was handled)."""
+        removed = 0
+        try:
+            for key in [k for k in self._ingest_anomalies if k[1] == str(source_ip)]:
+                removed += int(self._ingest_anomalies[key].get("count") or 0)
+                self._ingest_anomalies.pop(key, None)
+        except Exception:
+            pass
+        return removed
 
     def _handle_process_tree(self, msg):
         """v5.0.8 (Phase B): store LOTL process chains + 60s snapshots.
