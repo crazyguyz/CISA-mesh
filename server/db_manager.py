@@ -601,7 +601,10 @@ class DatabaseManager:
                     return False
             except Exception:
                 pass
-            self.conn.execute("""INSERT INTO machines (machine_id,hostname,ip_address,platform,version,first_seen,last_seen,is_online) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(machine_id) DO UPDATE SET hostname=excluded.hostname,ip_address=excluded.ip_address,last_seen=CURRENT_TIMESTAMP,is_online=1""", (machine_id, hostname, ip_address, platform, version))
+            # v5.0.8 (bug that): the ON CONFLICT branch did not update `version`, so a host
+            # kept the version stored at its FIRST registration even after updating the
+            # agent (dashboard showed the old version until the next heartbeat).
+            self.conn.execute("""INSERT INTO machines (machine_id,hostname,ip_address,platform,version,first_seen,last_seen,is_online) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,1) ON CONFLICT(machine_id) DO UPDATE SET hostname=excluded.hostname,ip_address=excluded.ip_address,platform=excluded.platform,version=excluded.version,last_seen=CURRENT_TIMESTAMP,is_online=1""", (machine_id, hostname, ip_address, platform, version))
             self.conn.commit()
 
     def update_machine_hostname(self, machine_id, new_hostname):

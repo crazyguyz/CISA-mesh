@@ -306,6 +306,51 @@ def test_server_agent_version_path():
           (not expected) or got == expected, "got '%s'" % got)
 
 
+def test_register_machine_updates_version():
+    """Bug: register_machine() ON CONFLICT did not update `version`, so a host kept the
+    version from its FIRST registration (dashboard showed 6.0.0 after the agent became
+    6.0.1 until a heartbeat arrived)."""
+    print("\n-- machines.version follows the agent on re-register --")
+    pg = read(os.path.join(SERVER, "db_postgres.py"))
+    lite = read(os.path.join(SERVER, "db_manager.py"))
+    check("PG register upsert updates version", "version=EXCLUDED.version" in pg)
+    check("SQLite register upsert updates version", "version=excluded.version" in lite)
+
+    if "--pg" not in sys.argv:
+        print("SKIP  pass --pg to run the live PostgreSQL registration check")
+        return
+    import uuid
+    envp = os.path.join(SERVER, ".env")
+    if "--env" in sys.argv:
+        idx = sys.argv.index("--env")
+        if idx + 1 < len(sys.argv):
+            envp = sys.argv[idx + 1]
+    if os.path.exists(envp):
+        for line in io.open(envp, encoding="utf-8-sig"):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    import db_postgres as dp
+    db = dp.PostgresDatabase()
+    if not getattr(db, "_connected", False):
+        print("SKIP  PostgreSQL not reachable")
+        return
+    mid = "ztest" + uuid.uuid4().hex[:8]
+    try:
+        db.register_machine(mid, "TEST-HOST", "127.0.0.1", "Windows", "1.0.0")
+        v1 = [m.get("version") for m in db.get_machines() if m.get("machine_id") == mid]
+        db.register_machine(mid, "TEST-HOST", "127.0.0.1", "Windows", "9.9.9")
+        v2 = [m.get("version") for m in db.get_machines() if m.get("machine_id") == mid]
+        check("re-register updates machines.version (%s -> %s)" % (v1, v2),
+              bool(v2) and v2[0] == "9.9.9", v2)
+    finally:
+        try:
+            db._execute("DELETE FROM machines WHERE machine_id=%s", (mid,))
+        except Exception:
+            pass
+
+
 def main():
     print("=" * 68)
     print("  GIAM-SAT alert-quality / silent-failure tests - v5.0.8")
@@ -320,6 +365,7 @@ def main():
     test_vuln_cache_dir()
     test_name_spoofing_heuristic()
     test_server_agent_version_path()
+    test_register_machine_updates_version()
     failed = [n for n, ok in RESULTS if not ok]
     print("\n" + "=" * 68)
     print("  %d/%d checks passed" % (len(RESULTS) - len(failed), len(RESULTS)))

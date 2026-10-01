@@ -738,6 +738,10 @@ class PostgresDatabase:
                    ON CONFLICT(machine_id) DO UPDATE SET
                    hostname=EXCLUDED.hostname, ip_address=EXCLUDED.ip_address,
                    platform=EXCLUDED.platform,
+                   -- v5.0.8 (bug that): `version` was missing here, so a host kept the
+                   -- FIRST registered version forever (the dashboard showed 6.0.0 even
+                   -- after the agent updated to 6.0.1; only a heartbeat refreshed it).
+                   version=EXCLUDED.version,
                    last_seen=NOW(), is_online=1""",
                 (machine_id, hostname, ip_address, platform, version)
             )
