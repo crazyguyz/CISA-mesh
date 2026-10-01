@@ -1616,4 +1616,5 @@ Kiểm tra 3 nghi phạm: bảng lớn chưa partition (`events` 172 MB), chưa 
   đều lấy từ mã nguồn thật; mọi con số đều từ dữ liệu thật.
 - **Cách tự kiểm chứng:** chạy `python tests\dashboard_ui_tests.py` (kiểm tra mọi API mới đều có giao diện gọi),
   `python tests\ui_wiring_tests.py` (i18n + wiring), và các câu SQL ở Phụ lục A.
-- **Bản rút gọn song ngữ** cho người dùng thao tác nhanh vẫn nằm trong `README.md`; tài liệu này là bản **chi tiết dạy học**.
+- **Bản hướng dẫn cài đặt/agent song ngữ** nằm trong `README.md`; tài liệu này là bản **chi tiết dạy học** cho toàn bộ dashboard
+  (đọc kèm `summary.md` để biết lịch sử thay đổi theo phiên bản).
